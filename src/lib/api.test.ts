@@ -4,6 +4,7 @@ import {
   deleteHydrationLog,
   getHydrationToday,
   hydrationReminderEvents,
+  coachRecommend,
   logHydration,
   logSupplement,
   patchHydrationLog,
@@ -45,5 +46,13 @@ describe("api service layer", () => {
     if (!result.ok) return;
     expect(result.data).toHaveProperty("shouldSend");
     expect(result.data).toHaveProperty("event");
+  });
+
+  it("returns coach recommendation through AI fallback contract", async () => {
+    const result = await coachRecommend();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data).toHaveProperty("mode");
+    expect(["rule-fallback", "gemini", "openai"]).toContain(result.data.mode);
   });
 });

@@ -41,7 +41,7 @@ import {
   type WorkoutExercise,
   type WorkoutSet
 } from "@/lib/core";
-import { initialState, type AppState } from "@/lib/seed";
+import { initialState, routineTemplates, type AppState } from "@/lib/seed";
 import { loadState, resetState, saveState } from "@/lib/storage";
 
 type Tab = "today" | "workout" | "progress" | "coach" | "settings";
@@ -68,6 +68,7 @@ export default function AppPage() {
   const [setReps, setSetReps] = useState(8);
   const [setRpe, setSetRpe] = useState(8);
   const [toast, setToast] = useState<string | null>(null);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -75,6 +76,9 @@ export default function AppPage() {
     setMounted(true);
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    }
+    if ("Notification" in window) {
+      setNotificationPermission(Notification.permission);
     }
   }, []);
 
@@ -256,6 +260,23 @@ export default function AppPage() {
     commit({ ...state, workoutExercises, activeExerciseIndex: nextIndex }, "Đã sắp xếp routine");
   }
 
+  function applyTemplate(template: AppState["activeTemplate"]) {
+    if (template === "custom") {
+      commit({ ...state, activeTemplate: "custom" }, "Đã chuyển sang Custom");
+      return;
+    }
+    commit(
+      {
+        ...state,
+        activeTemplate: template,
+        workoutExercises: routineTemplates[template],
+        workoutSets: [],
+        activeExerciseIndex: 0
+      },
+      `Đã áp dụng template ${template}`
+    );
+  }
+
   function addBodyMetric() {
     const metric: BodyMetric = {
       id: cryptoSafeId(),
@@ -284,6 +305,16 @@ export default function AppPage() {
     link.download = "evolvefit-export.json";
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function requestNotifications() {
+    if (!("Notification" in window)) {
+      setToast("Trình duyệt chưa hỗ trợ Notification API");
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    setNotificationPermission(permission);
+    setToast(permission === "granted" ? "Đã bật quyền thông báo" : "Chưa bật quyền thông báo");
   }
 
   function undo() {
@@ -405,6 +436,7 @@ export default function AppPage() {
             addExercise={addExercise}
             deleteExercise={deleteExercise}
             moveExercise={moveExercise}
+            applyTemplate={applyTemplate}
           />
         )}
 
@@ -435,6 +467,8 @@ export default function AppPage() {
             state={state}
             updateProfile={updateProfile}
             reset={() => commit(resetState(), "Đã khôi phục dữ liệu mẫu")}
+            notificationPermission={notificationPermission}
+            requestNotifications={requestNotifications}
           />
         )}
       </section>
@@ -781,6 +815,7 @@ function WorkoutView(props: {
   addExercise: () => void;
   deleteExercise: (id: string) => void;
   moveExercise: (id: string, direction: -1 | 1) => void;
+  applyTemplate: (template: AppState["activeTemplate"]) => void;
 }) {
   return (
     <div className="stack workout-focus">
@@ -791,6 +826,22 @@ function WorkoutView(props: {
             <h2>Push Day</h2>
           </div>
           <Dumbbell size={22} />
+        </div>
+        <div className="template-row" aria-label="Routine templates">
+          {[
+            ["ppl", "PPL"],
+            ["upper-lower", "Upper/Lower"],
+            ["full-body", "Full Body"],
+            ["custom", "Custom"]
+          ].map(([id, label]) => (
+            <button
+              key={id}
+              className={props.state.activeTemplate === id ? "active" : ""}
+              onClick={() => props.applyTemplate(id as AppState["activeTemplate"])}
+            >
+              {label}
+            </button>
+          ))}
         </div>
         <div className="exercise-library">
           {props.state.workoutExercises.map((exercise, index) => (
@@ -1046,7 +1097,13 @@ function CoachView(props: {
   );
 }
 
-function SettingsView(props: { state: AppState; updateProfile: (next: Partial<AppState["profile"]>) => void; reset: () => void }) {
+function SettingsView(props: {
+  state: AppState;
+  updateProfile: (next: Partial<AppState["profile"]>) => void;
+  reset: () => void;
+  notificationPermission: NotificationPermission;
+  requestNotifications: () => void;
+}) {
   return (
     <div className="stack">
       <section className="card">
@@ -1091,6 +1148,26 @@ function SettingsView(props: { state: AppState; updateProfile: (next: Partial<Ap
           />
         </label>
         <p className="privacy-note">Mặc định riêng tư. Leaderboard chỉ hiển thị tên, avatar, rank và badge streak.</p>
+      </section>
+      <section className="card">
+        <h2>Notifications</h2>
+        <div className="setting-row">
+          <span>Quyền trình duyệt</span>
+          <strong>{props.notificationPermission}</strong>
+        </div>
+        <button className="secondary-button export-button" onClick={props.requestNotifications}>
+          Bật thông báo
+        </button>
+        <p className="privacy-note">Web Push thật cần VAPID/FCM credentials; app hiện đã có service worker action handler và API subscription contract.</p>
+      </section>
+      <section className="card">
+        <h2>Backend readiness</h2>
+        <div className="readiness-list">
+          <span>Supabase adapter: env-ready contract</span>
+          <span>AI coach: Gemini/OpenAI fallback contract</span>
+          <span>Vercel Cron: configured</span>
+          <span>Push actions: Log 250ml / Snooze</span>
+        </div>
       </section>
       <section className="card">
         <h2>Dữ liệu</h2>

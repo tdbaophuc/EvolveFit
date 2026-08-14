@@ -19,7 +19,8 @@ export function loadState(): AppState {
       quickAmounts: parsed.quickAmounts ?? initialState.quickAmounts,
       workoutExercises: parsed.workoutExercises ?? initialState.workoutExercises,
       workoutSets: parsed.workoutSets ?? initialState.workoutSets,
-      bodyMetrics: parsed.bodyMetrics ?? initialState.bodyMetrics
+      bodyMetrics: parsed.bodyMetrics ?? initialState.bodyMetrics,
+      activeTemplate: parsed.activeTemplate ?? initialState.activeTemplate
     };
   } catch {
     return initialState;

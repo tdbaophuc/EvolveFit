@@ -334,7 +334,8 @@ input[type="range"] {
 }
 
 .chip-row,
-.readiness-row {
+.readiness-row,
+.template-row {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
@@ -356,6 +357,26 @@ input[type="range"] {
   color: #3f6212;
   background: #ecfccb;
   border-color: #bef264;
+}
+
+.template-row {
+  margin-top: 12px;
+}
+
+.template-row button {
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 12px;
+  background: #f8fafc;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.template-row button.active {
+  border-color: var(--training);
+  background: #ecfccb;
+  color: #3f6212;
 }
 
 .supplement-list,
@@ -678,6 +699,22 @@ input[type="range"] {
   align-items: center;
   gap: 14px;
   margin-top: 12px;
+}
+
+.readiness-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.readiness-list span {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .readiness-score strong {

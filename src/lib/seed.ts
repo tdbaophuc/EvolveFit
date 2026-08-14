@@ -22,6 +22,7 @@ export type AppState = {
   workoutExercises: WorkoutExercise[];
   workoutSets: WorkoutSet[];
   bodyMetrics: BodyMetric[];
+  activeTemplate: "ppl" | "upper-lower" | "full-body" | "custom";
   activeExerciseIndex: number;
   restEndsAt?: string;
   undo?: {
@@ -33,37 +34,8 @@ export type AppState = {
 const now = new Date();
 const today = now.toISOString().slice(0, 10);
 
-export const initialState: AppState = {
-  profile: {
-    name: "Phúc",
-    timezone: "Asia/Saigon",
-    onboardingCompleted: false,
-    unitWeight: "kg",
-    unitVolume: "ml",
-    waterTargetMl: 2500,
-    wakeHour: 6,
-    sleepHour: 23,
-    creatineAmountG: 5,
-    creatineHour: 17,
-    remindBeforeMinutes: 15,
-    leaderboardPublic: false
-  },
-  supplements: [
-    { id: "sup1", name: "Creatine", defaultAmount: 5, unit: "g", reminderHour: 17, active: true }
-  ],
-  hydrationLogs: [
-    { id: "h1", amountMl: 500, drinkType: "water", loggedAt: `${today}T08:10:00.000Z` },
-    { id: "h2", amountMl: 250, drinkType: "water", loggedAt: `${today}T10:35:00.000Z` },
-    { id: "h3", amountMl: 500, drinkType: "water", loggedAt: `${today}T13:20:00.000Z` }
-  ],
-  supplementLogs: [],
-  quickAmounts: [
-    { id: "qa1", category: "hydration", label: "+250ml", amount: 250, unit: "ml", pinned: true, uses: 8 },
-    { id: "qa2", category: "hydration", label: "+500ml", amount: 500, unit: "ml", pinned: true, uses: 12 },
-    { id: "qa3", category: "hydration", label: "+750ml", amount: 750, unit: "ml", pinned: true, uses: 4 },
-    { id: "qa4", category: "supplement", label: "5g", amount: 5, unit: "g", pinned: true, uses: 9 }
-  ],
-  workoutExercises: [
+export const routineTemplates: Record<AppState["activeTemplate"], WorkoutExercise[]> = {
+  ppl: [
     {
       id: "ex1",
       name: "Incline Bench Press",
@@ -98,10 +70,115 @@ export const initialState: AppState = {
       lastSession: "31kg x 12, 11, 10 - RPE 9"
     }
   ],
+  "upper-lower": [
+    {
+      id: "ex-ul-1",
+      name: "Barbell Bench Press",
+      muscleGroup: "Upper",
+      targetSets: 4,
+      targetRepsMin: 6,
+      targetRepsMax: 8,
+      targetWeightKg: 60,
+      restSeconds: 120,
+      lastSession: "57.5kg x 8, 8, 7"
+    },
+    {
+      id: "ex-ul-2",
+      name: "Chest Supported Row",
+      muscleGroup: "Upper",
+      targetSets: 4,
+      targetRepsMin: 8,
+      targetRepsMax: 10,
+      targetWeightKg: 40,
+      restSeconds: 90,
+      lastSession: "40kg x 9, 8, 8"
+    },
+    {
+      id: "ex-ul-3",
+      name: "Romanian Deadlift",
+      muscleGroup: "Lower",
+      targetSets: 3,
+      targetRepsMin: 8,
+      targetRepsMax: 10,
+      targetWeightKg: 70,
+      restSeconds: 120,
+      lastSession: "70kg x 8, 8, 8"
+    }
+  ],
+  "full-body": [
+    {
+      id: "ex-fb-1",
+      name: "Goblet Squat",
+      muscleGroup: "Legs",
+      targetSets: 3,
+      targetRepsMin: 10,
+      targetRepsMax: 12,
+      targetWeightKg: 24,
+      restSeconds: 75,
+      lastSession: "24kg x 12, 12, 10"
+    },
+    {
+      id: "ex-fb-2",
+      name: "Push-up",
+      muscleGroup: "Chest",
+      targetSets: 3,
+      targetRepsMin: 8,
+      targetRepsMax: 15,
+      targetWeightKg: 0,
+      restSeconds: 60,
+      lastSession: "Bodyweight x 14, 12, 10"
+    },
+    {
+      id: "ex-fb-3",
+      name: "Lat Pulldown",
+      muscleGroup: "Back",
+      targetSets: 3,
+      targetRepsMin: 10,
+      targetRepsMax: 12,
+      targetWeightKg: 45,
+      restSeconds: 75,
+      lastSession: "45kg x 11, 10, 10"
+    }
+  ],
+  custom: []
+};
+
+export const initialState: AppState = {
+  profile: {
+    name: "Phúc",
+    timezone: "Asia/Saigon",
+    onboardingCompleted: false,
+    unitWeight: "kg",
+    unitVolume: "ml",
+    waterTargetMl: 2500,
+    wakeHour: 6,
+    sleepHour: 23,
+    creatineAmountG: 5,
+    creatineHour: 17,
+    remindBeforeMinutes: 15,
+    leaderboardPublic: false
+  },
+  supplements: [
+    { id: "sup1", name: "Creatine", defaultAmount: 5, unit: "g", reminderHour: 17, active: true }
+  ],
+  hydrationLogs: [
+    { id: "h1", amountMl: 500, drinkType: "water", loggedAt: `${today}T08:10:00.000Z` },
+    { id: "h2", amountMl: 250, drinkType: "water", loggedAt: `${today}T10:35:00.000Z` },
+    { id: "h3", amountMl: 500, drinkType: "water", loggedAt: `${today}T13:20:00.000Z` }
+  ],
+  supplementLogs: [],
+  quickAmounts: [
+    { id: "qa1", category: "hydration", label: "+250ml", amount: 250, unit: "ml", pinned: true, uses: 8 },
+    { id: "qa2", category: "hydration", label: "+500ml", amount: 500, unit: "ml", pinned: true, uses: 12 },
+    { id: "qa3", category: "hydration", label: "+750ml", amount: 750, unit: "ml", pinned: true, uses: 4 },
+    { id: "qa4", category: "supplement", label: "5g", amount: 5, unit: "g", pinned: true, uses: 9 }
+  ],
+  workoutExercises: routineTemplates.ppl,
   workoutSets: [],
   bodyMetrics: [
     { id: "bm1", measuredAt: `${today}T07:00:00.000Z`, weightKg: 72.4, heightCm: 174, bodyFatPercent: 18, waistCm: 82 },
     { id: "bm2", measuredAt: `${today}T07:05:00.000Z`, weightKg: 72.1, heightCm: 174, bodyFatPercent: 17.8, waistCm: 81.5 }
   ],
+  activeTemplate: "ppl",
   activeExerciseIndex: 0
 };

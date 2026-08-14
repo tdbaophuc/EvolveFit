@@ -10,6 +10,7 @@ import {
   type SupplementLog,
   type WorkoutSet
 } from "./core";
+import { aiCoachRecommendation } from "./integrations";
 import { initialState } from "./seed";
 
 type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -152,9 +153,20 @@ export function recalculateProgression(exerciseId: string) {
   );
 }
 
-export function coachRecommend() {
+export async function coachRecommend() {
   const exercise = serverState.workoutExercises[serverState.activeExerciseIndex] ?? serverState.workoutExercises[0];
-  return recalculateProgression(exercise.id);
+  const recentSets = serverState.workoutSets.filter((set) => set.exerciseId === exercise.id).slice(-exercise.targetSets);
+  return ok(
+    await aiCoachRecommendation({
+      exerciseName: exercise.name,
+      targetWeightKg: exercise.targetWeightKg,
+      targetRepsMax: exercise.targetRepsMax,
+      recentSets: recentSets.length
+        ? recentSets
+        : [{ actualWeightKg: exercise.targetWeightKg, actualReps: exercise.targetRepsMin, rpe: 8 }],
+      recoveryNote: "Local readiness score and soreness can be injected here."
+    })
+  );
 }
 
 export function hydrationReminderEvents(date = new Date()) {
