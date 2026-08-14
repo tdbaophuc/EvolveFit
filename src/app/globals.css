@@ -1,0 +1,687 @@
+:root {
+  --background: #f8fafc;
+  --surface: #ffffff;
+  --surface-soft: #eef6fb;
+  --text: #0f172a;
+  --muted: #64748b;
+  --border: #e2e8f0;
+  --hydration: #38bdf8;
+  --training: #a3e635;
+  --supplement: #facc15;
+  --coach: #a78bfa;
+  --danger: #f87171;
+  --shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--background);
+  color: var(--text);
+  font-family: Geist, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.app-shell {
+  min-height: 100vh;
+  max-width: 520px;
+  margin: 0 auto;
+  padding-bottom: 92px;
+  background:
+    radial-gradient(circle at top left, rgba(56, 189, 248, 0.16), transparent 34%),
+    radial-gradient(circle at 80% 12%, rgba(163, 230, 53, 0.14), transparent 28%),
+    var(--background);
+}
+
+.top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: 56px;
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  background: rgba(248, 250, 252, 0.88);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.72);
+}
+
+.avatar,
+.icon-button {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+}
+
+.icon-button.attention {
+  border-color: var(--supplement);
+  box-shadow: 0 0 0 4px rgba(250, 204, 21, 0.18);
+}
+
+.top-date,
+.top-subtitle {
+  margin: 0;
+  text-align: center;
+}
+
+.top-date {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.top-subtitle {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.content {
+  padding: 18px 16px 24px;
+}
+
+.stack {
+  display: grid;
+  gap: 24px;
+}
+
+.card {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+.card h1,
+.card h2,
+.card p {
+  margin: 0;
+}
+
+.card h1 {
+  font-size: 25px;
+  line-height: 1.12;
+}
+
+.card h2 {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.card p {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.hydration-hero {
+  display: grid;
+  gap: 16px;
+}
+
+.ring-wrap {
+  position: relative;
+  height: 196px;
+  display: grid;
+  place-items: center;
+}
+
+.progress-ring {
+  width: 180px;
+  height: 180px;
+  transform: rotate(-90deg);
+}
+
+.ring-bg,
+.ring-value {
+  fill: none;
+  stroke-width: 14;
+}
+
+.ring-bg {
+  stroke: #e0f2fe;
+}
+
+.ring-value {
+  stroke: var(--hydration);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 220ms ease;
+}
+
+.ring-label {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  gap: 4px;
+}
+
+.ring-label strong {
+  font-size: 40px;
+  line-height: 1;
+}
+
+.ring-label span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ring-label em {
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ring-label .behind {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.ring-label .ahead,
+.ring-label .on-pace {
+  background: #ecfeff;
+  color: #0369a1;
+}
+
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.quick-button,
+.primary-button,
+.secondary-button,
+.sticky-complete {
+  min-height: 48px;
+  border-radius: 12px;
+  border: 0;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.quick-button {
+  height: 58px;
+  color: #075985;
+  background: #e0f2fe;
+}
+
+.slider-panel {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+}
+
+.slider-label,
+.section-heading,
+.split-actions,
+.setting-row,
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--hydration);
+}
+
+.split-actions {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+}
+
+.primary-button {
+  padding: 0 16px;
+  color: #0f172a;
+}
+
+.secondary-button {
+  min-height: 44px;
+  padding: 0 14px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.hydration-bg {
+  background: var(--hydration);
+}
+
+.training-bg {
+  background: var(--training);
+}
+
+.supplement-bg {
+  background: var(--supplement);
+}
+
+.coach-bg {
+  background: var(--coach);
+}
+
+.supplement-card,
+.workout-today {
+  display: grid;
+  gap: 14px;
+}
+
+.supplement-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.chip-row,
+.readiness-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tiny-chip,
+.readiness-row span,
+.sync-pill {
+  border: 1px solid var(--border);
+  background: #f8fafc;
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.readiness-row span {
+  color: #5b21b6;
+  background: #f5f3ff;
+  border-color: #ddd6fe;
+}
+
+.badge-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.badge-card-mini {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+}
+
+.badge-card-mini span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.timeline {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.timeline div,
+.leaderboard div,
+.badge-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.timeline span,
+.leaderboard span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.workout-focus {
+  padding-bottom: 80px;
+}
+
+.last-session {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f7fee7;
+  color: #3f6212;
+  font-weight: 700;
+}
+
+.set-table {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.set-table div {
+  display: grid;
+  grid-template-columns: 54px 1fr 78px;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #f8fafc;
+}
+
+.set-table div.current {
+  border-color: var(--training);
+  box-shadow: 0 0 0 4px rgba(163, 230, 53, 0.2);
+}
+
+.set-table em {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 12px;
+  text-align: right;
+}
+
+.control-card {
+  display: grid;
+  gap: 12px;
+}
+
+.stepper {
+  display: grid;
+  grid-template-columns: 54px 44px 1fr 44px;
+  align-items: center;
+  gap: 8px;
+}
+
+.stepper button {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #f8fafc;
+  display: grid;
+  place-items: center;
+}
+
+.stepper strong {
+  min-height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #f8fafc;
+  font-size: 22px;
+}
+
+.rest-card {
+  text-align: center;
+}
+
+.rest-card strong {
+  display: block;
+  font-size: 48px;
+  margin: 6px 0;
+}
+
+.sticky-complete {
+  position: fixed;
+  left: max(16px, calc(50% - 244px));
+  right: max(16px, calc(50% - 244px));
+  bottom: 88px;
+  z-index: 9;
+  min-height: 58px;
+  color: #1f2937;
+  box-shadow: 0 16px 30px rgba(63, 98, 18, 0.24);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.metric-card {
+  min-height: 104px;
+  padding: 14px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  display: grid;
+  align-content: space-between;
+}
+
+.metric-card span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.metric-card strong {
+  font-size: 22px;
+}
+
+.metric-card.hydration {
+  border-color: #bae6fd;
+}
+
+.metric-card.training {
+  border-color: #d9f99d;
+}
+
+.metric-card.coach {
+  border-color: #ddd6fe;
+}
+
+.bar-chart {
+  height: 180px;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  align-items: end;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.bar-chart span {
+  min-height: 12px;
+  border-radius: 999px 999px 4px 4px;
+  background: linear-gradient(180deg, var(--hydration), var(--training));
+}
+
+.badge-list,
+.leaderboard {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.badge-list > div {
+  justify-content: flex-start;
+}
+
+.badge-list p,
+.privacy-note {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.coach-card {
+  display: grid;
+  gap: 14px;
+}
+
+.coach-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.readiness-score {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.readiness-score strong {
+  width: 78px;
+  height: 78px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #f5f3ff;
+  color: #6d28d9;
+  font-size: 30px;
+}
+
+.leaderboard em {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.setting-row,
+.toggle-row {
+  min-height: 54px;
+  border-bottom: 1px solid var(--border);
+}
+
+.setting-row input {
+  width: 98px;
+  min-height: 38px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  text-align: right;
+  padding: 0 10px;
+}
+
+.toggle-row input {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--training);
+}
+
+.toast {
+  position: fixed;
+  left: max(16px, calc(50% - 244px));
+  right: max(16px, calc(50% - 244px));
+  bottom: 92px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  color: #f8fafc;
+  background: #0f172a;
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.28);
+}
+
+.toast button {
+  border: 0;
+  color: #bae6fd;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 800;
+}
+
+.bottom-tabs {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  z-index: 12;
+  width: min(100%, 520px);
+  transform: translateX(-50%);
+  min-height: 72px;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(18px);
+  border-top: 1px solid rgba(226, 232, 240, 0.86);
+}
+
+.bottom-tabs button {
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.bottom-tabs button.active {
+  color: #0369a1;
+  background: #e0f2fe;
+}
+
+@media (min-width: 760px) {
+  .app-shell {
+    max-width: 1120px;
+  }
+
+  .content {
+    max-width: 960px;
+    margin: 0 auto;
+  }
+
+  .stack {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hydration-hero,
+  .workout-focus .workout-overview,
+  .workout-focus .control-card,
+  .coach-card {
+    grid-column: span 2;
+  }
+
+  .bottom-tabs {
+    max-width: 720px;
+    border-radius: 24px 24px 0 0;
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "EvolveFit",
+  "short_name": "EvolveFit",
+  "description": "1-tap hydration, creatine, and workout tracking.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#F8FAFC",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
