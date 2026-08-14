@@ -59,6 +59,7 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Hydration detail timeline voi sua amount +/-50ml va xoa log.
   - Creatine row voi slider amount va quick button.
   - Supplement custom list, them supplement moi va log supplement trong ngay.
+  - Xoa supplement custom.
   - Workout today card.
   - Readiness chips.
   - Monthly badge preview.
@@ -67,6 +68,7 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Push Day demo routine.
   - Routine builder compact va exercise library local.
   - Them exercise custom vao routine.
+  - Xoa va sap xep exercise trong routine.
   - Exercise hien tai, target sets/reps/weight.
   - Last session comparison.
   - Set table target/actual.
@@ -78,6 +80,7 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Bar chart 7 ngay dang UI.
   - Body metrics CRUD local cho weight/body fat.
   - Weight delta va body metrics timeline.
+  - Xoa body metric.
   - Badge list.
   - Export JSON local.
 - Man hinh Coach:
@@ -106,9 +109,26 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - `manifest.webmanifest`.
   - App icon SVG.
   - Service worker cache co ban.
+- Backend/API contracts:
+  - Route Handlers cho hydration today/log/patch/delete.
+  - Route Handlers cho supplements list/create/log/reminder.
+  - Route Handlers cho workouts today/log set.
+  - Route Handler cho progression recalculate.
+  - Route Handler cho coach recommend.
+  - Route Handlers cho cron hydration/creatine reminders.
+  - Route Handlers cho notification subscribe/unsubscribe.
+  - Route Handlers cho achievements/leaderboards.
+  - Server memory adapter trong `src/lib/api.ts`, san sang thay bang Supabase adapter.
+- Supabase:
+  - Migration SQL `supabase/migrations/0001_initial_schema.sql`.
+  - Bang core theo data model: profiles, hydration, supplements, routines, workouts, body metrics, notifications, achievements, leaderboard.
+  - RLS policies owner access/public read can thiet.
+- Automation:
+  - `vercel.json` cron cho hydration reminders moi 2 gio.
+  - `vercel.json` cron cho creatine reminders moi 15 phut.
 - Test/build:
   - `npm run lint` pass.
-  - `npm test` pass: 11 tests.
+  - `npm test` pass: 15 tests.
   - `npm run build` pass.
 - Git:
   - Da commit va push len GitHub nhanh `breakthrough`.
@@ -118,23 +138,24 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
 - Auth/profile:
   - Da co onboarding/profile local, chua co dang ky/dang nhap that.
 - Supabase:
-  - Chua co database migrations, RLS, Supabase Auth.
-  - Data model da nam trong plan, chua implement backend.
+  - Da co database migration/RLS artifact.
+  - Chua ket noi Supabase Auth/client that vi chua co credentials.
 - Hydration history:
   - Co log, recent logs, timeline local va sua/xoa amount nhanh.
   - Chua co man hinh detail route rieng va filter/chart theo gio day du.
 - Supplement:
   - Co creatine local, slider va reminder rule.
-  - Co them supplement custom va log trong ngay.
-  - Chua co edit/delete supplement va schedule rule rieng cho tung supplement.
+  - Co them/xoa supplement custom va log trong ngay.
+  - Chua co edit supplement va schedule rule rieng cho tung supplement.
 - Workout planner:
-  - Co routine demo, live workout, exercise library local va them exercise custom.
-  - Chua co edit/delete exercise, drag reorder, template selector.
+  - Co routine demo, live workout, exercise library local, them/xoa/sap xep exercise custom.
+  - Chua co edit exercise, drag reorder bang gesture, template selector.
 - Notifications:
-  - Co rule tinh nen nhac.
-  - Chua co Web Push/FCM subscription, notification action, cron job.
+  - Co rule tinh nen nhac, notification subscribe/unsubscribe contract va cron routes.
+  - Chua gui Web Push/FCM that vi chua co VAPID/FCM credentials.
 - AI Coach:
   - Hien la rule-based recommendation.
+  - Co coach API contract.
   - Chua goi Gemini/OpenAI API, chua co accept/reject persistence that.
 - Achievements/Leaderboard:
   - Co badge calculation va leaderboard preview.
@@ -143,19 +164,18 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Co localStorage va service worker cache co ban.
   - Chua co offline queue/sync conflict handling voi backend.
 - Body metrics:
-  - Co body metrics local cho weight/body fat va timeline.
-  - Chua co edit/delete metric va chart body fat/weight nang cao.
+  - Co body metrics local cho weight/body fat, timeline va xoa metric.
+  - Chua co edit metric va chart body fat/weight nang cao.
 
 ### Chua lam
 
 - Dang ky/dang nhap email/Google OAuth.
 - Onboarding flow 5 buoc day du voi template selection.
-- Supabase schema, migrations, RLS policies.
-- API routes/server actions trong plan.
-- Vercel Cron.
-- Web Push/FCM subscription va push notification that.
+- Supabase Auth/client integration voi project credentials.
+- Supabase adapter thay cho server memory adapter.
+- Web Push/FCM send notification that voi VAPID/FCM credentials.
 - Hydration detail route/screen day du.
-- Exercise library/routine builder nang cao.
+- Exercise library/routine builder nang cao voi edit va drag-drop.
 - Program templates PPL, Upper/Lower, Full Body.
 - Data export CSV va export JSON backend-safe.
 - AI integration that.
@@ -657,7 +677,7 @@ Logic de xuat:
 
 ### Phase 0 - Foundation
 
-Trang thai: Partial / gan xong local foundation.
+Trang thai: Partial / foundation va schema da co, con thieu ket noi Supabase that.
 
 - Khoi tao Next.js + TypeScript + Tailwind.
 - Cau hinh Supabase Auth va database migrations.
@@ -670,12 +690,15 @@ Da lam:
 - ESLint/Vitest da cau hinh.
 - Design tokens light mode da implement trong CSS.
 - PWA manifest, icon, service worker co ban da co.
+- Supabase migration SQL va RLS policies da co.
+- API Route Handlers theo contract da co.
+- Vercel cron config da co.
 
 Con lai:
 
 - Chua dung Tailwind; hien dang dung CSS thuan theo design docs.
-- Chua cau hinh Supabase Auth.
-- Chua co database migrations/RLS.
+- Chua cau hinh Supabase Auth/client voi credentials that.
+- Chua co Supabase adapter thay server memory adapter.
 
 Exit criteria:
 
@@ -710,7 +733,7 @@ Da lam:
 Con lai:
 
 - Chua co sync backend.
-- Chua co edit/delete supplement.
+- Chua co edit supplement.
 - Chua co hydration detail route rieng voi chart theo gio/filter.
 - Chua co notification that gui ve may.
 
@@ -744,7 +767,7 @@ Da lam:
 
 Con lai:
 
-- Chua co edit/delete/reorder exercise.
+- Chua co edit exercise va drag-drop reorder bang gesture.
 - Chua co template selector PPL/Upper-Lower/Full Body.
 - Chua co workout history screen day du.
 - Body metrics local da co, nhung chua co edit/delete/chart nang cao.
@@ -758,7 +781,7 @@ Exit criteria:
 
 ### Phase 3 - Automation
 
-Trang thai: Partial / rule engine da co, notification backend chua co.
+Trang thai: Partial / rule engine, cron route va subscription contract da co; push send that chua co.
 
 - Progressive overload engine.
 - Smart hydration reminders.
@@ -772,13 +795,14 @@ Da lam:
 - Hydration reminder rule da co va co test.
 - Creatine reminder rule da co va co test.
 - Settings co chinh reminder time/remind-before.
+- Notification subscribe/unsubscribe API da co.
+- Cron routes va `vercel.json` da co.
 
 Con lai:
 
-- Chua co Web Push subscription.
-- Chua co Vercel Cron.
-- Chua co notification settings day du.
-- Chua co notification actions `Log 250ml`, `Snooze`.
+- Chua co Web Push/FCM send that voi VAPID/FCM credentials.
+- Chua co notification settings UI day du.
+- Chua co service worker notification click/action handler `Log 250ml`, `Snooze`.
 
 Exit criteria:
 
@@ -800,6 +824,7 @@ Da lam:
 
 - Coach recommendation card da co.
 - Recommendation hien dua tren rule engine.
+- Coach recommend API contract da co.
 - Readiness score UI da co.
 - Achievement engine co ban cho monthly badges da co va co test.
 - Badge preview da hien trong Today/Progress.

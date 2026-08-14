@@ -368,7 +368,7 @@ input[type="range"] {
 .supplement-list div,
 .exercise-library div {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto auto auto;
   align-items: center;
   gap: 10px;
   padding: 12px;
@@ -378,7 +378,7 @@ input[type="range"] {
 }
 
 .exercise-library div {
-  grid-template-columns: 28px 1fr auto;
+  grid-template-columns: 28px 1fr auto auto;
 }
 
 .exercise-library div.active {
@@ -391,6 +391,10 @@ input[type="range"] {
   color: var(--muted);
   font-style: normal;
   font-size: 12px;
+}
+
+.timeline.compact div {
+  grid-template-columns: 1fr auto auto auto;
 }
 
 .inline-form {
@@ -462,6 +466,22 @@ input[type="range"] {
   border-radius: 8px;
   background: white;
   color: var(--muted);
+}
+
+.icon-mini {
+  width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+  color: var(--muted);
+}
+
+.icon-mini.danger,
+.row-actions button:last-child {
+  color: #b91c1c;
 }
 
 .timeline span,

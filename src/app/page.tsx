@@ -215,6 +215,10 @@ export default function AppPage() {
     commit({ ...state, supplements: [...state.supplements, supplement] }, `Đã thêm ${supplement.name}`);
   }
 
+  function deleteSupplement(id: string) {
+    commit({ ...state, supplements: state.supplements.filter((supplement) => supplement.id !== id) }, "Đã xóa supplement");
+  }
+
   function addExercise() {
     const exercise: WorkoutExercise = {
       id: cryptoSafeId(),
@@ -230,6 +234,28 @@ export default function AppPage() {
     commit({ ...state, workoutExercises: [...state.workoutExercises, exercise] }, `Đã thêm ${exercise.name}`);
   }
 
+  function deleteExercise(id: string) {
+    const workoutExercises = state.workoutExercises.filter((exercise) => exercise.id !== id);
+    commit(
+      {
+        ...state,
+        workoutExercises,
+        activeExerciseIndex: Math.min(state.activeExerciseIndex, Math.max(0, workoutExercises.length - 1))
+      },
+      "Đã xóa bài tập"
+    );
+  }
+
+  function moveExercise(id: string, direction: -1 | 1) {
+    const index = state.workoutExercises.findIndex((exercise) => exercise.id === id);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= state.workoutExercises.length) return;
+    const workoutExercises = [...state.workoutExercises];
+    const [item] = workoutExercises.splice(index, 1);
+    workoutExercises.splice(nextIndex, 0, item);
+    commit({ ...state, workoutExercises, activeExerciseIndex: nextIndex }, "Đã sắp xếp routine");
+  }
+
   function addBodyMetric() {
     const metric: BodyMetric = {
       id: cryptoSafeId(),
@@ -239,6 +265,10 @@ export default function AppPage() {
       bodyFatPercent: newMetricBodyFat
     };
     commit({ ...state, bodyMetrics: [...state.bodyMetrics, metric] }, "Đã lưu chỉ số cơ thể");
+  }
+
+  function deleteBodyMetric(id: string) {
+    commit({ ...state, bodyMetrics: state.bodyMetrics.filter((metric) => metric.id !== id) }, "Đã xóa chỉ số cơ thể");
   }
 
   function completeOnboarding() {
@@ -353,6 +383,7 @@ export default function AppPage() {
             newSupplementAmount={newSupplementAmount}
             setNewSupplementAmount={setNewSupplementAmount}
             addSupplement={addSupplement}
+            deleteSupplement={deleteSupplement}
           />
         )}
 
@@ -372,6 +403,8 @@ export default function AppPage() {
             newExerciseName={newExerciseName}
             setNewExerciseName={setNewExerciseName}
             addExercise={addExercise}
+            deleteExercise={deleteExercise}
+            moveExercise={moveExercise}
           />
         )}
 
@@ -390,6 +423,7 @@ export default function AppPage() {
             newMetricBodyFat={newMetricBodyFat}
             setNewMetricBodyFat={setNewMetricBodyFat}
             addBodyMetric={addBodyMetric}
+            deleteBodyMetric={deleteBodyMetric}
             downloadExport={downloadExport}
           />
         )}
@@ -516,6 +550,7 @@ function TodayView(props: {
   newSupplementAmount: number;
   setNewSupplementAmount: (value: number) => void;
   addSupplement: () => void;
+  deleteSupplement: (id: string) => void;
 }) {
   const circumference = 2 * Math.PI * 74;
   const offset = circumference - (props.percent / 100) * circumference;
@@ -619,6 +654,9 @@ function TodayView(props: {
                 </strong>
                 <button className={logged ? "tiny-chip logged" : "tiny-chip"} onClick={() => props.logSupplement(supplement)}>
                   {logged ? "Đã dùng" : "Ghi nhận"}
+                </button>
+                <button className="icon-mini danger" onClick={() => props.deleteSupplement(supplement.id)} aria-label="Xóa supplement">
+                  <Trash2 size={14} />
                 </button>
               </div>
             );
@@ -741,6 +779,8 @@ function WorkoutView(props: {
   newExerciseName: string;
   setNewExerciseName: (value: string) => void;
   addExercise: () => void;
+  deleteExercise: (id: string) => void;
+  moveExercise: (id: string, direction: -1 | 1) => void;
 }) {
   return (
     <div className="stack workout-focus">
@@ -760,6 +800,17 @@ function WorkoutView(props: {
               <em>
                 {exercise.targetSets}x{exercise.targetRepsMin}-{exercise.targetRepsMax}
               </em>
+              <div className="row-actions">
+                <button onClick={() => props.moveExercise(exercise.id, -1)} aria-label="Đưa bài tập lên">
+                  ↑
+                </button>
+                <button onClick={() => props.moveExercise(exercise.id, 1)} aria-label="Đưa bài tập xuống">
+                  ↓
+                </button>
+                <button onClick={() => props.deleteExercise(exercise.id)} aria-label="Xóa bài tập">
+                  <Trash2 size={14} />
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -864,6 +915,7 @@ function ProgressView(props: {
   newMetricBodyFat: number;
   setNewMetricBodyFat: (value: number) => void;
   addBodyMetric: () => void;
+  deleteBodyMetric: (id: string) => void;
   downloadExport: () => void;
 }) {
   const volume = props.sets.reduce((sum, set) => sum + set.actualWeightKg * set.actualReps, 0);
@@ -918,6 +970,9 @@ function ProgressView(props: {
                 <span>{new Date(metric.measuredAt).toLocaleDateString("vi-VN")}</span>
                 <strong>{metric.weightKg}kg</strong>
                 <em>{metric.bodyFatPercent ?? "-"}%</em>
+                <button className="icon-mini danger" onClick={() => props.deleteBodyMetric(metric.id)} aria-label="Xóa chỉ số cơ thể">
+                  <Trash2 size={14} />
+                </button>
               </div>
             ))}
         </div>
