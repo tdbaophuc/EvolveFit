@@ -11,6 +11,7 @@ import {
   type WorkoutSet
 } from "./core";
 import { aiCoachRecommendation } from "./integrations";
+import { sendWebPush, type PushPayload } from "./push";
 import { initialState } from "./seed";
 
 type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -219,6 +220,16 @@ export function hydrationReminderEvents(date = new Date()) {
   });
 }
 
+export async function sendHydrationReminderEvents(date = new Date()) {
+  const result = hydrationReminderEvents(date);
+  if (!result.ok || !result.data.event) return ok({ sent: 0, skipped: true, reason: "no-event" });
+  const payload = notificationPayload(result.data.event.title, result.data.event.body, "hydration-reminder", [
+    { action: "log-water-250", title: "Log 250ml" },
+    { action: "snooze", title: "Snooze" }
+  ]);
+  return sendToSubscriptions(payload);
+}
+
 export function creatineReminderEvents(date = new Date()) {
   const shouldSend = shouldSendCreatineReminder({
     logs: serverState.supplementLogs,
@@ -238,6 +249,16 @@ export function creatineReminderEvents(date = new Date()) {
         }
       : null
   });
+}
+
+export async function sendCreatineReminderEvents(date = new Date()) {
+  const result = creatineReminderEvents(date);
+  if (!result.ok || !result.data.event) return ok({ sent: 0, skipped: true, reason: "no-event" });
+  const payload = notificationPayload(result.data.event.title, result.data.event.body, "creatine-reminder", [
+    { action: "log-creatine", title: `Log ${serverState.profile.creatineAmountG}g` },
+    { action: "snooze", title: "Snooze" }
+  ]);
+  return sendToSubscriptions(payload);
 }
 
 export function subscribeNotifications(input: { endpoint?: string; p256dh?: string; auth?: string; platform?: string }) {
@@ -260,6 +281,39 @@ export function unsubscribeNotifications(endpoint: string) {
   if (index < 0) return fail("subscription not found");
   notificationSubscriptions.splice(index, 1);
   return ok({ endpoint });
+}
+
+async function sendToSubscriptions(payload: PushPayload) {
+  let sent = 0;
+  let missingEnv = 0;
+  const failed: string[] = [];
+
+  for (const subscription of notificationSubscriptions) {
+    try {
+      const result = await sendWebPush(
+        {
+          endpoint: subscription.endpoint,
+          keys: { p256dh: subscription.p256dh, auth: subscription.auth }
+        },
+        payload
+      );
+      if (result === "sent") sent += 1;
+      if (result === "missing-env") missingEnv += 1;
+    } catch {
+      failed.push(subscription.endpoint);
+    }
+  }
+
+  return ok({ sent, missingEnv, failed });
+}
+
+function notificationPayload(
+  title: string,
+  body: string,
+  tag: string,
+  actions: { action: string; title: string }[]
+): PushPayload {
+  return { title, body, tag, icon: "/icon.svg", data: { url: "/" }, actions } as PushPayload;
 }
 
 export function getAchievementsAndLeaderboard() {

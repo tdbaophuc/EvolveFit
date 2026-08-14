@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { creatineReminderEvents } from "@/lib/api";
+import { sendCreatineReminderEvents } from "@/lib/api";
 
-export function POST() {
-  return NextResponse.json(creatineReminderEvents());
+export async function POST() {
+  return NextResponse.json(await sendCreatineReminderEvents());
 }

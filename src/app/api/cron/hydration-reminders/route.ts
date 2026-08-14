@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { hydrationReminderEvents } from "@/lib/api";
+import { sendHydrationReminderEvents } from "@/lib/api";
 
-export function POST() {
-  return NextResponse.json(hydrationReminderEvents());
+export async function POST() {
+  return NextResponse.json(await sendHydrationReminderEvents());
 }

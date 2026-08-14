@@ -136,7 +136,7 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - `.env.example` cho Supabase, Gemini/OpenAI, VAPID, Cron secret.
   - `src/lib/integrations.ts` cho Supabase REST request contract.
   - `src/lib/data-adapter.ts` gom `MemoryDataAdapter`, `SupabaseRestAdapter`, va factory fallback theo env.
-  - AI coach adapter ho tro Gemini/OpenAI mode va rule fallback khi thieu credentials.
+  - AI coach adapter goi Gemini/OpenAI provider that khi co API key, fallback rule-based khi thieu key/loi provider.
   - Typed API client `src/lib/api-client.ts` cho web/mobile dung chung API contract.
 - Supabase:
   - Migration SQL `supabase/migrations/0001_initial_schema.sql`.
@@ -148,9 +148,11 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - `vercel.json` cron cho monthly achievements vao dau thang.
   - Service worker push event handler.
   - Service worker notification action handler: `log-water-250`, `log-creatine`, `snooze`.
+  - Web Push sender `src/lib/push.ts` dung VAPID env va fallback `missing-env` khi chua cau hinh.
+  - Cron hydration/creatine routes da noi vao Web Push sender.
 - Test/build:
   - `npm run lint` pass.
-  - `npm test` pass: 26 tests.
+  - `npm test` pass: 30 tests.
   - `npm run build` pass.
 - Git:
   - Da commit va push len GitHub nhanh `breakthrough`.
@@ -179,12 +181,12 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Chua co form edit exercise day du va drag reorder bang gesture.
 - Notifications:
   - Co rule tinh nen nhac, notification subscribe/unsubscribe contract, cron routes, notification permission UI va service worker action handler.
-  - Chua gui Web Push/FCM that vi chua co VAPID/FCM credentials.
+  - Co Web Push sender that qua VAPID; can VAPID credentials de gui that tren deployment.
 - AI Coach:
   - Hien la rule-based recommendation.
   - Co coach API contract va AI adapter mode Gemini/OpenAI/rule fallback.
   - Co recovery check-in editable, readiness score va accept/reject audit trail local.
-  - Chua goi provider Gemini/OpenAI that vi chua co credentials.
+  - Co provider call Gemini/OpenAI that; can API key de dung tren deployment.
 - Achievements/Leaderboard:
   - Co badge calculation, leaderboard preview, recalculate API, visibility API va monthly cron route.
   - Chua co public profile/ranking backend/anti-cheat that.
@@ -201,11 +203,11 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
 - Onboarding flow 5 buoc day du voi template selection.
 - Supabase Auth/client session integration voi project credentials.
 - Supabase Auth/session UI that voi project credentials.
-- Web Push/FCM send notification that voi VAPID/FCM credentials.
+- VAPID/FCM credentials tren deployment de bat Web Push production.
 - Hydration detail nang cao voi richer analytics va backend sync.
 - Exercise library/routine builder nang cao voi edit va drag-drop.
 - Data export CSV va export JSON backend-safe.
-- AI integration that.
+- Gemini/OpenAI API key tren deployment de bat AI production.
 - Health sync, native mobile app, widgets, watch app.
 - Nutrition tracking, progress photos, social sharing.
 
@@ -811,7 +813,7 @@ Exit criteria:
 
 ### Phase 3 - Automation
 
-Trang thai: Partial / rule engine, cron route va subscription contract da co; push send that chua co.
+Trang thai: Mostly done / Web Push sender da co, can VAPID credentials de gui production.
 
 - Progressive overload engine.
 - Smart hydration reminders.
@@ -830,12 +832,12 @@ Da lam:
 - Monthly achievements cron route da co.
 - Notification permission UI da co.
 - Service worker push/action handler da co.
+- Web Push sender da co va cron routes da noi vao sender.
 
 Con lai:
 
-- Chua co Web Push/FCM send that voi VAPID/FCM credentials.
+- Chua co VAPID/FCM credentials tren deployment.
 - Chua co notification settings UI nang cao nhu quiet hours/snooze history tren Settings.
-- Chua co backend side send push payload that.
 
 Exit criteria:
 
@@ -845,7 +847,7 @@ Exit criteria:
 
 ### Phase 4 - AI Coach
 
-Trang thai: Mostly done local-first / AI provider call that chua co credentials.
+Trang thai: Mostly done / AI provider call da co, can API key de dung production.
 
 - Recovery check-in.
 - AI recommendation JSON.
@@ -859,6 +861,7 @@ Da lam:
 - Recommendation hien dua tren rule engine.
 - Coach recommend API contract da co.
 - AI adapter Gemini/OpenAI/rule fallback da co.
+- Gemini/OpenAI provider call da co qua fetch.
 - Recovery check-in editable da co.
 - Accept/reject recommendation audit trail local da co.
 - Readiness score UI da co.
@@ -868,7 +871,7 @@ Da lam:
 
 Con lai:
 
-- Chua co provider call Gemini/OpenAI that.
+- Chua co Gemini/OpenAI API key tren deployment.
 - Chua co JSON schema/prompt nang cao cho production.
 - Chua co ranking backend/anti-cheat that.
 

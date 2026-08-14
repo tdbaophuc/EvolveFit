@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { aiCoachRecommendation, createSupabaseRestRequest, getIntegrationStatus } from "./integrations";
 
 describe("integration contracts", () => {
@@ -43,5 +43,31 @@ describe("integration contracts", () => {
 
     expect(recommendation.mode).toBe("rule-fallback");
     expect(recommendation.action).toBe("increase");
+  });
+
+  it("uses OpenAI mode and parses provider JSON", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        output_text: JSON.stringify({
+          title: "Hold bench",
+          reason: "Recovery is average.",
+          action: "hold",
+          nextWeightKg: 50
+        })
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const recommendation = await aiCoachRecommendation({
+      exerciseName: "Bench",
+      targetWeightKg: 50,
+      targetRepsMax: 10,
+      recentSets: [{ actualWeightKg: 50, actualReps: 8, rpe: 9 }],
+      env: { OPENAI_API_KEY: "test" }
+    });
+
+    expect(recommendation.mode).toBe("openai");
+    expect(recommendation.title).toBe("Hold bench");
+    vi.unstubAllGlobals();
   });
 });

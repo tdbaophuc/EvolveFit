@@ -4,6 +4,7 @@ import {
   deleteHydrationLog,
   getHydrationToday,
   hydrationReminderEvents,
+  sendHydrationReminderEvents,
   coachRecommend,
   logHydration,
   logSupplement,
@@ -54,6 +55,15 @@ describe("api service layer", () => {
     if (!result.ok) return;
     expect(result.data).toHaveProperty("shouldSend");
     expect(result.data).toHaveProperty("event");
+  });
+
+  it("cron sender returns safe payload without VAPID env", async () => {
+    const logged = logHydration(100);
+    expect(logged.ok).toBe(true);
+    const result = await sendHydrationReminderEvents(new Date(2026, 7, 14, 22, 0));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data).toHaveProperty("sent");
   });
 
   it("returns coach recommendation through AI fallback contract", async () => {

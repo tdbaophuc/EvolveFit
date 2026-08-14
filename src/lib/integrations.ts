@@ -44,15 +44,109 @@ export async function aiCoachRecommendation(input: {
   const env = input.env ?? process.env;
   const fallback = progressiveOverloadRecommendation(input);
 
-  if (env.GEMINI_API_KEY || env.OPENAI_API_KEY) {
-    // Keep this deterministic until credentials are present in deployment; the API shape is ready for a real provider call.
-    return {
-      ...fallback,
-      source: "ai-assisted",
-      reason: `${fallback.reason} AI context slot ready. Recovery note: ${input.recoveryNote ?? "none"}.`,
-      mode: env.GEMINI_API_KEY ? "gemini" : "openai"
-    };
+  if (env.GEMINI_API_KEY) {
+    return callGemini(input, fallback, env.GEMINI_API_KEY);
+  }
+
+  if (env.OPENAI_API_KEY) {
+    return callOpenAI(input, fallback, env.OPENAI_API_KEY);
   }
 
   return { ...fallback, mode: "rule-fallback" };
+}
+
+async function callGemini(
+  input: {
+    exerciseName: string;
+    targetWeightKg: number;
+    targetRepsMax: number;
+    recentSets: Pick<WorkoutSet, "actualWeightKg" | "actualReps" | "rpe">[];
+    recoveryNote?: string;
+  },
+  fallback: Recommendation,
+  apiKey: string
+): Promise<Recommendation & { mode: "gemini" }> {
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: coachPrompt(input, fallback) }] }],
+        generationConfig: { responseMimeType: "application/json" }
+      })
+    }
+  );
+
+  if (!response.ok) return { ...fallback, source: "ai-assisted", mode: "gemini" };
+  const payload = (await response.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+  return parseAiRecommendation(payload.candidates?.[0]?.content?.parts?.[0]?.text, fallback, "gemini");
+}
+
+async function callOpenAI(
+  input: {
+    exerciseName: string;
+    targetWeightKg: number;
+    targetRepsMax: number;
+    recentSets: Pick<WorkoutSet, "actualWeightKg" | "actualReps" | "rpe">[];
+    recoveryNote?: string;
+  },
+  fallback: Recommendation,
+  apiKey: string
+): Promise<Recommendation & { mode: "openai" }> {
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "gpt-4.1-mini",
+      input: coachPrompt(input, fallback),
+      text: { format: { type: "json_object" } }
+    })
+  });
+
+  if (!response.ok) return { ...fallback, source: "ai-assisted", mode: "openai" };
+  const payload = (await response.json()) as { output_text?: string };
+  return parseAiRecommendation(payload.output_text, fallback, "openai");
+}
+
+function coachPrompt(
+  input: {
+    exerciseName: string;
+    targetWeightKg: number;
+    targetRepsMax: number;
+    recentSets: Pick<WorkoutSet, "actualWeightKg" | "actualReps" | "rpe">[];
+    recoveryNote?: string;
+  },
+  fallback: Recommendation
+) {
+  return JSON.stringify({
+    instruction:
+      "Return only JSON with title, reason, action, nextWeightKg. Keep advice conservative, training-focused, and not medical.",
+    input,
+    ruleFallback: fallback
+  });
+}
+
+function parseAiRecommendation<TMode extends "gemini" | "openai">(
+  text: string | undefined,
+  fallback: Recommendation,
+  mode: TMode
+): Recommendation & { mode: TMode } {
+  if (!text) return { ...fallback, source: "ai-assisted", mode };
+  try {
+    const parsed = JSON.parse(text) as Partial<Recommendation>;
+    return {
+      title: parsed.title ?? fallback.title,
+      reason: parsed.reason ?? fallback.reason,
+      source: "ai-assisted",
+      action: parsed.action ?? fallback.action,
+      nextWeightKg: Number.isFinite(parsed.nextWeightKg) ? Number(parsed.nextWeightKg) : fallback.nextWeightKg,
+      mode
+    };
+  } catch {
+    return { ...fallback, source: "ai-assisted", mode };
+  }
 }
