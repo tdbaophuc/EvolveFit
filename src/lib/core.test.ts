@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   expectedHydrationByNow,
+  bodyWeightDelta,
+  exportAppData,
   hydrationPaceStatus,
   hydrationPercent,
   hydrationTotal,
   monthlyAchievements,
+  latestBodyMetric,
   progressiveOverloadRecommendation,
   shouldSendCreatineReminder,
   shouldSendHydrationReminder,
@@ -132,5 +135,24 @@ describe("monthly achievements", () => {
 
     expect(badges[0]).toMatchObject({ status: "active", streakMonths: 3 });
     expect(badges[1]).toMatchObject({ status: "active", streakMonths: 2 });
+  });
+});
+
+describe("body metrics and export", () => {
+  it("finds latest body metric and weight delta", () => {
+    const metrics = [
+      { id: "1", measuredAt: "2026-08-01T07:00:00.000Z", weightKg: 73, heightCm: 174 },
+      { id: "2", measuredAt: "2026-08-14T07:00:00.000Z", weightKg: 71.8, heightCm: 174 }
+    ];
+
+    expect(latestBodyMetric(metrics)?.weightKg).toBe(71.8);
+    expect(bodyWeightDelta(metrics)).toBe(-1.2);
+  });
+
+  it("exports app data as readable json", () => {
+    const exported = exportAppData({ hydrationLogs: [{ amountMl: 500 }] });
+
+    expect(exported).toContain('"hydrationLogs"');
+    expect(JSON.parse(exported).hydrationLogs[0].amountMl).toBe(500);
   });
 });

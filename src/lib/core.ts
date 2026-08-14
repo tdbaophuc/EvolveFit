@@ -13,6 +13,24 @@ export type SupplementLog = {
   loggedAt: string;
 };
 
+export type Supplement = {
+  id: string;
+  name: string;
+  defaultAmount: number;
+  unit: "g" | "mg" | "capsule";
+  reminderHour?: number;
+  active: boolean;
+};
+
+export type BodyMetric = {
+  id: string;
+  measuredAt: string;
+  weightKg: number;
+  heightCm: number;
+  bodyFatPercent?: number;
+  waistCm?: number;
+};
+
 export type QuickAmount = {
   id: string;
   category: "hydration" | "supplement";
@@ -193,6 +211,20 @@ export function progressiveOverloadRecommendation(params: {
 export function estimatedOneRepMax(weightKg: number, reps: number): number {
   if (reps <= 1) return weightKg;
   return Math.round(weightKg * (1 + reps / 30) * 10) / 10;
+}
+
+export function latestBodyMetric(metrics: BodyMetric[]): BodyMetric | undefined {
+  return [...metrics].sort((a, b) => b.measuredAt.localeCompare(a.measuredAt))[0];
+}
+
+export function bodyWeightDelta(metrics: BodyMetric[]): number {
+  const sorted = [...metrics].sort((a, b) => a.measuredAt.localeCompare(b.measuredAt));
+  if (sorted.length < 2) return 0;
+  return Math.round((sorted[sorted.length - 1].weightKg - sorted[0].weightKg) * 10) / 10;
+}
+
+export function exportAppData(data: unknown): string {
+  return JSON.stringify(data, null, 2);
 }
 
 export function monthlyAchievements(params: {

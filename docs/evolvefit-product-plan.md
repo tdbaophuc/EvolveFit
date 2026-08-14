@@ -51,17 +51,22 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Layout card-based, padding 16px, card radius 8px, button radius 12px.
   - Mau semantic: Hydration sky blue, Training lime, Supplement amber, Coach violet.
 - Man hinh Today:
+  - Onboarding nhanh local-first cho profile, water target, wake/sleep time.
   - Hydration progress ring.
   - Quick buttons log nuoc.
   - Slider chon luong nuoc custom.
   - Pin & log amount thanh quick button.
+  - Hydration detail timeline voi sua amount +/-50ml va xoa log.
   - Creatine row voi slider amount va quick button.
+  - Supplement custom list, them supplement moi va log supplement trong ngay.
   - Workout today card.
   - Readiness chips.
   - Monthly badge preview.
   - Recent hydration logs.
 - Man hinh Workout / Live Workout:
   - Push Day demo routine.
+  - Routine builder compact va exercise library local.
+  - Them exercise custom vao routine.
   - Exercise hien tai, target sets/reps/weight.
   - Last session comparison.
   - Set table target/actual.
@@ -71,7 +76,10 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
 - Man hinh Progress:
   - Summary cards cho hydration, workout volume, e1RM, total sets.
   - Bar chart 7 ngay dang UI.
+  - Body metrics CRUD local cho weight/body fat.
+  - Weight delta va body metrics timeline.
   - Badge list.
+  - Export JSON local.
 - Man hinh Coach:
   - Rule-based recommendation card.
   - Readiness score.
@@ -91,6 +99,8 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Undo cho water, creatine, complete set.
   - Progressive overload recommendation: increase / hold / deload.
   - Estimated 1RM.
+  - Latest body metric, body weight delta.
+  - Export app data JSON.
   - Monthly achievement calculation.
 - PWA:
   - `manifest.webmanifest`.
@@ -98,7 +108,7 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Service worker cache co ban.
 - Test/build:
   - `npm run lint` pass.
-  - `npm test` pass: 9 tests.
+  - `npm test` pass: 11 tests.
   - `npm run build` pass.
 - Git:
   - Da commit va push len GitHub nhanh `breakthrough`.
@@ -106,19 +116,20 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
 ### Da lam mot phan / dang gia lap
 
 - Auth/profile:
-  - Hien moi co profile local mau, chua co dang ky/dang nhap that.
+  - Da co onboarding/profile local, chua co dang ky/dang nhap that.
 - Supabase:
   - Chua co database migrations, RLS, Supabase Auth.
   - Data model da nam trong plan, chua implement backend.
 - Hydration history:
-  - Co log va recent logs local.
-  - Chua co man hinh detail rieng de sua/xoa timeline day du.
+  - Co log, recent logs, timeline local va sua/xoa amount nhanh.
+  - Chua co man hinh detail route rieng va filter/chart theo gio day du.
 - Supplement:
   - Co creatine local, slider va reminder rule.
-  - Chua co CRUD supplement tuy chinh nhu whey, omega-3, vitamin D.
+  - Co them supplement custom va log trong ngay.
+  - Chua co edit/delete supplement va schedule rule rieng cho tung supplement.
 - Workout planner:
-  - Co routine demo va live workout.
-  - Chua co routine builder, exercise library CRUD, template selector.
+  - Co routine demo, live workout, exercise library local va them exercise custom.
+  - Chua co edit/delete exercise, drag reorder, template selector.
 - Notifications:
   - Co rule tinh nen nhac.
   - Chua co Web Push/FCM subscription, notification action, cron job.
@@ -132,21 +143,21 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Co localStorage va service worker cache co ban.
   - Chua co offline queue/sync conflict handling voi backend.
 - Body metrics:
-  - Co UI progress tong quan.
-  - Chua co CRUD body metrics va chart body fat/weight that.
+  - Co body metrics local cho weight/body fat va timeline.
+  - Chua co edit/delete metric va chart body fat/weight nang cao.
 
 ### Chua lam
 
 - Dang ky/dang nhap email/Google OAuth.
-- Onboarding flow 5 buoc.
+- Onboarding flow 5 buoc day du voi template selection.
 - Supabase schema, migrations, RLS policies.
 - API routes/server actions trong plan.
 - Vercel Cron.
 - Web Push/FCM subscription va push notification that.
-- Hydration detail screen day du.
-- Exercise library va routine builder.
+- Hydration detail route/screen day du.
+- Exercise library/routine builder nang cao.
 - Program templates PPL, Upper/Lower, Full Body.
-- Data export CSV/JSON.
+- Data export CSV va export JSON backend-safe.
 - AI integration that.
 - Health sync, native mobile app, widgets, watch app.
 - Nutrition tracking, progress photos, social sharing.
@@ -674,7 +685,7 @@ Exit criteria:
 
 ### Phase 1 - Hydration & supplement MVP
 
-Trang thai: Partial / dung duoc o local-first.
+Trang thai: Mostly done local-first / con thieu backend sync va mot so CRUD nang cao.
 
 - Hydration goal va quick log.
 - Slider chon amount va quick amount presets.
@@ -691,14 +702,16 @@ Da lam:
 - Creatine log, slider amount, quick amount da co.
 - Creatine reminder time va reminder rule da co.
 - Undo sau khi log da co.
+- Hydration timeline local co sua amount +/-50ml va xoa log.
+- Them supplement custom va log supplement trong ngay da co.
 - Daily progress ring da co.
 - Local optimistic update qua React state/localStorage da co.
 
 Con lai:
 
 - Chua co sync backend.
-- Chua co sua/xoa log trong timeline day du.
-- Chua co supplement custom CRUD.
+- Chua co edit/delete supplement.
+- Chua co hydration detail route rieng voi chart theo gio/filter.
 - Chua co notification that gui ve may.
 
 Exit criteria:
@@ -709,7 +722,7 @@ Exit criteria:
 
 ### Phase 2 - Workout MVP
 
-Trang thai: Partial / live workout demo da dung duoc, planner chua day du.
+Trang thai: Partial / live workout va builder local da dung duoc, planner nang cao chua day du.
 
 - Exercise library.
 - Routine builder don gian.
@@ -721,6 +734,8 @@ Trang thai: Partial / live workout demo da dung duoc, planner chua day du.
 Da lam:
 
 - Live workout mode da co.
+- Routine builder compact da co.
+- Exercise library local va them exercise custom da co.
 - Exercise target, last session comparison da co du lieu mau.
 - Stepper weight/reps/RPE da co.
 - Complete set va rest timer da co.
@@ -729,10 +744,10 @@ Da lam:
 
 Con lai:
 
-- Chua co exercise library CRUD.
-- Chua co routine builder.
+- Chua co edit/delete/reorder exercise.
+- Chua co template selector PPL/Upper-Lower/Full Body.
 - Chua co workout history screen day du.
-- Chua co body metrics CRUD/chart that.
+- Body metrics local da co, nhung chua co edit/delete/chart nang cao.
 - Wake Lock API chua implement.
 
 Exit criteria:

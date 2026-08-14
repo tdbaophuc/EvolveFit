@@ -1,9 +1,12 @@
-import type { HydrationLog, QuickAmount, SupplementLog, WorkoutExercise, WorkoutSet } from "./core";
+import type { BodyMetric, HydrationLog, QuickAmount, Supplement, SupplementLog, WorkoutExercise, WorkoutSet } from "./core";
 
 export type AppState = {
   profile: {
     name: string;
     timezone: string;
+    onboardingCompleted: boolean;
+    unitWeight: "kg" | "lb";
+    unitVolume: "ml" | "oz";
     waterTargetMl: number;
     wakeHour: number;
     sleepHour: number;
@@ -13,10 +16,12 @@ export type AppState = {
     leaderboardPublic: boolean;
   };
   hydrationLogs: HydrationLog[];
+  supplements: Supplement[];
   supplementLogs: SupplementLog[];
   quickAmounts: QuickAmount[];
   workoutExercises: WorkoutExercise[];
   workoutSets: WorkoutSet[];
+  bodyMetrics: BodyMetric[];
   activeExerciseIndex: number;
   restEndsAt?: string;
   undo?: {
@@ -32,6 +37,9 @@ export const initialState: AppState = {
   profile: {
     name: "Phúc",
     timezone: "Asia/Saigon",
+    onboardingCompleted: false,
+    unitWeight: "kg",
+    unitVolume: "ml",
     waterTargetMl: 2500,
     wakeHour: 6,
     sleepHour: 23,
@@ -40,6 +48,9 @@ export const initialState: AppState = {
     remindBeforeMinutes: 15,
     leaderboardPublic: false
   },
+  supplements: [
+    { id: "sup1", name: "Creatine", defaultAmount: 5, unit: "g", reminderHour: 17, active: true }
+  ],
   hydrationLogs: [
     { id: "h1", amountMl: 500, drinkType: "water", loggedAt: `${today}T08:10:00.000Z` },
     { id: "h2", amountMl: 250, drinkType: "water", loggedAt: `${today}T10:35:00.000Z` },
@@ -88,5 +99,9 @@ export const initialState: AppState = {
     }
   ],
   workoutSets: [],
+  bodyMetrics: [
+    { id: "bm1", measuredAt: `${today}T07:00:00.000Z`, weightKg: 72.4, heightCm: 174, bodyFatPercent: 18, waistCm: 82 },
+    { id: "bm2", measuredAt: `${today}T07:05:00.000Z`, weightKg: 72.1, heightCm: 174, bodyFatPercent: 17.8, waistCm: 81.5 }
+  ],
   activeExerciseIndex: 0
 };

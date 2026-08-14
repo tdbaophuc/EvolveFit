@@ -296,9 +296,36 @@ input[type="range"] {
 }
 
 .supplement-card,
-.workout-today {
+.workout-today,
+.onboarding-card {
   display: grid;
   gap: 14px;
+}
+
+.onboarding-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.onboarding-grid label,
+.inline-form input {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.onboarding-grid input,
+.inline-form input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: var(--text);
+  background: #f8fafc;
 }
 
 .supplement-actions {
@@ -323,6 +350,55 @@ input[type="range"] {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
+}
+
+.tiny-chip.logged {
+  color: #3f6212;
+  background: #ecfccb;
+  border-color: #bef264;
+}
+
+.supplement-list,
+.exercise-library {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.supplement-list div,
+.exercise-library div {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #f8fafc;
+}
+
+.exercise-library div {
+  grid-template-columns: 28px 1fr auto;
+}
+
+.exercise-library div.active {
+  border-color: var(--training);
+  background: #f7fee7;
+}
+
+.exercise-library em,
+.timeline.compact em {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 12px;
+}
+
+.inline-form {
+  display: grid;
+  grid-template-columns: 1fr 92px auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
 }
 
 .readiness-row span {
@@ -368,6 +444,24 @@ input[type="range"] {
   padding: 12px;
   border-radius: 8px;
   background: #f8fafc;
+}
+
+.timeline.editable div {
+  grid-template-columns: 70px 1fr auto;
+}
+
+.row-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.row-actions button {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+  color: var(--muted);
 }
 
 .timeline span,
@@ -530,6 +624,11 @@ input[type="range"] {
   display: grid;
   gap: 10px;
   margin-top: 12px;
+}
+
+.export-button {
+  width: 100%;
+  margin-top: 14px;
 }
 
 .badge-list > div {

@@ -8,7 +8,19 @@ export function loadState(): AppState {
   try {
     const raw = window.localStorage.getItem(key);
     if (!raw) return initialState;
-    return { ...initialState, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw) as Partial<AppState>;
+    return {
+      ...initialState,
+      ...parsed,
+      profile: { ...initialState.profile, ...parsed.profile },
+      hydrationLogs: parsed.hydrationLogs ?? initialState.hydrationLogs,
+      supplements: parsed.supplements ?? initialState.supplements,
+      supplementLogs: parsed.supplementLogs ?? initialState.supplementLogs,
+      quickAmounts: parsed.quickAmounts ?? initialState.quickAmounts,
+      workoutExercises: parsed.workoutExercises ?? initialState.workoutExercises,
+      workoutSets: parsed.workoutSets ?? initialState.workoutSets,
+      bodyMetrics: parsed.bodyMetrics ?? initialState.bodyMetrics
+    };
   } catch {
     return initialState;
   }
