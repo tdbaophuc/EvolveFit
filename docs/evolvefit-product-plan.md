@@ -94,6 +94,7 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Accept/reject recommendation va audit trail local.
   - Leaderboard preview.
 - Man hinh Settings:
+  - Auth/session UI local fallback: local/email/google mode.
   - Chinh water target.
   - Chinh gio uong creatine.
   - Chinh so phut nhac truoc.
@@ -126,6 +127,9 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Route Handlers cho cron hydration/creatine reminders.
   - Route Handlers cho notification subscribe/unsubscribe.
   - Route Handlers cho achievements/leaderboards.
+  - Route Handler `POST /api/achievements/recalculate`.
+  - Route Handler `PATCH /api/leaderboards/visibility`.
+  - Route Handler `POST /api/cron/monthly-achievements`.
   - Route Handler `/api/integrations/status` de kiem tra Supabase/AI/Web Push/Cron env readiness.
   - Server memory adapter trong `src/lib/api.ts`, san sang thay bang Supabase adapter.
 - Integration adapters:
@@ -133,6 +137,7 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - `src/lib/integrations.ts` cho Supabase REST request contract.
   - `src/lib/data-adapter.ts` gom `MemoryDataAdapter`, `SupabaseRestAdapter`, va factory fallback theo env.
   - AI coach adapter ho tro Gemini/OpenAI mode va rule fallback khi thieu credentials.
+  - Typed API client `src/lib/api-client.ts` cho web/mobile dung chung API contract.
 - Supabase:
   - Migration SQL `supabase/migrations/0001_initial_schema.sql`.
   - Bang core theo data model: profiles, hydration, supplements, routines, workouts, body metrics, notifications, achievements, leaderboard.
@@ -140,11 +145,12 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
 - Automation:
   - `vercel.json` cron cho hydration reminders moi 2 gio.
   - `vercel.json` cron cho creatine reminders moi 15 phut.
+  - `vercel.json` cron cho monthly achievements vao dau thang.
   - Service worker push event handler.
   - Service worker notification action handler: `log-water-250`, `log-creatine`, `snooze`.
 - Test/build:
   - `npm run lint` pass.
-  - `npm test` pass: 23 tests.
+  - `npm test` pass: 26 tests.
   - `npm run build` pass.
 - Git:
   - Da commit va push len GitHub nhanh `breakthrough`.
@@ -152,7 +158,8 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
 ### Da lam mot phan / dang gia lap
 
 - Auth/profile:
-  - Da co onboarding/profile local, chua co dang ky/dang nhap that.
+  - Da co onboarding/profile local va auth/session UI fallback cho local/email/google mode.
+  - Chua co dang ky/dang nhap OAuth that.
 - Supabase:
   - Da co database migration/RLS artifact.
   - Da co env contract va Supabase REST request helper.
@@ -160,7 +167,7 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Chua co Supabase Auth/session UI that vi chua co credentials.
 - Hydration history:
   - Co log, recent logs, timeline local va sua/xoa amount nhanh.
-  - Chua co man hinh detail route rieng va filter/chart theo gio day du.
+  - Co route `/hydration` rieng voi filter va chart theo gio local-first.
 - Supplement:
   - Co creatine local, slider va reminder rule.
   - Co them/xoa supplement custom va log trong ngay.
@@ -179,8 +186,8 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Co recovery check-in editable, readiness score va accept/reject audit trail local.
   - Chua goi provider Gemini/OpenAI that vi chua co credentials.
 - Achievements/Leaderboard:
-  - Co badge calculation va leaderboard preview.
-  - Chua co monthly job, public profile, ranking backend, anti-cheat.
+  - Co badge calculation, leaderboard preview, recalculate API, visibility API va monthly cron route.
+  - Chua co public profile/ranking backend/anti-cheat that.
 - Offline:
   - Co localStorage va service worker cache co ban.
   - Chua co offline queue/sync conflict handling voi backend.
@@ -190,12 +197,12 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
 
 ### Chua lam
 
-- Dang ky/dang nhap email/Google OAuth.
+- Dang ky/dang nhap email/Google OAuth that.
 - Onboarding flow 5 buoc day du voi template selection.
 - Supabase Auth/client session integration voi project credentials.
 - Supabase Auth/session UI that voi project credentials.
 - Web Push/FCM send notification that voi VAPID/FCM credentials.
-- Hydration detail route/screen day du.
+- Hydration detail nang cao voi richer analytics va backend sync.
 - Exercise library/routine builder nang cao voi edit va drag-drop.
 - Data export CSV va export JSON backend-safe.
 - AI integration that.
@@ -715,11 +722,12 @@ Da lam:
 - Vercel cron config da co.
 - `.env.example`, integration status API, Supabase REST request helper da co.
 - Data adapter factory voi Supabase REST adapter va memory fallback da co.
+- Auth/session UI fallback local/email/google mode da co.
 
 Con lai:
 
 - Chua dung Tailwind; hien dang dung CSS thuan theo design docs.
-- Chua cau hinh Supabase Auth/session UI voi credentials that.
+- Chua cau hinh Supabase Auth/OAuth flow voi credentials that.
 
 Exit criteria:
 
@@ -747,6 +755,7 @@ Da lam:
 - Creatine reminder time va reminder rule da co.
 - Undo sau khi log da co.
 - Hydration timeline local co sua amount +/-50ml va xoa log.
+- Hydration detail route `/hydration` voi filter va chart theo gio da co.
 - Them supplement custom va log supplement trong ngay da co.
 - Daily progress ring da co.
 - Local optimistic update qua React state/localStorage da co.
@@ -755,7 +764,6 @@ Con lai:
 
 - Chua co sync backend.
 - Chua co edit supplement.
-- Chua co hydration detail route rieng voi chart theo gio/filter.
 - Chua co notification that gui ve may.
 
 Exit criteria:
@@ -819,6 +827,7 @@ Da lam:
 - Settings co chinh reminder time/remind-before.
 - Notification subscribe/unsubscribe API da co.
 - Cron routes va `vercel.json` da co.
+- Monthly achievements cron route da co.
 - Notification permission UI da co.
 - Service worker push/action handler da co.
 
@@ -855,12 +864,13 @@ Da lam:
 - Readiness score UI da co.
 - Achievement engine co ban cho monthly badges da co va co test.
 - Badge preview da hien trong Today/Progress.
+- Achievement recalculate API, leaderboard visibility API va monthly cron route da co.
 
 Con lai:
 
 - Chua co provider call Gemini/OpenAI that.
 - Chua co JSON schema/prompt nang cao cho production.
-- Chua co monthly achievement job that.
+- Chua co ranking backend/anti-cheat that.
 
 Exit criteria:
 
@@ -884,11 +894,11 @@ Da lam:
 - Core logic da tach o `src/lib/core.ts`, co the tiep tuc tach thanh package sau.
 - UI da mobile-first va PWA-installable ve mat manifest.
 - Leaderboard opt-in da co toggle local.
+- Typed API client `src/lib/api-client.ts` da co.
 
 Con lai:
 
 - Chua co monorepo/package shared.
-- Chua co typed API client.
 - Chua co Health sync strategy implement.
 - Chua co Expo prototype.
 - Chua co public profile/leaderboard backend.

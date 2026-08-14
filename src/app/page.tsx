@@ -224,6 +224,16 @@ export default function AppPage() {
     commit({ ...state, supplements: state.supplements.filter((supplement) => supplement.id !== id) }, "Đã xóa supplement");
   }
 
+  function updateSupplementLocal(id: string, patch: Partial<Supplement>) {
+    commit(
+      {
+        ...state,
+        supplements: state.supplements.map((supplement) => (supplement.id === id ? { ...supplement, ...patch } : supplement))
+      },
+      "Đã cập nhật supplement"
+    );
+  }
+
   function addExercise() {
     const exercise: WorkoutExercise = {
       id: cryptoSafeId(),
@@ -461,6 +471,7 @@ export default function AppPage() {
             setNewSupplementAmount={setNewSupplementAmount}
             addSupplement={addSupplement}
             deleteSupplement={deleteSupplement}
+            updateSupplement={updateSupplementLocal}
           />
         )}
 
@@ -523,6 +534,7 @@ export default function AppPage() {
           <SettingsView
             state={state}
             updateProfile={updateProfile}
+            signInLocal={(mode) => updateProfile({ authMode: mode })}
             reset={() => commit(resetState(), "Đã khôi phục dữ liệu mẫu")}
             notificationPermission={notificationPermission}
             requestNotifications={requestNotifications}
@@ -642,6 +654,7 @@ function TodayView(props: {
   setNewSupplementAmount: (value: number) => void;
   addSupplement: () => void;
   deleteSupplement: (id: string) => void;
+  updateSupplement: (id: string, patch: Partial<Supplement>) => void;
 }) {
   const circumference = 2 * Math.PI * 74;
   const offset = circumference - (props.percent / 100) * circumference;
@@ -745,6 +758,20 @@ function TodayView(props: {
                 </strong>
                 <button className={logged ? "tiny-chip logged" : "tiny-chip"} onClick={() => props.logSupplement(supplement)}>
                   {logged ? "Đã dùng" : "Ghi nhận"}
+                </button>
+                <button
+                  className="icon-mini"
+                  onClick={() => props.updateSupplement(supplement.id, { defaultAmount: Math.max(0.5, supplement.defaultAmount - 0.5) })}
+                  aria-label="Giảm liều supplement"
+                >
+                  -g
+                </button>
+                <button
+                  className="icon-mini"
+                  onClick={() => props.updateSupplement(supplement.id, { defaultAmount: supplement.defaultAmount + 0.5 })}
+                  aria-label="Tăng liều supplement"
+                >
+                  +g
                 </button>
                 <button className="icon-mini danger" onClick={() => props.deleteSupplement(supplement.id)} aria-label="Xóa supplement">
                   <Trash2 size={14} />
@@ -1256,6 +1283,7 @@ function CoachView(props: {
 function SettingsView(props: {
   state: AppState;
   updateProfile: (next: Partial<AppState["profile"]>) => void;
+  signInLocal: (mode: AppState["profile"]["authMode"]) => void;
   reset: () => void;
   notificationPermission: NotificationPermission;
   requestNotifications: () => void;
@@ -1264,6 +1292,26 @@ function SettingsView(props: {
     <div className="stack">
       <section className="card">
         <h2>Profile</h2>
+        <div className="setting-row">
+          <span>Session</span>
+          <strong>{props.state.profile.authMode}</strong>
+        </div>
+        <label className="setting-row">
+          <span>Email</span>
+          <input
+            type="email"
+            value={props.state.profile.email}
+            onChange={(event) => props.updateProfile({ email: event.target.value })}
+          />
+        </label>
+        <div className="split-actions">
+          <button className="secondary-button" onClick={() => props.signInLocal("email")}>
+            Email mode
+          </button>
+          <button className="secondary-button" onClick={() => props.signInLocal("google")}>
+            Google mode
+          </button>
+        </div>
         <label className="setting-row">
           <span>Mục tiêu nước</span>
           <input

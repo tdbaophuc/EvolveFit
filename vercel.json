@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/creatine-reminders",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/monthly-achievements",
+      "schedule": "0 0 1 * *"
     }
   ]
 }

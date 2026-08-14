@@ -3,6 +3,8 @@ import type { BodyMetric, HydrationLog, QuickAmount, Supplement, SupplementLog, 
 export type AppState = {
   profile: {
     name: string;
+    email: string;
+    authMode: "local" | "email" | "google";
     timezone: string;
     onboardingCompleted: boolean;
     unitWeight: "kg" | "lb";
@@ -160,6 +162,8 @@ export const routineTemplates: Record<AppState["activeTemplate"], WorkoutExercis
 export const initialState: AppState = {
   profile: {
     name: "Phúc",
+    email: "phuc@example.com",
+    authMode: "local",
     timezone: "Asia/Saigon",
     onboardingCompleted: false,
     unitWeight: "kg",

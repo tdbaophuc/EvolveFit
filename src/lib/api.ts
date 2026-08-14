@@ -17,6 +17,7 @@ type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
 const serverState = structuredClone(initialState);
 const notificationSubscriptions: { endpoint: string; p256dh: string; auth: string; platform?: string; createdAt: string }[] = [];
+let leaderboardVisible = serverState.profile.leaderboardPublic;
 
 export function ok<T>(data: T): ApiResult<T> {
   return { ok: true, data };
@@ -118,6 +119,25 @@ export function updateSupplementReminder(id: string, reminderHour: number) {
   if (!supplement) return fail("supplement not found");
   if (!Number.isInteger(reminderHour) || reminderHour < 0 || reminderHour > 23) return fail("reminderHour must be 0-23");
   supplement.reminderHour = reminderHour;
+  return ok(supplement);
+}
+
+export function updateSupplement(id: string, input: { name?: string; defaultAmount?: number; reminderHour?: number }) {
+  const supplement = serverState.supplements.find((item) => item.id === id);
+  if (!supplement) return fail("supplement not found");
+  if (input.name !== undefined && !input.name.trim()) return fail("name is required");
+  if (input.defaultAmount !== undefined && (!Number.isFinite(input.defaultAmount) || input.defaultAmount <= 0)) {
+    return fail("defaultAmount must be positive");
+  }
+  if (input.reminderHour !== undefined && (!Number.isInteger(input.reminderHour) || input.reminderHour < 0 || input.reminderHour > 23)) {
+    return fail("reminderHour must be 0-23");
+  }
+
+  Object.assign(supplement, {
+    ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+    ...(input.defaultAmount !== undefined ? { defaultAmount: input.defaultAmount } : {}),
+    ...(input.reminderHour !== undefined ? { reminderHour: input.reminderHour } : {})
+  });
   return ok(supplement);
 }
 
@@ -253,10 +273,21 @@ export function getAchievementsAndLeaderboard() {
 
   return ok({
     achievements,
+    leaderboardVisible,
     leaderboard: [
       { rank: 1, displayName: "Minh", score: 96, badgeStreakMonths: 4 },
       { rank: 2, displayName: serverState.profile.name, score: 91, badgeStreakMonths: 3 },
       { rank: 3, displayName: "An", score: 88, badgeStreakMonths: 2 }
     ]
   });
+}
+
+export function recalculateAchievements() {
+  return getAchievementsAndLeaderboard();
+}
+
+export function updateLeaderboardVisibility(isPublic: boolean) {
+  leaderboardVisible = isPublic;
+  serverState.profile.leaderboardPublic = isPublic;
+  return ok({ isPublic });
 }

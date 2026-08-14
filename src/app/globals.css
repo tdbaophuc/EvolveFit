@@ -46,6 +46,10 @@ button {
     var(--background);
 }
 
+.detail-shell {
+  max-width: 720px;
+}
+
 .top-bar {
   position: sticky;
   top: 0;
@@ -389,7 +393,7 @@ input[type="range"] {
 .supplement-list div,
 .exercise-library div {
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
+  grid-template-columns: 1fr auto auto auto auto auto;
   align-items: center;
   gap: 10px;
   padding: 12px;
@@ -658,6 +662,11 @@ input[type="range"] {
   min-height: 12px;
   border-radius: 999px 999px 4px 4px;
   background: linear-gradient(180deg, var(--hydration), var(--training));
+}
+
+.hourly-chart {
+  grid-template-columns: repeat(18, 1fr);
+  gap: 4px;
 }
 
 .badge-list,

@@ -7,8 +7,10 @@ import {
   coachRecommend,
   logHydration,
   logSupplement,
+  recalculateAchievements,
   patchHydrationLog,
   subscribeNotifications,
+  updateLeaderboardVisibility,
   unsubscribeNotifications
 } from "./api";
 
@@ -32,6 +34,12 @@ describe("api service layer", () => {
     expect(createSupplement({ name: "", defaultAmount: 5 }).ok).toBe(false);
     expect(createSupplement({ name: "Omega-3", defaultAmount: 2 }).ok).toBe(true);
     expect(logSupplement({ name: "Omega-3", amount: 2 }).ok).toBe(true);
+  });
+
+  it("recalculates achievements and toggles leaderboard visibility", () => {
+    expect(recalculateAchievements().ok).toBe(true);
+    const visibility = updateLeaderboardVisibility(true);
+    expect(visibility).toEqual({ ok: true, data: { isPublic: true } });
   });
 
   it("stores and removes notification subscriptions", () => {
