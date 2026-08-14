@@ -33,6 +33,8 @@ import {
   monthlyAchievements,
   progressiveOverloadRecommendation,
   readinessScore,
+  enqueueSync,
+  markSyncQueue,
   shouldSendCreatineReminder,
   shouldSendHydrationReminder,
   upsertQuickAmount,
@@ -46,6 +48,10 @@ import { initialState, routineTemplates, type AppState } from "@/lib/seed";
 import { loadState, resetState, saveState } from "@/lib/storage";
 
 type Tab = "today" | "workout" | "progress" | "coach" | "settings";
+type WakeLockSentinelLike = { release: () => Promise<void> };
+type NavigatorWithWakeLock = Navigator & {
+  wakeLock?: { request: (type: "screen") => Promise<WakeLockSentinelLike> };
+};
 
 const tabs: { id: Tab; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
   { id: "today", label: "Hôm nay", icon: Home },
@@ -87,6 +93,23 @@ export default function AppPage() {
     if (mounted) saveState(state);
   }, [mounted, state]);
 
+  useEffect(() => {
+    let wakeLock: WakeLockSentinelLike | undefined;
+    const wakeLockNavigator = navigator as NavigatorWithWakeLock;
+    if (tab !== "workout" || !wakeLockNavigator.wakeLock) return;
+
+    wakeLockNavigator.wakeLock
+      .request("screen")
+      .then((lock) => {
+        wakeLock = lock;
+      })
+      .catch(() => undefined);
+
+    return () => {
+      wakeLock?.release().catch(() => undefined);
+    };
+  }, [tab]);
+
   const now = new Date();
   const totalWater = hydrationTotal(state.hydrationLogs, now);
   const percent = hydrationPercent(totalWater, state.profile.waterTargetMl);
@@ -98,19 +121,25 @@ export default function AppPage() {
   );
   const pace = hydrationPaceStatus(totalWater, expectedWater);
   const lastHydrationLog = state.hydrationLogs[state.hydrationLogs.length - 1];
-  const hydrationReminder = shouldSendHydrationReminder({
-    totalMl: totalWater,
-    expectedMl: expectedWater,
-    lastLogAt: lastHydrationLog?.loggedAt,
-    now,
-    quietHours: { start: state.profile.sleepHour, end: state.profile.wakeHour }
-  });
-  const creatineReminder = shouldSendCreatineReminder({
-    logs: state.supplementLogs,
-    scheduledHour: state.profile.creatineHour,
-    remindBeforeMinutes: state.profile.remindBeforeMinutes,
-    now
-  });
+  const hydrationReminder =
+    state.notificationSettings.hydrationEnabled &&
+    shouldSendHydrationReminder({
+      totalMl: totalWater,
+      expectedMl: expectedWater,
+      lastLogAt: lastHydrationLog?.loggedAt,
+      now,
+      quietHours: state.notificationSettings.quietHoursEnabled
+        ? { start: state.profile.sleepHour, end: state.profile.wakeHour }
+        : { start: -1, end: -1 }
+    });
+  const creatineReminder =
+    state.notificationSettings.creatineEnabled &&
+    shouldSendCreatineReminder({
+      logs: state.supplementLogs,
+      scheduledHour: state.profile.creatineHour,
+      remindBeforeMinutes: state.profile.remindBeforeMinutes,
+      now
+    });
   const quickWater = visibleQuickAmounts(state.quickAmounts, "hydration", 3);
   const quickCreatine = visibleQuickAmounts(state.quickAmounts, "supplement", 2);
   const activeExercise = state.workoutExercises[state.activeExerciseIndex] ?? state.workoutExercises[0];
@@ -148,6 +177,10 @@ export default function AppPage() {
     }
   }
 
+  function commitSynced(next: AppState, type: string, payload: unknown, message?: string) {
+    commit({ ...next, syncQueue: enqueueSync(next.syncQueue, { type, payload }) }, message);
+  }
+
   function withUndo(next: AppState, label: string, message: string) {
     const previous = { ...state, undo: undefined };
     commit({ ...next, undo: { label, state: previous } }, message);
@@ -162,19 +195,23 @@ export default function AppPage() {
       unit: "ml",
       pinned: pin || state.quickAmounts.some((item) => item.category === "hydration" && item.amount === amountMl)
     });
-    withUndo({ ...state, hydrationLogs: [...state.hydrationLogs, log], quickAmounts }, "water", `Đã ghi nhận ${amountMl}ml`);
+    withUndo(
+      { ...state, hydrationLogs: [...state.hydrationLogs, log], quickAmounts, syncQueue: enqueueSync(state.syncQueue, { type: "hydration.log", payload: log }) },
+      "water",
+      `Đã ghi nhận ${amountMl}ml`
+    );
   }
 
   function editHydrationLog(id: string, deltaMl: number) {
     const hydrationLogs = state.hydrationLogs.map((log) =>
       log.id === id ? { ...log, amountMl: Math.max(50, log.amountMl + deltaMl) } : log
     );
-    withUndo({ ...state, hydrationLogs }, "edit water", "Đã cập nhật log nước");
+    withUndo({ ...state, hydrationLogs, syncQueue: enqueueSync(state.syncQueue, { type: "hydration.patch", payload: { id, deltaMl } }) }, "edit water", "Đã cập nhật log nước");
   }
 
   function deleteHydrationLog(id: string) {
     withUndo(
-      { ...state, hydrationLogs: state.hydrationLogs.filter((log) => log.id !== id) },
+      { ...state, hydrationLogs: state.hydrationLogs.filter((log) => log.id !== id), syncQueue: enqueueSync(state.syncQueue, { type: "hydration.delete", payload: { id } }) },
       "delete water",
       "Đã xóa log nước"
     );
@@ -195,7 +232,7 @@ export default function AppPage() {
       unit: "g",
       pinned: pin || state.quickAmounts.some((item) => item.category === "supplement" && item.amount === amount)
     });
-    withUndo({ ...state, supplementLogs: [...state.supplementLogs, log], quickAmounts }, "creatine", `Đã ghi nhận Creatine ${amount}g`);
+    withUndo({ ...state, supplementLogs: [...state.supplementLogs, log], quickAmounts, syncQueue: enqueueSync(state.syncQueue, { type: "supplement.log", payload: log }) }, "creatine", `Đã ghi nhận Creatine ${amount}g`);
   }
 
   function logSupplement(supplement: Supplement) {
@@ -206,7 +243,7 @@ export default function AppPage() {
       unit: supplement.unit,
       loggedAt: new Date().toISOString()
     };
-    withUndo({ ...state, supplementLogs: [...state.supplementLogs, log] }, supplement.name, `Đã ghi nhận ${supplement.name}`);
+    withUndo({ ...state, supplementLogs: [...state.supplementLogs, log], syncQueue: enqueueSync(state.syncQueue, { type: "supplement.log", payload: log }) }, supplement.name, `Đã ghi nhận ${supplement.name}`);
   }
 
   function addSupplement() {
@@ -217,19 +254,21 @@ export default function AppPage() {
       unit: "g",
       active: true
     };
-    commit({ ...state, supplements: [...state.supplements, supplement] }, `Đã thêm ${supplement.name}`);
+    commitSynced({ ...state, supplements: [...state.supplements, supplement] }, "supplement.create", supplement, `Đã thêm ${supplement.name}`);
   }
 
   function deleteSupplement(id: string) {
-    commit({ ...state, supplements: state.supplements.filter((supplement) => supplement.id !== id) }, "Đã xóa supplement");
+    commitSynced({ ...state, supplements: state.supplements.filter((supplement) => supplement.id !== id) }, "supplement.delete", { id }, "Đã xóa supplement");
   }
 
   function updateSupplementLocal(id: string, patch: Partial<Supplement>) {
-    commit(
+    commitSynced(
       {
         ...state,
         supplements: state.supplements.map((supplement) => (supplement.id === id ? { ...supplement, ...patch } : supplement))
       },
+      "supplement.patch",
+      { id, patch },
       "Đã cập nhật supplement"
     );
   }
@@ -246,29 +285,33 @@ export default function AppPage() {
       restSeconds: 60,
       lastSession: "Chưa có dữ liệu tuần trước"
     };
-    commit({ ...state, workoutExercises: [...state.workoutExercises, exercise] }, `Đã thêm ${exercise.name}`);
+    commitSynced({ ...state, workoutExercises: [...state.workoutExercises, exercise] }, "exercise.create", exercise, `Đã thêm ${exercise.name}`);
   }
 
   function deleteExercise(id: string) {
     const workoutExercises = state.workoutExercises.filter((exercise) => exercise.id !== id);
-    commit(
+    commitSynced(
       {
         ...state,
         workoutExercises,
         activeExerciseIndex: Math.min(state.activeExerciseIndex, Math.max(0, workoutExercises.length - 1))
       },
+      "exercise.delete",
+      { id },
       "Đã xóa bài tập"
     );
   }
 
   function updateExerciseTarget(id: string, patch: Partial<WorkoutExercise>) {
-    commit(
+    commitSynced(
       {
         ...state,
         workoutExercises: state.workoutExercises.map((exercise) =>
           exercise.id === id ? { ...exercise, ...patch } : exercise
         )
       },
+      "exercise.patch",
+      { id, patch },
       "Đã cập nhật bài tập"
     );
   }
@@ -280,7 +323,7 @@ export default function AppPage() {
     const workoutExercises = [...state.workoutExercises];
     const [item] = workoutExercises.splice(index, 1);
     workoutExercises.splice(nextIndex, 0, item);
-    commit({ ...state, workoutExercises, activeExerciseIndex: nextIndex }, "Đã sắp xếp routine");
+    commitSynced({ ...state, workoutExercises, activeExerciseIndex: nextIndex }, "exercise.reorder", { id, direction }, "Đã sắp xếp routine");
   }
 
   function applyTemplate(template: AppState["activeTemplate"]) {
@@ -308,19 +351,21 @@ export default function AppPage() {
       heightCm: latestMetric?.heightCm ?? 174,
       bodyFatPercent: newMetricBodyFat
     };
-    commit({ ...state, bodyMetrics: [...state.bodyMetrics, metric] }, "Đã lưu chỉ số cơ thể");
+    commitSynced({ ...state, bodyMetrics: [...state.bodyMetrics, metric] }, "bodyMetric.create", metric, "Đã lưu chỉ số cơ thể");
   }
 
   function deleteBodyMetric(id: string) {
-    commit({ ...state, bodyMetrics: state.bodyMetrics.filter((metric) => metric.id !== id) }, "Đã xóa chỉ số cơ thể");
+    commitSynced({ ...state, bodyMetrics: state.bodyMetrics.filter((metric) => metric.id !== id) }, "bodyMetric.delete", { id }, "Đã xóa chỉ số cơ thể");
   }
 
   function updateBodyMetric(id: string, patch: Partial<BodyMetric>) {
-    commit(
+    commitSynced(
       {
         ...state,
         bodyMetrics: state.bodyMetrics.map((metric) => (metric.id === id ? { ...metric, ...patch } : metric))
       },
+      "bodyMetric.patch",
+      { id, patch },
       "Đã cập nhật chỉ số cơ thể"
     );
   }
@@ -389,6 +434,14 @@ export default function AppPage() {
 
   function updateRecovery(next: Partial<AppState["recovery"]>) {
     commit({ ...state, recovery: { ...state.recovery, ...next } });
+  }
+
+  function updateNotificationSettings(next: Partial<AppState["notificationSettings"]>) {
+    commit({ ...state, notificationSettings: { ...state.notificationSettings, ...next } });
+  }
+
+  function markQueue(status: "synced" | "failed") {
+    commit({ ...state, syncQueue: markSyncQueue(state.syncQueue, status) }, status === "synced" ? "Đã đánh dấu sync xong" : "Đã đánh dấu sync lỗi");
   }
 
   function decideRecommendation(decision: "accepted" | "rejected") {
@@ -538,6 +591,8 @@ export default function AppPage() {
             reset={() => commit(resetState(), "Đã khôi phục dữ liệu mẫu")}
             notificationPermission={notificationPermission}
             requestNotifications={requestNotifications}
+            markQueue={markQueue}
+            updateNotificationSettings={updateNotificationSettings}
           />
         )}
       </section>
@@ -1287,7 +1342,13 @@ function SettingsView(props: {
   reset: () => void;
   notificationPermission: NotificationPermission;
   requestNotifications: () => void;
+  markQueue: (status: "synced" | "failed") => void;
+  updateNotificationSettings: (next: Partial<AppState["notificationSettings"]>) => void;
 }) {
+  const pendingQueue = props.state.syncQueue.filter((item) => item.status === "pending").length;
+  const syncedQueue = props.state.syncQueue.filter((item) => item.status === "synced").length;
+  const failedQueue = props.state.syncQueue.filter((item) => item.status === "failed").length;
+
   return (
     <div className="stack">
       <section className="card">
@@ -1362,6 +1423,30 @@ function SettingsView(props: {
         <button className="secondary-button export-button" onClick={props.requestNotifications}>
           Bật thông báo
         </button>
+        <label className="toggle-row">
+          <span>Nhắc uống nước</span>
+          <input
+            type="checkbox"
+            checked={props.state.notificationSettings.hydrationEnabled}
+            onChange={(event) => props.updateNotificationSettings({ hydrationEnabled: event.target.checked })}
+          />
+        </label>
+        <label className="toggle-row">
+          <span>Nhắc creatine</span>
+          <input
+            type="checkbox"
+            checked={props.state.notificationSettings.creatineEnabled}
+            onChange={(event) => props.updateNotificationSettings({ creatineEnabled: event.target.checked })}
+          />
+        </label>
+        <label className="toggle-row">
+          <span>Quiet hours theo giờ ngủ</span>
+          <input
+            type="checkbox"
+            checked={props.state.notificationSettings.quietHoursEnabled}
+            onChange={(event) => props.updateNotificationSettings({ quietHoursEnabled: event.target.checked })}
+          />
+        </label>
         <p className="privacy-note">Web Push thật cần VAPID/FCM credentials; app hiện đã có service worker action handler và API subscription contract.</p>
       </section>
       <section className="card">
@@ -1372,6 +1457,23 @@ function SettingsView(props: {
           <span>Vercel Cron: configured</span>
           <span>Push actions: Log 250ml / Snooze</span>
         </div>
+      </section>
+      <section className="card">
+        <h2>Offline sync queue</h2>
+        <div className="readiness-list">
+          <span>{pendingQueue} pending</span>
+          <span>{syncedQueue} synced</span>
+          <span>{failedQueue} failed</span>
+        </div>
+        <div className="split-actions">
+          <button className="secondary-button" onClick={() => props.markQueue("synced")} disabled={!pendingQueue}>
+            Mark synced
+          </button>
+          <button className="secondary-button" onClick={() => props.markQueue("failed")} disabled={!pendingQueue}>
+            Mark failed
+          </button>
+        </div>
+        <p className="privacy-note">Queue hiện lưu local-first để chuẩn bị sync backend và xử lý retry/conflict ở bước production.</p>
       </section>
       <section className="card">
         <h2>Dữ liệu</h2>

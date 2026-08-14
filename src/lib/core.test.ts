@@ -9,6 +9,8 @@ import {
   monthlyAchievements,
   latestBodyMetric,
   readinessScore,
+  enqueueSync,
+  markSyncQueue,
   progressiveOverloadRecommendation,
   shouldSendCreatineReminder,
   shouldSendHydrationReminder,
@@ -162,5 +164,13 @@ describe("readiness score", () => {
   it("scores high energy and low stress higher", () => {
     expect(readinessScore({ energy: 5, sleepQuality: 5, soreness: 1, stress: 1 })).toBe(100);
     expect(readinessScore({ energy: 1, sleepQuality: 1, soreness: 5, stress: 5 })).toBe(20);
+  });
+});
+
+describe("offline sync queue", () => {
+  it("enqueues pending work and marks it synced", () => {
+    const queue = enqueueSync([], { type: "hydration.log", payload: { amountMl: 250 } });
+    expect(queue[0]).toMatchObject({ type: "hydration.log", status: "pending" });
+    expect(markSyncQueue(queue, "synced")[0].status).toBe("synced");
   });
 });

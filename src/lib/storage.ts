@@ -14,6 +14,7 @@ export function loadState(): AppState {
       ...parsed,
       profile: { ...initialState.profile, ...parsed.profile },
       recovery: { ...initialState.recovery, ...parsed.recovery },
+      notificationSettings: { ...initialState.notificationSettings, ...parsed.notificationSettings },
       hydrationLogs: parsed.hydrationLogs ?? initialState.hydrationLogs,
       supplements: parsed.supplements ?? initialState.supplements,
       supplementLogs: parsed.supplementLogs ?? initialState.supplementLogs,
@@ -22,7 +23,8 @@ export function loadState(): AppState {
       workoutSets: parsed.workoutSets ?? initialState.workoutSets,
       bodyMetrics: parsed.bodyMetrics ?? initialState.bodyMetrics,
       activeTemplate: parsed.activeTemplate ?? initialState.activeTemplate,
-      recommendationDecisions: parsed.recommendationDecisions ?? initialState.recommendationDecisions
+      recommendationDecisions: parsed.recommendationDecisions ?? initialState.recommendationDecisions,
+      syncQueue: parsed.syncQueue ?? initialState.syncQueue
     };
   } catch {
     return initialState;

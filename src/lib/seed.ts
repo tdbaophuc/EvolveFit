@@ -24,6 +24,12 @@ export type AppState = {
     stress: number;
     note: string;
   };
+  notificationSettings: {
+    hydrationEnabled: boolean;
+    creatineEnabled: boolean;
+    quietHoursEnabled: boolean;
+    snoozeUntil?: string;
+  };
   hydrationLogs: HydrationLog[];
   supplements: Supplement[];
   supplementLogs: SupplementLog[];
@@ -39,6 +45,13 @@ export type AppState = {
     decision: "accepted" | "rejected";
     reason?: string;
     decidedAt: string;
+  }[];
+  syncQueue: {
+    id: string;
+    type: string;
+    status: "pending" | "synced" | "failed";
+    createdAt: string;
+    payload: unknown;
   }[];
   restEndsAt?: string;
   undo?: {
@@ -183,6 +196,11 @@ export const initialState: AppState = {
     stress: 2,
     note: "Ngủ ổn, hơi mỏi ngực."
   },
+  notificationSettings: {
+    hydrationEnabled: true,
+    creatineEnabled: true,
+    quietHoursEnabled: true
+  },
   supplements: [
     { id: "sup1", name: "Creatine", defaultAmount: 5, unit: "g", reminderHour: 17, active: true }
   ],
@@ -206,5 +224,6 @@ export const initialState: AppState = {
   ],
   activeTemplate: "ppl",
   activeExerciseIndex: 0,
-  recommendationDecisions: []
+  recommendationDecisions: [],
+  syncQueue: []
 };

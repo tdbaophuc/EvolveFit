@@ -234,6 +234,30 @@ export function readinessScore(input: { energy: number; sleepQuality: number; so
   return Math.round(((positive + inverse) / 20) * 100);
 }
 
+export type SyncQueueItem = {
+  id: string;
+  type: string;
+  status: "pending" | "synced" | "failed";
+  createdAt: string;
+  payload: unknown;
+};
+
+export function enqueueSync(queue: SyncQueueItem[], item: Omit<SyncQueueItem, "id" | "status" | "createdAt">): SyncQueueItem[] {
+  return [
+    {
+      ...item,
+      id: cryptoSafeId(),
+      status: "pending",
+      createdAt: new Date().toISOString()
+    },
+    ...queue
+  ];
+}
+
+export function markSyncQueue(queue: SyncQueueItem[], status: SyncQueueItem["status"]): SyncQueueItem[] {
+  return queue.map((item) => (item.status === "pending" ? { ...item, status } : item));
+}
+
 export function monthlyAchievements(params: {
   hydrationGoalDays: number;
   hydrationTargetDays: number;

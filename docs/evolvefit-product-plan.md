@@ -152,9 +152,12 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Service worker notification action handler: `log-water-250`, `log-creatine`, `snooze`.
   - Web Push sender `src/lib/push.ts` dung VAPID env va fallback `missing-env` khi chua cau hinh.
   - Cron hydration/creatine routes da noi vao Web Push sender.
+  - Notification settings local cho hydration, creatine va quiet hours.
+  - Wake Lock API duoc request khi vao tab Workout neu trinh duyet ho tro.
+  - Offline sync queue local cho cac mutation hydration/supplement/workout/body metrics.
 - Test/build:
   - `npm run lint` pass.
-  - `npm test` pass: 34 tests.
+  - `npm test` pass: 35 tests.
   - `npm run build` pass.
 - Git:
   - Da commit va push len GitHub nhanh `breakthrough`.
@@ -176,15 +179,17 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Co route `/hydration` rieng voi filter va chart theo gio local-first.
 - Supplement:
   - Co creatine local, slider va reminder rule.
-  - Co them/xoa supplement custom va log trong ngay.
-  - Chua co edit supplement va schedule rule rieng cho tung supplement.
+  - Co them/xoa/edit nhanh supplement custom va log trong ngay.
+  - Chua co schedule rule rieng cho tung supplement.
 - Workout planner:
   - Co routine demo, live workout, exercise library local, them/xoa/sap xep exercise custom.
   - Co template selector PPL/Upper-Lower/Full Body/Custom.
   - Co chinh nhanh target weight/reps cua exercise.
+  - Co Wake Lock API khi mo tab Workout neu trinh duyet ho tro.
   - Chua co form edit exercise day du va drag reorder bang gesture.
 - Notifications:
   - Co rule tinh nen nhac, notification subscribe/unsubscribe contract, cron routes, notification permission UI va service worker action handler.
+  - Co Settings toggles cho hydration reminder, creatine reminder va quiet hours local.
   - Co Web Push sender that qua VAPID; can VAPID credentials de gui that tren deployment.
 - AI Coach:
   - Hien la rule-based recommendation.
@@ -195,10 +200,10 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Co badge calculation, leaderboard preview, recalculate API, visibility API va monthly cron route.
   - Chua co public profile/ranking backend/anti-cheat that.
 - Offline:
-  - Co localStorage va service worker cache co ban.
-  - Chua co offline queue/sync conflict handling voi backend.
+  - Co localStorage, service worker cache co ban va offline sync queue local.
+  - Chua co retry worker/sync conflict handling voi backend.
 - Body metrics:
-  - Co body metrics local cho weight/body fat, timeline, chinh nhanh weight va xoa metric.
+  - Co body metrics local cho weight/body fat, timeline, chinh nhanh weight/body fat va xoa metric.
   - Chua co form edit metric day du va chart body fat/weight nang cao.
 
 ### Chua lam
@@ -208,7 +213,9 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
 - Supabase project credentials tren deployment.
 - VAPID/FCM credentials tren deployment de bat Web Push production.
 - Hydration detail nang cao voi richer analytics va backend sync.
-- Exercise library/routine builder nang cao voi edit va drag-drop.
+- Supplement schedule rieng tung loai va trang thai skipped.
+- Exercise library/routine builder nang cao voi form edit day du va drag-drop gesture.
+- Offline retry worker va conflict resolution voi backend.
 - Data export CSV va export JSON backend-safe.
 - Gemini/OpenAI API key tren deployment de bat AI production.
 - Health sync, native mobile app, widgets, watch app.
@@ -763,13 +770,15 @@ Da lam:
 - Hydration timeline local co sua amount +/-50ml va xoa log.
 - Hydration detail route `/hydration` voi filter va chart theo gio da co.
 - Them supplement custom va log supplement trong ngay da co.
+- Edit nhanh ten/amount supplement custom da co.
 - Daily progress ring da co.
 - Local optimistic update qua React state/localStorage da co.
+- Offline sync queue local da enqueue cac thay doi hydration/supplement.
 
 Con lai:
 
-- Chua co sync backend.
-- Chua co edit supplement.
+- Chua co sync backend production/retry worker/conflict handling.
+- Chua co schedule rule rieng cho tung supplement.
 - Chua co notification that gui ve may.
 
 Exit criteria:
@@ -802,12 +811,12 @@ Da lam:
 - Workout sets duoc luu localStorage.
 - e1RM va volume summary da co trong Progress.
 - Workout history local cho sets da co.
+- Wake Lock API da request/release khi vao tab Workout neu trinh duyet ho tro.
 
 Con lai:
 
 - Chua co form edit exercise day du va drag-drop reorder bang gesture.
 - Body metrics local da co, nhung chua co form edit day du/chart nang cao.
-- Wake Lock API chua implement.
 
 Exit criteria:
 
@@ -817,7 +826,7 @@ Exit criteria:
 
 ### Phase 3 - Automation
 
-Trang thai: Mostly done / Web Push sender da co, can VAPID credentials de gui production.
+Trang thai: Mostly done / Web Push sender va notification settings local da co, can VAPID credentials de gui production.
 
 - Progressive overload engine.
 - Smart hydration reminders.
@@ -835,13 +844,14 @@ Da lam:
 - Cron routes va `vercel.json` da co.
 - Monthly achievements cron route da co.
 - Notification permission UI da co.
+- Settings toggles cho hydration reminder, creatine reminder va quiet hours da co.
 - Service worker push/action handler da co.
 - Web Push sender da co va cron routes da noi vao sender.
 
 Con lai:
 
 - Chua co VAPID/FCM credentials tren deployment.
-- Chua co notification settings UI nang cao nhu quiet hours/snooze history tren Settings.
+- Chua co snooze history UI va multi-schedule UI nang cao tren Settings.
 
 Exit criteria:
 
