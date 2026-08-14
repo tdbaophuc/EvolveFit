@@ -26,4 +26,17 @@ describe("EvolveFitApiClient", () => {
     );
     vi.unstubAllGlobals();
   });
+
+  it("posts auth sign in", async () => {
+    const fetchMock = vi.fn(async () => Response.json({ ok: true, data: { mode: "email", email: "a@b.com" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await new EvolveFitApiClient().signIn({ email: "a@b.com", mode: "email" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/auth/sign-in",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ email: "a@b.com", mode: "email" }) })
+    );
+    vi.unstubAllGlobals();
+  });
 });

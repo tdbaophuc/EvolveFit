@@ -119,6 +119,7 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - App icon SVG.
   - Service worker cache co ban.
 - Backend/API contracts:
+  - Route Handlers cho auth session/sign-in/sign-out.
   - Route Handlers cho hydration today/log/patch/delete.
   - Route Handlers cho supplements list/create/log/reminder.
   - Route Handlers cho workouts today/log set.
@@ -133,6 +134,7 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Route Handler `/api/integrations/status` de kiem tra Supabase/AI/Web Push/Cron env readiness.
   - Server memory adapter trong `src/lib/api.ts`, san sang thay bang Supabase adapter.
 - Integration adapters:
+  - `src/lib/auth.ts` cho Supabase Auth password REST call, Google OAuth URL helper va local session fallback.
   - `.env.example` cho Supabase, Gemini/OpenAI, VAPID, Cron secret.
   - `src/lib/integrations.ts` cho Supabase REST request contract.
   - `src/lib/data-adapter.ts` gom `MemoryDataAdapter`, `SupabaseRestAdapter`, va factory fallback theo env.
@@ -152,7 +154,7 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Cron hydration/creatine routes da noi vao Web Push sender.
 - Test/build:
   - `npm run lint` pass.
-  - `npm test` pass: 30 tests.
+  - `npm test` pass: 34 tests.
   - `npm run build` pass.
 - Git:
   - Da commit va push len GitHub nhanh `breakthrough`.
@@ -161,12 +163,14 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
 
 - Auth/profile:
   - Da co onboarding/profile local va auth/session UI fallback cho local/email/google mode.
-  - Chua co dang ky/dang nhap OAuth that.
+  - Da co auth API contracts va Supabase Auth REST adapter cho email/password khi co env.
+  - Da co Google OAuth URL helper.
+  - Chua co OAuth callback/session cookie production do chua co credentials/deployment URL.
 - Supabase:
   - Da co database migration/RLS artifact.
   - Da co env contract va Supabase REST request helper.
   - Da co Supabase REST adapter fallback qua `createDataAdapter`.
-  - Chua co Supabase Auth/session UI that vi chua co credentials.
+  - Auth/session contract da co; production session can Supabase credentials.
 - Hydration history:
   - Co log, recent logs, timeline local va sua/xoa amount nhanh.
   - Co route `/hydration` rieng voi filter va chart theo gio local-first.
@@ -199,10 +203,9 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
 
 ### Chua lam
 
-- Dang ky/dang nhap email/Google OAuth that.
+- Supabase OAuth callback/session cookie production voi project credentials.
 - Onboarding flow 5 buoc day du voi template selection.
-- Supabase Auth/client session integration voi project credentials.
-- Supabase Auth/session UI that voi project credentials.
+- Supabase project credentials tren deployment.
 - VAPID/FCM credentials tren deployment de bat Web Push production.
 - Hydration detail nang cao voi richer analytics va backend sync.
 - Exercise library/routine builder nang cao voi edit va drag-drop.
@@ -725,11 +728,12 @@ Da lam:
 - `.env.example`, integration status API, Supabase REST request helper da co.
 - Data adapter factory voi Supabase REST adapter va memory fallback da co.
 - Auth/session UI fallback local/email/google mode da co.
+- Supabase Auth REST adapter va auth API routes da co.
 
 Con lai:
 
 - Chua dung Tailwind; hien dang dung CSS thuan theo design docs.
-- Chua cau hinh Supabase Auth/OAuth flow voi credentials that.
+- Chua cau hinh Supabase OAuth callback/session cookie voi credentials/deployment URL.
 
 Exit criteria:
 

@@ -1,10 +1,23 @@
 import type { HydrationLog, Supplement, SupplementLog, WorkoutSet } from "./core";
+import type { AuthMode, AuthSession } from "./auth";
 import type { IntegrationStatus } from "./integrations";
 
 type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
 export class EvolveFitApiClient {
   constructor(private readonly baseUrl = "") {}
+
+  async session(): Promise<ApiResult<AuthSession>> {
+    return this.get("/api/auth/session");
+  }
+
+  async signIn(input: { email: string; password?: string; mode?: AuthMode }): Promise<ApiResult<AuthSession>> {
+    return this.post("/api/auth/sign-in", input);
+  }
+
+  async signOut(): Promise<ApiResult<AuthSession>> {
+    return this.post("/api/auth/sign-out", {});
+  }
 
   async hydrationToday(): Promise<ApiResult<{ logs: HydrationLog[]; totalMl: number; targetMl: number; expectedMl: number }>> {
     return this.get("/api/hydration/today");
