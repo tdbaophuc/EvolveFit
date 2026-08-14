@@ -32,6 +32,7 @@ import {
   hydrationTotal,
   monthlyAchievements,
   progressiveOverloadRecommendation,
+  readinessScore,
   shouldSendCreatineReminder,
   shouldSendHydrationReminder,
   upsertQuickAmount,
@@ -250,6 +251,18 @@ export default function AppPage() {
     );
   }
 
+  function updateExerciseTarget(id: string, patch: Partial<WorkoutExercise>) {
+    commit(
+      {
+        ...state,
+        workoutExercises: state.workoutExercises.map((exercise) =>
+          exercise.id === id ? { ...exercise, ...patch } : exercise
+        )
+      },
+      "Đã cập nhật bài tập"
+    );
+  }
+
   function moveExercise(id: string, direction: -1 | 1) {
     const index = state.workoutExercises.findIndex((exercise) => exercise.id === id);
     const nextIndex = index + direction;
@@ -290,6 +303,16 @@ export default function AppPage() {
 
   function deleteBodyMetric(id: string) {
     commit({ ...state, bodyMetrics: state.bodyMetrics.filter((metric) => metric.id !== id) }, "Đã xóa chỉ số cơ thể");
+  }
+
+  function updateBodyMetric(id: string, patch: Partial<BodyMetric>) {
+    commit(
+      {
+        ...state,
+        bodyMetrics: state.bodyMetrics.map((metric) => (metric.id === id ? { ...metric, ...patch } : metric))
+      },
+      "Đã cập nhật chỉ số cơ thể"
+    );
   }
 
   function completeOnboarding() {
@@ -352,6 +375,29 @@ export default function AppPage() {
 
   function updateProfile(next: Partial<AppState["profile"]>) {
     commit({ ...state, profile: { ...state.profile, ...next } });
+  }
+
+  function updateRecovery(next: Partial<AppState["recovery"]>) {
+    commit({ ...state, recovery: { ...state.recovery, ...next } });
+  }
+
+  function decideRecommendation(decision: "accepted" | "rejected") {
+    commit(
+      {
+        ...state,
+        recommendationDecisions: [
+          {
+            id: cryptoSafeId(),
+            title: activeRecommendation.title,
+            decision,
+            reason: activeRecommendation.reason,
+            decidedAt: new Date().toISOString()
+          },
+          ...state.recommendationDecisions
+        ]
+      },
+      decision === "accepted" ? "Đã áp dụng recommendation" : "Đã từ chối recommendation"
+    );
   }
 
   const restSeconds = useMemo(() => {
@@ -437,6 +483,7 @@ export default function AppPage() {
             deleteExercise={deleteExercise}
             moveExercise={moveExercise}
             applyTemplate={applyTemplate}
+            updateExerciseTarget={updateExerciseTarget}
           />
         )}
 
@@ -456,11 +503,21 @@ export default function AppPage() {
             setNewMetricBodyFat={setNewMetricBodyFat}
             addBodyMetric={addBodyMetric}
             deleteBodyMetric={deleteBodyMetric}
+            updateBodyMetric={updateBodyMetric}
             downloadExport={downloadExport}
           />
         )}
 
-        {tab === "coach" && <CoachView recommendation={activeRecommendation} achievements={achievements} />}
+        {tab === "coach" && (
+          <CoachView
+            recommendation={activeRecommendation}
+            achievements={achievements}
+            recovery={state.recovery}
+            updateRecovery={updateRecovery}
+            decisions={state.recommendationDecisions}
+            decideRecommendation={decideRecommendation}
+          />
+        )}
 
         {tab === "settings" && (
           <SettingsView
@@ -816,6 +873,7 @@ function WorkoutView(props: {
   deleteExercise: (id: string) => void;
   moveExercise: (id: string, direction: -1 | 1) => void;
   applyTemplate: (template: AppState["activeTemplate"]) => void;
+  updateExerciseTarget: (id: string, patch: Partial<WorkoutExercise>) => void;
 }) {
   return (
     <div className="stack workout-focus">
@@ -852,6 +910,24 @@ function WorkoutView(props: {
                 {exercise.targetSets}x{exercise.targetRepsMin}-{exercise.targetRepsMax}
               </em>
               <div className="row-actions">
+                <button
+                  onClick={() => props.updateExerciseTarget(exercise.id, { targetWeightKg: Math.max(0, exercise.targetWeightKg - 2.5) })}
+                  aria-label="Giảm target weight"
+                >
+                  -kg
+                </button>
+                <button
+                  onClick={() => props.updateExerciseTarget(exercise.id, { targetWeightKg: exercise.targetWeightKg + 2.5 })}
+                  aria-label="Tăng target weight"
+                >
+                  +kg
+                </button>
+                <button
+                  onClick={() => props.updateExerciseTarget(exercise.id, { targetRepsMax: exercise.targetRepsMax + 1 })}
+                  aria-label="Tăng target reps"
+                >
+                  +rep
+                </button>
                 <button onClick={() => props.moveExercise(exercise.id, -1)} aria-label="Đưa bài tập lên">
                   ↑
                 </button>
@@ -914,6 +990,34 @@ function WorkoutView(props: {
         <p>Tự động chạy sau mỗi set, phù hợp Focus Mode.</p>
       </section>
 
+      <section className="card">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Workout history</p>
+            <h2>Sets đã ghi</h2>
+          </div>
+          <Activity size={22} />
+        </div>
+        <div className="timeline compact">
+          {props.state.workoutSets.length ? (
+            props.state.workoutSets
+              .slice()
+              .reverse()
+              .map((set) => (
+                <div key={set.id}>
+                  <span>{set.exerciseName}</span>
+                  <strong>
+                    {set.actualWeightKg}kg x {set.actualReps}
+                  </strong>
+                  <em>RPE {set.rpe ?? "-"}</em>
+                </div>
+              ))
+          ) : (
+            <p>Chưa có set nào trong buổi hiện tại.</p>
+          )}
+        </div>
+      </section>
+
       <button className="sticky-complete training-bg" onClick={props.completeSet}>
         <Check size={22} /> Hoàn thành set
       </button>
@@ -967,6 +1071,7 @@ function ProgressView(props: {
   setNewMetricBodyFat: (value: number) => void;
   addBodyMetric: () => void;
   deleteBodyMetric: (id: string) => void;
+  updateBodyMetric: (id: string, patch: Partial<BodyMetric>) => void;
   downloadExport: () => void;
 }) {
   const volume = props.sets.reduce((sum, set) => sum + set.actualWeightKg * set.actualReps, 0);
@@ -1021,6 +1126,14 @@ function ProgressView(props: {
                 <span>{new Date(metric.measuredAt).toLocaleDateString("vi-VN")}</span>
                 <strong>{metric.weightKg}kg</strong>
                 <em>{metric.bodyFatPercent ?? "-"}%</em>
+                <div className="row-actions">
+                  <button onClick={() => props.updateBodyMetric(metric.id, { weightKg: Math.round((metric.weightKg - 0.1) * 10) / 10 })}>
+                    -0.1
+                  </button>
+                  <button onClick={() => props.updateBodyMetric(metric.id, { weightKg: Math.round((metric.weightKg + 0.1) * 10) / 10 })}>
+                    +0.1
+                  </button>
+                </div>
                 <button className="icon-mini danger" onClick={() => props.deleteBodyMetric(metric.id)} aria-label="Xóa chỉ số cơ thể">
                   <Trash2 size={14} />
                 </button>
@@ -1062,6 +1175,10 @@ function MetricCard(props: { label: string; value: string; accent: "hydration" |
 function CoachView(props: {
   recommendation: { title: string; reason: string; source: string; action: string; nextWeightKg: number };
   achievements: { name: string; streakMonths: number }[];
+  recovery: AppState["recovery"];
+  updateRecovery: (next: Partial<AppState["recovery"]>) => void;
+  decisions: AppState["recommendationDecisions"];
+  decideRecommendation: (decision: "accepted" | "rejected") => void;
 }) {
   return (
     <div className="stack">
@@ -1070,15 +1187,54 @@ function CoachView(props: {
         <h1>{props.recommendation.title}</h1>
         <p>{props.recommendation.reason}</p>
         <div className="coach-actions">
-          <button className="primary-button coach-bg">Áp dụng</button>
-          <button className="secondary-button">Từ chối</button>
+          <button className="primary-button coach-bg" onClick={() => props.decideRecommendation("accepted")}>
+            Áp dụng
+          </button>
+          <button className="secondary-button" onClick={() => props.decideRecommendation("rejected")}>
+            Từ chối
+          </button>
         </div>
       </section>
       <section className="card">
         <h2>Readiness</h2>
         <div className="readiness-score">
-          <strong>82</strong>
-          <span>Ngủ tốt, soreness thấp, có thể giữ intensity.</span>
+          <strong>{readinessScore(props.recovery)}</strong>
+          <span>{props.recovery.note}</span>
+        </div>
+        <div className="recovery-controls">
+          <label>
+            Energy
+            <input type="range" min="1" max="5" value={props.recovery.energy} onChange={(event) => props.updateRecovery({ energy: Number(event.target.value) })} />
+          </label>
+          <label>
+            Sleep
+            <input type="range" min="1" max="5" value={props.recovery.sleepQuality} onChange={(event) => props.updateRecovery({ sleepQuality: Number(event.target.value) })} />
+          </label>
+          <label>
+            Soreness
+            <input type="range" min="1" max="5" value={props.recovery.soreness} onChange={(event) => props.updateRecovery({ soreness: Number(event.target.value) })} />
+          </label>
+          <label>
+            Stress
+            <input type="range" min="1" max="5" value={props.recovery.stress} onChange={(event) => props.updateRecovery({ stress: Number(event.target.value) })} />
+          </label>
+          <input value={props.recovery.note} onChange={(event) => props.updateRecovery({ note: event.target.value })} aria-label="Recovery note" />
+        </div>
+      </section>
+      <section className="card">
+        <h2>Recommendation audit</h2>
+        <div className="timeline compact">
+          {props.decisions.length ? (
+            props.decisions.map((decision) => (
+              <div key={decision.id}>
+                <span>{new Date(decision.decidedAt).toLocaleDateString("vi-VN")}</span>
+                <strong>{decision.decision}</strong>
+                <em>{decision.title}</em>
+              </div>
+            ))
+          ) : (
+            <p>Chưa có recommendation nào được áp dụng hoặc từ chối.</p>
+          )}
         </div>
       </section>
       <section className="card">

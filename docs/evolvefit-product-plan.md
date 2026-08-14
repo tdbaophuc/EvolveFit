@@ -70,23 +70,28 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Routine builder compact va exercise library local.
   - Them exercise custom vao routine.
   - Xoa va sap xep exercise trong routine.
+  - Chinh nhanh target weight/reps cua exercise.
   - Exercise hien tai, target sets/reps/weight.
   - Last session comparison.
   - Set table target/actual.
   - Stepper cho weight, reps, RPE.
   - Nut "Hoan thanh set".
   - Rest timer auto-start sau khi complete set.
+  - Workout history local cho cac set da ghi.
 - Man hinh Progress:
   - Summary cards cho hydration, workout volume, e1RM, total sets.
   - Bar chart 7 ngay dang UI.
   - Body metrics CRUD local cho weight/body fat.
   - Weight delta va body metrics timeline.
+  - Chinh nhanh body weight trong timeline.
   - Xoa body metric.
   - Badge list.
   - Export JSON local.
 - Man hinh Coach:
   - Rule-based recommendation card.
+  - Recovery check-in editable: energy, sleep, soreness, stress, note.
   - Readiness score.
+  - Accept/reject recommendation va audit trail local.
   - Leaderboard preview.
 - Man hinh Settings:
   - Chinh water target.
@@ -126,6 +131,7 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
 - Integration adapters:
   - `.env.example` cho Supabase, Gemini/OpenAI, VAPID, Cron secret.
   - `src/lib/integrations.ts` cho Supabase REST request contract.
+  - `src/lib/data-adapter.ts` gom `MemoryDataAdapter`, `SupabaseRestAdapter`, va factory fallback theo env.
   - AI coach adapter ho tro Gemini/OpenAI mode va rule fallback khi thieu credentials.
 - Supabase:
   - Migration SQL `supabase/migrations/0001_initial_schema.sql`.
@@ -138,7 +144,7 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Service worker notification action handler: `log-water-250`, `log-creatine`, `snooze`.
 - Test/build:
   - `npm run lint` pass.
-  - `npm test` pass: 19 tests.
+  - `npm test` pass: 23 tests.
   - `npm run build` pass.
 - Git:
   - Da commit va push len GitHub nhanh `breakthrough`.
@@ -150,7 +156,8 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
 - Supabase:
   - Da co database migration/RLS artifact.
   - Da co env contract va Supabase REST request helper.
-  - Chua ket noi Supabase Auth/client session that vi chua co credentials.
+  - Da co Supabase REST adapter fallback qua `createDataAdapter`.
+  - Chua co Supabase Auth/session UI that vi chua co credentials.
 - Hydration history:
   - Co log, recent logs, timeline local va sua/xoa amount nhanh.
   - Chua co man hinh detail route rieng va filter/chart theo gio day du.
@@ -161,14 +168,16 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
 - Workout planner:
   - Co routine demo, live workout, exercise library local, them/xoa/sap xep exercise custom.
   - Co template selector PPL/Upper-Lower/Full Body/Custom.
-  - Chua co edit exercise va drag reorder bang gesture.
+  - Co chinh nhanh target weight/reps cua exercise.
+  - Chua co form edit exercise day du va drag reorder bang gesture.
 - Notifications:
   - Co rule tinh nen nhac, notification subscribe/unsubscribe contract, cron routes, notification permission UI va service worker action handler.
   - Chua gui Web Push/FCM that vi chua co VAPID/FCM credentials.
 - AI Coach:
   - Hien la rule-based recommendation.
   - Co coach API contract va AI adapter mode Gemini/OpenAI/rule fallback.
-  - Chua goi provider Gemini/OpenAI that vi chua co credentials, chua co accept/reject persistence that.
+  - Co recovery check-in editable, readiness score va accept/reject audit trail local.
+  - Chua goi provider Gemini/OpenAI that vi chua co credentials.
 - Achievements/Leaderboard:
   - Co badge calculation va leaderboard preview.
   - Chua co monthly job, public profile, ranking backend, anti-cheat.
@@ -176,15 +185,15 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Co localStorage va service worker cache co ban.
   - Chua co offline queue/sync conflict handling voi backend.
 - Body metrics:
-  - Co body metrics local cho weight/body fat, timeline va xoa metric.
-  - Chua co edit metric va chart body fat/weight nang cao.
+  - Co body metrics local cho weight/body fat, timeline, chinh nhanh weight va xoa metric.
+  - Chua co form edit metric day du va chart body fat/weight nang cao.
 
 ### Chua lam
 
 - Dang ky/dang nhap email/Google OAuth.
 - Onboarding flow 5 buoc day du voi template selection.
 - Supabase Auth/client session integration voi project credentials.
-- Supabase adapter thay cho server memory adapter.
+- Supabase Auth/session UI that voi project credentials.
 - Web Push/FCM send notification that voi VAPID/FCM credentials.
 - Hydration detail route/screen day du.
 - Exercise library/routine builder nang cao voi edit va drag-drop.
@@ -705,12 +714,12 @@ Da lam:
 - API Route Handlers theo contract da co.
 - Vercel cron config da co.
 - `.env.example`, integration status API, Supabase REST request helper da co.
+- Data adapter factory voi Supabase REST adapter va memory fallback da co.
 
 Con lai:
 
 - Chua dung Tailwind; hien dang dung CSS thuan theo design docs.
-- Chua cau hinh Supabase Auth/client session voi credentials that.
-- Chua co Supabase adapter thay server memory adapter.
+- Chua cau hinh Supabase Auth/session UI voi credentials that.
 
 Exit criteria:
 
@@ -772,17 +781,18 @@ Da lam:
 - Routine builder compact da co.
 - Exercise library local va them exercise custom da co.
 - Template selector PPL/Upper-Lower/Full Body/Custom da co.
+- Chinh nhanh target weight/reps cua exercise da co.
 - Exercise target, last session comparison da co du lieu mau.
 - Stepper weight/reps/RPE da co.
 - Complete set va rest timer da co.
 - Workout sets duoc luu localStorage.
 - e1RM va volume summary da co trong Progress.
+- Workout history local cho sets da co.
 
 Con lai:
 
-- Chua co edit exercise va drag-drop reorder bang gesture.
-- Chua co workout history screen day du.
-- Body metrics local da co, nhung chua co edit/delete/chart nang cao.
+- Chua co form edit exercise day du va drag-drop reorder bang gesture.
+- Body metrics local da co, nhung chua co form edit day du/chart nang cao.
 - Wake Lock API chua implement.
 
 Exit criteria:
@@ -826,7 +836,7 @@ Exit criteria:
 
 ### Phase 4 - AI Coach
 
-Trang thai: Partial / AI adapter contract da co, provider call that chua co credentials.
+Trang thai: Mostly done local-first / AI provider call that chua co credentials.
 
 - Recovery check-in.
 - AI recommendation JSON.
@@ -840,16 +850,16 @@ Da lam:
 - Recommendation hien dua tren rule engine.
 - Coach recommend API contract da co.
 - AI adapter Gemini/OpenAI/rule fallback da co.
+- Recovery check-in editable da co.
+- Accept/reject recommendation audit trail local da co.
 - Readiness score UI da co.
 - Achievement engine co ban cho monthly badges da co va co test.
 - Badge preview da hien trong Today/Progress.
 
 Con lai:
 
-- Chua co recovery check-in editable.
 - Chua co provider call Gemini/OpenAI that.
 - Chua co JSON schema/prompt nang cao cho production.
-- Chua co accept/reject persistence/audit trail.
 - Chua co monthly achievement job that.
 
 Exit criteria:

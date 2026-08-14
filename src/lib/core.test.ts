@@ -8,6 +8,7 @@ import {
   hydrationTotal,
   monthlyAchievements,
   latestBodyMetric,
+  readinessScore,
   progressiveOverloadRecommendation,
   shouldSendCreatineReminder,
   shouldSendHydrationReminder,
@@ -154,5 +155,12 @@ describe("body metrics and export", () => {
 
     expect(exported).toContain('"hydrationLogs"');
     expect(JSON.parse(exported).hydrationLogs[0].amountMl).toBe(500);
+  });
+});
+
+describe("readiness score", () => {
+  it("scores high energy and low stress higher", () => {
+    expect(readinessScore({ energy: 5, sleepQuality: 5, soreness: 1, stress: 1 })).toBe(100);
+    expect(readinessScore({ energy: 1, sleepQuality: 1, soreness: 5, stress: 5 })).toBe(20);
   });
 });

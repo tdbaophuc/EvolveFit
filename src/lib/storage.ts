@@ -13,6 +13,7 @@ export function loadState(): AppState {
       ...initialState,
       ...parsed,
       profile: { ...initialState.profile, ...parsed.profile },
+      recovery: { ...initialState.recovery, ...parsed.recovery },
       hydrationLogs: parsed.hydrationLogs ?? initialState.hydrationLogs,
       supplements: parsed.supplements ?? initialState.supplements,
       supplementLogs: parsed.supplementLogs ?? initialState.supplementLogs,
@@ -20,7 +21,8 @@ export function loadState(): AppState {
       workoutExercises: parsed.workoutExercises ?? initialState.workoutExercises,
       workoutSets: parsed.workoutSets ?? initialState.workoutSets,
       bodyMetrics: parsed.bodyMetrics ?? initialState.bodyMetrics,
-      activeTemplate: parsed.activeTemplate ?? initialState.activeTemplate
+      activeTemplate: parsed.activeTemplate ?? initialState.activeTemplate,
+      recommendationDecisions: parsed.recommendationDecisions ?? initialState.recommendationDecisions
     };
   } catch {
     return initialState;

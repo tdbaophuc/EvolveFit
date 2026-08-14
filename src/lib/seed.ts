@@ -15,6 +15,13 @@ export type AppState = {
     remindBeforeMinutes: number;
     leaderboardPublic: boolean;
   };
+  recovery: {
+    energy: number;
+    sleepQuality: number;
+    soreness: number;
+    stress: number;
+    note: string;
+  };
   hydrationLogs: HydrationLog[];
   supplements: Supplement[];
   supplementLogs: SupplementLog[];
@@ -24,6 +31,13 @@ export type AppState = {
   bodyMetrics: BodyMetric[];
   activeTemplate: "ppl" | "upper-lower" | "full-body" | "custom";
   activeExerciseIndex: number;
+  recommendationDecisions: {
+    id: string;
+    title: string;
+    decision: "accepted" | "rejected";
+    reason?: string;
+    decidedAt: string;
+  }[];
   restEndsAt?: string;
   undo?: {
     label: string;
@@ -158,6 +172,13 @@ export const initialState: AppState = {
     remindBeforeMinutes: 15,
     leaderboardPublic: false
   },
+  recovery: {
+    energy: 4,
+    sleepQuality: 4,
+    soreness: 2,
+    stress: 2,
+    note: "Ngủ ổn, hơi mỏi ngực."
+  },
   supplements: [
     { id: "sup1", name: "Creatine", defaultAmount: 5, unit: "g", reminderHour: 17, active: true }
   ],
@@ -180,5 +201,6 @@ export const initialState: AppState = {
     { id: "bm2", measuredAt: `${today}T07:05:00.000Z`, weightKg: 72.1, heightCm: 174, bodyFatPercent: 17.8, waistCm: 81.5 }
   ],
   activeTemplate: "ppl",
-  activeExerciseIndex: 0
+  activeExerciseIndex: 0,
+  recommendationDecisions: []
 };

@@ -415,7 +415,7 @@ input[type="range"] {
 }
 
 .timeline.compact div {
-  grid-template-columns: 1fr auto auto auto;
+  grid-template-columns: 1fr auto auto;
 }
 
 .inline-form {
@@ -715,6 +715,30 @@ input[type="range"] {
   color: var(--muted);
   font-size: 13px;
   font-weight: 700;
+}
+
+.recovery-controls {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.recovery-controls label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.recovery-controls input[type="text"],
+.recovery-controls input:not([type]) {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #f8fafc;
 }
 
 .readiness-score strong {

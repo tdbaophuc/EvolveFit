@@ -227,6 +227,13 @@ export function exportAppData(data: unknown): string {
   return JSON.stringify(data, null, 2);
 }
 
+export function readinessScore(input: { energy: number; sleepQuality: number; soreness: number; stress: number }): number {
+  const clamp = (value: number) => Math.min(5, Math.max(1, value));
+  const positive = clamp(input.energy) + clamp(input.sleepQuality);
+  const inverse = 6 - clamp(input.soreness) + (6 - clamp(input.stress));
+  return Math.round(((positive + inverse) / 20) * 100);
+}
+
 export function monthlyAchievements(params: {
   hydrationGoalDays: number;
   hydrationTargetDays: number;
