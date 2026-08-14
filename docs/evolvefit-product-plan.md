@@ -38,6 +38,119 @@ Ghi chu ky thuat: web push tren iOS chi kha thi tot khi app duoc Add to Home Scr
 
 ## 4. Pham vi san pham
 
+## 4.1. Trang thai trien khai hien tai
+
+Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough`.
+
+### Da lam
+
+- Khoi tao ung dung Next.js App Router, TypeScript, ESLint, Vitest.
+- Cai dat giao dien PWA mobile-first theo light mode:
+  - Top app bar 56px.
+  - Bottom tab bar 5 tab: Hom nay, Tap luyen, Tien do, HLV, Cai dat.
+  - Layout card-based, padding 16px, card radius 8px, button radius 12px.
+  - Mau semantic: Hydration sky blue, Training lime, Supplement amber, Coach violet.
+- Man hinh Today:
+  - Hydration progress ring.
+  - Quick buttons log nuoc.
+  - Slider chon luong nuoc custom.
+  - Pin & log amount thanh quick button.
+  - Creatine row voi slider amount va quick button.
+  - Workout today card.
+  - Readiness chips.
+  - Monthly badge preview.
+  - Recent hydration logs.
+- Man hinh Workout / Live Workout:
+  - Push Day demo routine.
+  - Exercise hien tai, target sets/reps/weight.
+  - Last session comparison.
+  - Set table target/actual.
+  - Stepper cho weight, reps, RPE.
+  - Nut "Hoan thanh set".
+  - Rest timer auto-start sau khi complete set.
+- Man hinh Progress:
+  - Summary cards cho hydration, workout volume, e1RM, total sets.
+  - Bar chart 7 ngay dang UI.
+  - Badge list.
+- Man hinh Coach:
+  - Rule-based recommendation card.
+  - Readiness score.
+  - Leaderboard preview.
+- Man hinh Settings:
+  - Chinh water target.
+  - Chinh gio uong creatine.
+  - Chinh so phut nhac truoc.
+  - Toggle leaderboard opt-in.
+  - Reset du lieu mau.
+- Logic local-first:
+  - Luu state vao `localStorage`.
+  - Hydration total, percent, expected progress theo gio thuc/day.
+  - Hydration reminder rule, co quiet hours.
+  - Creatine reminder rule theo gio co dinh va remind-before.
+  - Quick amount upsert, pin, sort theo tan suat dung.
+  - Undo cho water, creatine, complete set.
+  - Progressive overload recommendation: increase / hold / deload.
+  - Estimated 1RM.
+  - Monthly achievement calculation.
+- PWA:
+  - `manifest.webmanifest`.
+  - App icon SVG.
+  - Service worker cache co ban.
+- Test/build:
+  - `npm run lint` pass.
+  - `npm test` pass: 9 tests.
+  - `npm run build` pass.
+- Git:
+  - Da commit va push len GitHub nhanh `breakthrough`.
+
+### Da lam mot phan / dang gia lap
+
+- Auth/profile:
+  - Hien moi co profile local mau, chua co dang ky/dang nhap that.
+- Supabase:
+  - Chua co database migrations, RLS, Supabase Auth.
+  - Data model da nam trong plan, chua implement backend.
+- Hydration history:
+  - Co log va recent logs local.
+  - Chua co man hinh detail rieng de sua/xoa timeline day du.
+- Supplement:
+  - Co creatine local, slider va reminder rule.
+  - Chua co CRUD supplement tuy chinh nhu whey, omega-3, vitamin D.
+- Workout planner:
+  - Co routine demo va live workout.
+  - Chua co routine builder, exercise library CRUD, template selector.
+- Notifications:
+  - Co rule tinh nen nhac.
+  - Chua co Web Push/FCM subscription, notification action, cron job.
+- AI Coach:
+  - Hien la rule-based recommendation.
+  - Chua goi Gemini/OpenAI API, chua co accept/reject persistence that.
+- Achievements/Leaderboard:
+  - Co badge calculation va leaderboard preview.
+  - Chua co monthly job, public profile, ranking backend, anti-cheat.
+- Offline:
+  - Co localStorage va service worker cache co ban.
+  - Chua co offline queue/sync conflict handling voi backend.
+- Body metrics:
+  - Co UI progress tong quan.
+  - Chua co CRUD body metrics va chart body fat/weight that.
+
+### Chua lam
+
+- Dang ky/dang nhap email/Google OAuth.
+- Onboarding flow 5 buoc.
+- Supabase schema, migrations, RLS policies.
+- API routes/server actions trong plan.
+- Vercel Cron.
+- Web Push/FCM subscription va push notification that.
+- Hydration detail screen day du.
+- Exercise library va routine builder.
+- Program templates PPL, Upper/Lower, Full Body.
+- Data export CSV/JSON.
+- AI integration that.
+- Health sync, native mobile app, widgets, watch app.
+- Nutrition tracking, progress photos, social sharing.
+
 ### MVP - Ban dung duoc hang ngay
 
 Muc tieu: user co the cai PWA len dien thoai, log nuoc/creatine, tap theo lich, xem tien do hom nay va lich su co ban.
@@ -533,10 +646,25 @@ Logic de xuat:
 
 ### Phase 0 - Foundation
 
+Trang thai: Partial / gan xong local foundation.
+
 - Khoi tao Next.js + TypeScript + Tailwind.
 - Cau hinh Supabase Auth va database migrations.
 - Thiet ke design tokens mobile-first.
 - Cai PWA manifest/icons/service worker co ban.
+
+Da lam:
+
+- Next.js + TypeScript da khoi tao.
+- ESLint/Vitest da cau hinh.
+- Design tokens light mode da implement trong CSS.
+- PWA manifest, icon, service worker co ban da co.
+
+Con lai:
+
+- Chua dung Tailwind; hien dang dung CSS thuan theo design docs.
+- Chua cau hinh Supabase Auth.
+- Chua co database migrations/RLS.
 
 Exit criteria:
 
@@ -546,6 +674,8 @@ Exit criteria:
 
 ### Phase 1 - Hydration & supplement MVP
 
+Trang thai: Partial / dung duoc o local-first.
+
 - Hydration goal va quick log.
 - Slider chon amount va quick amount presets.
 - Creatine/supplement log.
@@ -553,6 +683,23 @@ Exit criteria:
 - Undo/sua/xoa log.
 - Daily progress ring.
 - Local optimistic update + sync.
+
+Da lam:
+
+- Hydration goal local va quick log da co.
+- Slider amount va pin quick button da co.
+- Creatine log, slider amount, quick amount da co.
+- Creatine reminder time va reminder rule da co.
+- Undo sau khi log da co.
+- Daily progress ring da co.
+- Local optimistic update qua React state/localStorage da co.
+
+Con lai:
+
+- Chua co sync backend.
+- Chua co sua/xoa log trong timeline day du.
+- Chua co supplement custom CRUD.
+- Chua co notification that gui ve may.
 
 Exit criteria:
 
@@ -562,12 +709,31 @@ Exit criteria:
 
 ### Phase 2 - Workout MVP
 
+Trang thai: Partial / live workout demo da dung duoc, planner chua day du.
+
 - Exercise library.
 - Routine builder don gian.
 - Live workout mode.
 - Rest timer.
 - Workout history.
 - Body metrics.
+
+Da lam:
+
+- Live workout mode da co.
+- Exercise target, last session comparison da co du lieu mau.
+- Stepper weight/reps/RPE da co.
+- Complete set va rest timer da co.
+- Workout sets duoc luu localStorage.
+- e1RM va volume summary da co trong Progress.
+
+Con lai:
+
+- Chua co exercise library CRUD.
+- Chua co routine builder.
+- Chua co workout history screen day du.
+- Chua co body metrics CRUD/chart that.
+- Wake Lock API chua implement.
 
 Exit criteria:
 
@@ -577,11 +743,27 @@ Exit criteria:
 
 ### Phase 3 - Automation
 
+Trang thai: Partial / rule engine da co, notification backend chua co.
+
 - Progressive overload engine.
 - Smart hydration reminders.
 - Web push subscription.
 - Vercel Cron jobs.
 - Notification settings.
+
+Da lam:
+
+- Progressive overload rule engine da co va co test.
+- Hydration reminder rule da co va co test.
+- Creatine reminder rule da co va co test.
+- Settings co chinh reminder time/remind-before.
+
+Con lai:
+
+- Chua co Web Push subscription.
+- Chua co Vercel Cron.
+- Chua co notification settings day du.
+- Chua co notification actions `Log 250ml`, `Snooze`.
 
 Exit criteria:
 
@@ -591,11 +773,29 @@ Exit criteria:
 
 ### Phase 4 - AI Coach
 
+Trang thai: Partial / coach dang rule-based, AI that chua co.
+
 - Recovery check-in.
 - AI recommendation JSON.
 - Review/accept/reject flow.
 - Luu audit trail.
 - Achievement engine co ban cho monthly badges.
+
+Da lam:
+
+- Coach recommendation card da co.
+- Recommendation hien dua tren rule engine.
+- Readiness score UI da co.
+- Achievement engine co ban cho monthly badges da co va co test.
+- Badge preview da hien trong Today/Progress.
+
+Con lai:
+
+- Chua co recovery check-in editable.
+- Chua co AI API.
+- Chua co JSON schema/prompt.
+- Chua co accept/reject persistence/audit trail.
+- Chua co monthly achievement job that.
 
 Exit criteria:
 
@@ -606,11 +806,27 @@ Exit criteria:
 
 ### Phase 5 - Mobile-ready
 
+Trang thai: Not started / moi chuan bi mot phan qua PWA va core logic tach rieng.
+
 - Tach core logic thanh package rieng.
 - Chuan hoa API client.
 - Health sync strategy.
 - Expo prototype.
 - Leaderboard opt-in va public profile toi thieu.
+
+Da lam:
+
+- Core logic da tach o `src/lib/core.ts`, co the tiep tuc tach thanh package sau.
+- UI da mobile-first va PWA-installable ve mat manifest.
+- Leaderboard opt-in da co toggle local.
+
+Con lai:
+
+- Chua co monorepo/package shared.
+- Chua co typed API client.
+- Chua co Health sync strategy implement.
+- Chua co Expo prototype.
+- Chua co public profile/leaderboard backend.
 
 Exit criteria:
 
