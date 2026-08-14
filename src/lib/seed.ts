@@ -208,7 +208,7 @@ export const initialState: AppState = {
     quietHoursEnabled: true
   },
   supplements: [
-    { id: "sup1", name: "Creatine", defaultAmount: 5, unit: "g", reminderHour: 17, active: true }
+    { id: "sup1", name: "Creatine", defaultAmount: 5, unit: "g", reminderHour: 17, scheduleHours: [17], active: true }
   ],
   hydrationLogs: [
     { id: "h1", amountMl: 500, drinkType: "water", loggedAt: `${today}T08:10:00.000Z` },

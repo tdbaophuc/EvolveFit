@@ -8,6 +8,8 @@ export type AuthSession = {
   expiresAt?: number;
 };
 
+export const authCookieName = "evolvefit_session";
+
 let localSession: AuthSession = {
   mode: "local",
   email: "phuc@example.com"
@@ -65,6 +67,44 @@ export async function signIn(input: {
 
 export function signOut(): AuthSession {
   localSession = { mode: "local", email: "local@evolvefit.app" };
+  return localSession;
+}
+
+export function createSessionCookieValue(session: AuthSession): string {
+  return Buffer.from(JSON.stringify(session), "utf8").toString("base64url");
+}
+
+export function parseSessionCookieValue(value: string | undefined): AuthSession | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Partial<AuthSession>;
+    if (!parsed.email || !parsed.mode) return undefined;
+    return {
+      mode: parsed.mode,
+      email: parsed.email,
+      accessToken: parsed.accessToken,
+      refreshToken: parsed.refreshToken,
+      expiresAt: parsed.expiresAt
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+export function sessionFromSupabaseTokens(input: {
+  email?: string;
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt?: number;
+  mode?: AuthMode;
+}): AuthSession {
+  localSession = {
+    mode: input.mode ?? "google",
+    email: input.email ?? "user@evolvefit.app",
+    accessToken: input.accessToken,
+    refreshToken: input.refreshToken,
+    expiresAt: input.expiresAt
+  };
   return localSession;
 }
 

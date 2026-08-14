@@ -94,22 +94,26 @@ export function createSupplement(input: { name: string; defaultAmount: number; u
     name: input.name.trim(),
     defaultAmount: input.defaultAmount,
     unit: input.unit ?? "g",
+    scheduleHours: [],
     active: true
   };
   serverState.supplements.push(supplement);
   return ok(supplement);
 }
 
-export function logSupplement(input: { name: string; amount: number; unit?: "g" | "mg" | "capsule" }): ApiResult<SupplementLog> {
+export function logSupplement(input: { name: string; amount: number; unit?: "g" | "mg" | "capsule"; supplementId?: string; status?: "taken" | "skipped"; skippedReason?: string }): ApiResult<SupplementLog> {
   if (!input.name.trim()) return fail("name is required");
-  if (!Number.isFinite(input.amount) || input.amount <= 0) return fail("amount must be positive");
+  if (input.status !== "skipped" && (!Number.isFinite(input.amount) || input.amount <= 0)) return fail("amount must be positive");
 
   const log: SupplementLog = {
     id: cryptoSafeId(),
+    supplementId: input.supplementId,
     name: input.name.trim(),
     amount: input.amount,
     unit: input.unit ?? "g",
-    loggedAt: new Date().toISOString()
+    loggedAt: new Date().toISOString(),
+    status: input.status ?? "taken",
+    skippedReason: input.skippedReason
   };
   serverState.supplementLogs.push(log);
   return ok(log);
@@ -123,7 +127,7 @@ export function updateSupplementReminder(id: string, reminderHour: number) {
   return ok(supplement);
 }
 
-export function updateSupplement(id: string, input: { name?: string; defaultAmount?: number; reminderHour?: number }) {
+export function updateSupplement(id: string, input: { name?: string; defaultAmount?: number; reminderHour?: number; scheduleHours?: number[]; active?: boolean }) {
   const supplement = serverState.supplements.find((item) => item.id === id);
   if (!supplement) return fail("supplement not found");
   if (input.name !== undefined && !input.name.trim()) return fail("name is required");
@@ -133,11 +137,16 @@ export function updateSupplement(id: string, input: { name?: string; defaultAmou
   if (input.reminderHour !== undefined && (!Number.isInteger(input.reminderHour) || input.reminderHour < 0 || input.reminderHour > 23)) {
     return fail("reminderHour must be 0-23");
   }
+  if (input.scheduleHours !== undefined && input.scheduleHours.some((hour) => !Number.isInteger(hour) || hour < 0 || hour > 23)) {
+    return fail("scheduleHours must be 0-23");
+  }
 
   Object.assign(supplement, {
     ...(input.name !== undefined ? { name: input.name.trim() } : {}),
     ...(input.defaultAmount !== undefined ? { defaultAmount: input.defaultAmount } : {}),
-    ...(input.reminderHour !== undefined ? { reminderHour: input.reminderHour } : {})
+    ...(input.reminderHour !== undefined ? { reminderHour: input.reminderHour } : {}),
+    ...(input.scheduleHours !== undefined ? { scheduleHours: [...new Set(input.scheduleHours)].sort((a, b) => a - b) } : {}),
+    ...(input.active !== undefined ? { active: input.active } : {})
   });
   return ok(supplement);
 }

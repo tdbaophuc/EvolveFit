@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createSupabaseOAuthUrl, getAuthSession, signIn, signOut } from "./auth";
+import { createSessionCookieValue, createSupabaseOAuthUrl, getAuthSession, parseSessionCookieValue, sessionFromSupabaseTokens, signIn, signOut } from "./auth";
 
 describe("auth adapter", () => {
   it("uses local fallback without Supabase env", async () => {
@@ -41,5 +41,12 @@ describe("auth adapter", () => {
       })
     ).toContain("provider=google");
     expect(signOut().mode).toBe("local");
+  });
+
+  it("serializes production sessions for httpOnly cookies", () => {
+    const session = sessionFromSupabaseTokens({ email: "user@example.com", accessToken: "access", refreshToken: "refresh" });
+    const cookie = createSessionCookieValue(session);
+    expect(parseSessionCookieValue(cookie)).toMatchObject({ email: "user@example.com", accessToken: "access" });
+    expect(parseSessionCookieValue("not-json")).toBeUndefined();
   });
 });

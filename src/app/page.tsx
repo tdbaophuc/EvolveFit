@@ -37,9 +37,13 @@ import {
   markSyncQueue,
   shouldSendCreatineReminder,
   shouldSendHydrationReminder,
+  suggestedRoutineTemplate,
+  suggestedWaterTargetMl,
+  toCsv,
   upsertQuickAmount,
   visibleQuickAmounts,
   type BodyMetric,
+  type HydrationLog,
   type Supplement,
   type WorkoutExercise,
   type WorkoutSet
@@ -48,6 +52,7 @@ import { initialState, routineTemplates, type AppState } from "@/lib/seed";
 import { loadState, resetState, saveState } from "@/lib/storage";
 
 type Tab = "today" | "workout" | "progress" | "coach" | "settings";
+type SyncStatus = "offline" | "pending" | "failed" | "synced";
 type WakeLockSentinelLike = { release: () => Promise<void> };
 type NavigatorWithWakeLock = Navigator & {
   wakeLock?: { request: (type: "screen") => Promise<WakeLockSentinelLike> };
@@ -61,6 +66,13 @@ const tabs: { id: Tab; label: string; icon: React.ComponentType<{ size?: number 
   { id: "settings", label: "Cài đặt", icon: Settings }
 ];
 
+function syncStatusLabel(status: SyncStatus) {
+  if (status === "offline") return "Offline";
+  if (status === "pending") return "Pending sync";
+  if (status === "failed") return "Sync failed";
+  return "Synced";
+}
+
 export default function AppPage() {
   const [state, setState] = useState<AppState>(initialState);
   const [tab, setTab] = useState<Tab>("today");
@@ -71,6 +83,11 @@ export default function AppPage() {
   const [newExerciseName, setNewExerciseName] = useState("Lateral Raise");
   const [newMetricWeight, setNewMetricWeight] = useState(72);
   const [newMetricBodyFat, setNewMetricBodyFat] = useState(18);
+  const [newMetricWaist, setNewMetricWaist] = useState(82);
+  const [newMetricChest, setNewMetricChest] = useState(96);
+  const [newMetricArm, setNewMetricArm] = useState(34);
+  const [newMetricThigh, setNewMetricThigh] = useState(56);
+  const [newMetricNote, setNewMetricNote] = useState("");
   const [setWeight, setSetWeight] = useState(42.5);
   const [setReps, setSetReps] = useState(8);
   const [setRpe, setSetRpe] = useState(8);
@@ -78,6 +95,8 @@ export default function AppPage() {
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
   const [mounted, setMounted] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
+  const [drinkType, setDrinkType] = useState<HydrationLog["drinkType"]>("water");
+  const [isOnline, setIsOnline] = useState(true);
 
   useEffect(() => {
     setState(loadState());
@@ -88,11 +107,31 @@ export default function AppPage() {
     if ("Notification" in window) {
       setNotificationPermission(Notification.permission);
     }
+    setIsOnline(navigator.onLine);
   }, []);
 
   useEffect(() => {
     if (mounted) saveState(state);
   }, [mounted, state]);
+
+  useEffect(() => {
+    const updateOnline = () => setIsOnline(navigator.onLine);
+    window.addEventListener("online", updateOnline);
+    window.addEventListener("offline", updateOnline);
+    return () => {
+      window.removeEventListener("online", updateOnline);
+      window.removeEventListener("offline", updateOnline);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mounted || !isOnline || !state.syncQueue.some((item) => item.status === "pending")) return;
+    const id = window.setTimeout(() => {
+      setState((current) => ({ ...current, syncQueue: markSyncQueue(current.syncQueue, "synced") }));
+      setToast("Offline queue đã retry local và đánh dấu synced");
+    }, 1200);
+    return () => window.clearTimeout(id);
+  }, [mounted, isOnline, state.syncQueue]);
 
   useEffect(() => {
     let wakeLock: WakeLockSentinelLike | undefined;
@@ -169,6 +208,13 @@ export default function AppPage() {
   );
   const latestMetric = latestBodyMetric(state.bodyMetrics);
   const weightDelta = bodyWeightDelta(state.bodyMetrics);
+  const syncStatus: SyncStatus = !isOnline
+    ? "offline"
+    : state.syncQueue.some((item) => item.status === "failed")
+      ? "failed"
+      : state.syncQueue.some((item) => item.status === "pending")
+        ? "pending"
+        : "synced";
 
   function commit(next: AppState, message?: string) {
     setState(next);
@@ -187,8 +233,8 @@ export default function AppPage() {
     commit({ ...next, undo: { label, state: previous } }, message);
   }
 
-  function logWater(amountMl: number, pin = false) {
-    const log = { id: cryptoSafeId(), amountMl, drinkType: "water" as const, loggedAt: new Date().toISOString() };
+  function logWater(amountMl: number, pin = false, type: HydrationLog["drinkType"] = drinkType) {
+    const log = { id: cryptoSafeId(), amountMl, drinkType: type, loggedAt: new Date().toISOString() };
     const quickAmounts = upsertQuickAmount(state.quickAmounts, {
       category: "hydration",
       label: `+${amountMl}ml`,
@@ -219,12 +265,15 @@ export default function AppPage() {
   }
 
   function logCreatine(amount = state.profile.creatineAmountG, pin = false) {
+    const creatine = state.supplements.find((supplement) => supplement.name.toLowerCase() === "creatine");
     const log = {
       id: cryptoSafeId(),
+      supplementId: creatine?.id,
       name: "Creatine",
       amount,
       unit: "g" as const,
-      loggedAt: new Date().toISOString()
+      loggedAt: new Date().toISOString(),
+      status: "taken" as const
     };
     const quickAmounts = upsertQuickAmount(state.quickAmounts, {
       category: "supplement",
@@ -239,6 +288,7 @@ export default function AppPage() {
   function logSupplement(supplement: Supplement) {
     const log = {
       id: cryptoSafeId(),
+      supplementId: supplement.id,
       name: supplement.name,
       amount: supplement.defaultAmount,
       unit: supplement.unit,
@@ -251,6 +301,7 @@ export default function AppPage() {
   function skipSupplement(supplement: Supplement) {
     const log = {
       id: cryptoSafeId(),
+      supplementId: supplement.id,
       name: supplement.name,
       amount: 0,
       unit: supplement.unit,
@@ -266,6 +317,7 @@ export default function AppPage() {
       name: newSupplementName.trim() || "Supplement",
       defaultAmount: newSupplementAmount,
       unit: "g",
+      scheduleHours: [],
       active: true
     };
     commitSynced({ ...state, supplements: [...state.supplements, supplement] }, "supplement.create", supplement, `Đã thêm ${supplement.name}`);
@@ -363,7 +415,12 @@ export default function AppPage() {
       measuredAt: new Date().toISOString(),
       weightKg: newMetricWeight,
       heightCm: latestMetric?.heightCm ?? 174,
-      bodyFatPercent: newMetricBodyFat
+      bodyFatPercent: newMetricBodyFat,
+      waistCm: newMetricWaist,
+      chestCm: newMetricChest,
+      armCm: newMetricArm,
+      thighCm: newMetricThigh,
+      note: newMetricNote.trim() || undefined
     };
     commitSynced({ ...state, bodyMetrics: [...state.bodyMetrics, metric] }, "bodyMetric.create", metric, "Đã lưu chỉ số cơ thể");
   }
@@ -385,6 +442,12 @@ export default function AppPage() {
   }
 
   function completeOnboarding() {
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(state.profile.email);
+    const hoursOk = state.profile.wakeHour >= 0 && state.profile.wakeHour <= 23 && state.profile.sleepHour >= 0 && state.profile.sleepHour <= 23 && state.profile.wakeHour !== state.profile.sleepHour;
+    if (!state.profile.name.trim() || !emailOk || state.profile.waterTargetMl < 1000 || state.profile.waterTargetMl > 6000 || !hoursOk || state.profile.workoutDays.length < 1) {
+      setToast("Onboarding chưa hợp lệ: kiểm tra email, mục tiêu nước, giờ ngủ/dậy và ngày tập");
+      return;
+    }
     const metric: BodyMetric = {
       id: cryptoSafeId(),
       measuredAt: new Date().toISOString(),
@@ -413,6 +476,45 @@ export default function AppPage() {
     link.download = "evolvefit-export.json";
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  function downloadCsvExport() {
+    const datasets = [
+      ["hydration", state.hydrationLogs],
+      ["supplements", state.supplementLogs],
+      ["workouts", state.workoutSets],
+      ["body-metrics", state.bodyMetrics]
+    ] as const;
+    datasets.forEach(([name, rows]) => {
+      const csv = toCsv(rows.map((row) => ({ ...row })));
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `evolvefit-${name}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  function importJsonExport(file: File) {
+    file
+      .text()
+      .then((text) => {
+        const imported = JSON.parse(text) as Partial<AppState>;
+        commit(
+          {
+            ...state,
+            ...imported,
+            profile: { ...state.profile, ...imported.profile },
+            recovery: { ...state.recovery, ...imported.recovery },
+            notificationSettings: { ...state.notificationSettings, ...imported.notificationSettings },
+            undo: undefined
+          },
+          "Đã import JSON"
+        );
+      })
+      .catch(() => setToast("Không import được JSON"));
   }
 
   async function requestNotifications() {
@@ -474,6 +576,13 @@ export default function AppPage() {
     commit({ ...state, syncQueue: markSyncQueue(state.syncQueue, status) }, status === "synced" ? "Đã đánh dấu sync xong" : "Đã đánh dấu sync lỗi");
   }
 
+  function clearQueue(status?: "synced" | "failed") {
+    commit(
+      { ...state, syncQueue: status ? state.syncQueue.filter((item) => item.status !== status) : [] },
+      status ? `Đã xóa queue ${status}` : "Đã xóa toàn bộ sync queue"
+    );
+  }
+
   function decideRecommendation(decision: "accepted" | "rejected") {
     commit(
       {
@@ -507,6 +616,7 @@ export default function AppPage() {
         <div>
           <p className="top-date">{new Intl.DateTimeFormat("vi-VN", { weekday: "long", day: "2-digit", month: "short" }).format(now)}</p>
           <p className="top-subtitle">Local-first PWA • {state.profile.timezone}</p>
+          <span className={`sync-status ${syncStatus}`}>{syncStatusLabel(syncStatus)}</span>
         </div>
         <button className={`icon-button ${hydrationReminder || creatineReminder ? "attention" : ""}`} aria-label="Thông báo">
           <Bell size={20} />
@@ -536,6 +646,16 @@ export default function AppPage() {
             waterAmount={waterAmount}
             setWaterAmount={setWaterAmount}
             logWater={logWater}
+            drinkType={drinkType}
+            setDrinkType={setDrinkType}
+            quickAmounts={state.quickAmounts.filter((item) => item.category === "hydration")}
+            updateQuickAmount={(id, patch) =>
+              commit({
+                ...state,
+                quickAmounts: state.quickAmounts.map((item) => (item.id === id ? { ...item, ...patch } : item))
+              })
+            }
+            deleteQuickAmount={(id) => commit({ ...state, quickAmounts: state.quickAmounts.filter((item) => item.id !== id) })}
             quickCreatine={quickCreatine}
             creatineAmount={creatineAmount}
             setCreatineAmount={setCreatineAmount}
@@ -602,6 +722,16 @@ export default function AppPage() {
             setNewMetricWeight={setNewMetricWeight}
             newMetricBodyFat={newMetricBodyFat}
             setNewMetricBodyFat={setNewMetricBodyFat}
+            newMetricWaist={newMetricWaist}
+            setNewMetricWaist={setNewMetricWaist}
+            newMetricChest={newMetricChest}
+            setNewMetricChest={setNewMetricChest}
+            newMetricArm={newMetricArm}
+            setNewMetricArm={setNewMetricArm}
+            newMetricThigh={newMetricThigh}
+            setNewMetricThigh={setNewMetricThigh}
+            newMetricNote={newMetricNote}
+            setNewMetricNote={setNewMetricNote}
             addBodyMetric={addBodyMetric}
             deleteBodyMetric={deleteBodyMetric}
             updateBodyMetric={updateBodyMetric}
@@ -629,7 +759,15 @@ export default function AppPage() {
             notificationPermission={notificationPermission}
             requestNotifications={requestNotifications}
             markQueue={markQueue}
+            clearQueue={clearQueue}
+            downloadExport={downloadExport}
+            downloadCsvExport={downloadCsvExport}
+            importJsonExport={importJsonExport}
             updateNotificationSettings={updateNotificationSettings}
+            reopenOnboarding={() => {
+              setOnboardingStep(0);
+              updateProfile({ onboardingCompleted: false });
+            }}
           />
         )}
       </section>
@@ -687,6 +825,20 @@ function OnboardingPanel(props: {
   };
   const canGoBack = props.step > 0;
   const canGoNext = props.step < steps.length - 1;
+  const suggestedWater = suggestedWaterTargetMl(props.profile.bodyWeightKg, props.profile.workoutDays.length);
+  const suggestedTemplate = suggestedRoutineTemplate(props.profile.workoutDays.length);
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(props.profile.email);
+  const hoursOk = props.profile.wakeHour >= 0 && props.profile.wakeHour <= 23 && props.profile.sleepHour >= 0 && props.profile.sleepHour <= 23 && props.profile.wakeHour !== props.profile.sleepHour;
+  const validationMessage =
+    props.step === 0 && (!props.profile.name.trim() || !emailOk)
+      ? "Nhập tên và email hợp lệ, hoặc dùng local mode rồi cập nhật email sau."
+      : props.step === 1 && (props.profile.bodyWeightKg <= 0 || props.profile.heightCm <= 0 || props.profile.waterTargetMl < 1000 || props.profile.waterTargetMl > 6000)
+        ? "Cân nặng, chiều cao và mục tiêu nước cần nằm trong ngưỡng hợp lý."
+        : props.step === 2 && props.profile.workoutDays.length < 1
+          ? "Chọn ít nhất một ngày tập trong tuần."
+          : props.step === 3 && !hoursOk
+            ? "Giờ dậy và giờ ngủ phải từ 0-23 và không được trùng nhau."
+            : "";
 
   return (
     <section className="card onboarding-card">
@@ -704,6 +856,8 @@ function OnboardingPanel(props: {
           </button>
         ))}
       </div>
+      <p className="progress-copy">Bước {props.step + 1}/{steps.length}</p>
+      {validationMessage && <p className="form-warning">{validationMessage}</p>}
 
       {props.step === 0 && (
         <div className="onboarding-grid">
@@ -750,6 +904,9 @@ function OnboardingPanel(props: {
             <span>Timezone</span>
             <input value={props.profile.timezone} onChange={(event) => props.updateProfile({ timezone: event.target.value })} />
           </label>
+          <button className="secondary-button inline-suggestion" onClick={() => props.updateProfile({ waterTargetMl: suggestedWater })}>
+            Gợi ý {suggestedWater}ml
+          </button>
         </div>
       )}
 
@@ -774,6 +931,9 @@ function OnboardingPanel(props: {
               </button>
             ))}
           </div>
+          <button className="secondary-button" onClick={() => props.applyTemplate(suggestedTemplate)}>
+            Gợi ý template {suggestedTemplate}
+          </button>
         </div>
       )}
 
@@ -803,11 +963,11 @@ function OnboardingPanel(props: {
           Quay lại
         </button>
         {canGoNext ? (
-          <button className="primary-button training-bg" onClick={() => props.setStep(props.step + 1)}>
+          <button className="primary-button training-bg" onClick={() => props.setStep(props.step + 1)} disabled={Boolean(validationMessage)}>
             Tiếp tục
           </button>
         ) : (
-          <button className="primary-button training-bg" onClick={props.completeOnboarding}>
+          <button className="primary-button training-bg" onClick={props.completeOnboarding} disabled={Boolean(validationMessage)}>
             Hoàn tất onboarding
           </button>
         )}
@@ -822,9 +982,14 @@ function TodayView(props: {
   target: number;
   pace: "ahead" | "on-pace" | "behind";
   quickWater: { id: string; label: string; amount: number }[];
+  quickAmounts: { id: string; label: string; amount: number; pinned: boolean }[];
   waterAmount: number;
   setWaterAmount: (value: number) => void;
-  logWater: (amountMl: number, pin?: boolean) => void;
+  logWater: (amountMl: number, pin?: boolean, type?: HydrationLog["drinkType"]) => void;
+  drinkType: HydrationLog["drinkType"];
+  setDrinkType: (value: HydrationLog["drinkType"]) => void;
+  updateQuickAmount: (id: string, patch: { pinned?: boolean }) => void;
+  deleteQuickAmount: (id: string) => void;
   quickCreatine: { id: string; label: string; amount: number }[];
   creatineAmount: number;
   setCreatineAmount: (value: number) => void;
@@ -839,7 +1004,7 @@ function TodayView(props: {
   editHydrationLog: (id: string, deltaMl: number) => void;
   deleteHydrationLog: (id: string) => void;
   supplements: Supplement[];
-  supplementLogs: { id: string; name: string; amount: number; unit: string; loggedAt: string; status?: "taken" | "skipped" }[];
+  supplementLogs: { id: string; supplementId?: string; name: string; amount: number; unit: string; loggedAt: string; status?: "taken" | "skipped"; skippedReason?: string }[];
   logSupplement: (supplement: Supplement) => void;
   skipSupplement: (supplement: Supplement) => void;
   newSupplementName: string;
@@ -881,6 +1046,22 @@ function TodayView(props: {
             <span>Tùy chỉnh</span>
             <strong>{props.waterAmount}ml</strong>
           </div>
+          <div className="segmented-control" aria-label="Loại đồ uống">
+            {[
+              ["water", "Nước"],
+              ["coffee", "Cafe"],
+              ["tea", "Trà"],
+              ["other", "Khác"]
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                className={props.drinkType === value ? "active" : ""}
+                onClick={() => props.setDrinkType(value as HydrationLog["drinkType"])}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <input
             type="range"
             min="50"
@@ -891,12 +1072,25 @@ function TodayView(props: {
             aria-label="Chọn lượng nước"
           />
           <div className="split-actions">
-            <button className="secondary-button" onClick={() => props.logWater(props.waterAmount)}>
+            <button className="secondary-button" onClick={() => props.logWater(props.waterAmount, false, props.drinkType)}>
               Log
             </button>
-            <button className="primary-button hydration-bg" onClick={() => props.logWater(props.waterAmount, true)}>
+            <button className="primary-button hydration-bg" onClick={() => props.logWater(props.waterAmount, true, props.drinkType)}>
               Pin & log
             </button>
+          </div>
+          <div className="quick-manager">
+            {props.quickAmounts.map((amount) => (
+              <div key={amount.id}>
+                <span>{amount.label}</span>
+                <button className={amount.pinned ? "tiny-chip logged" : "tiny-chip"} onClick={() => props.updateQuickAmount(amount.id, { pinned: !amount.pinned })}>
+                  {amount.pinned ? "Pinned" : "Pin"}
+                </button>
+                <button className="icon-mini danger" onClick={() => props.deleteQuickAmount(amount.id)} aria-label="Xóa quick amount">
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -941,10 +1135,13 @@ function TodayView(props: {
         <div className="supplement-list">
           {props.supplements.map((supplement) => {
             const todayLog = props.supplementLogs.find(
-              (log) => log.name === supplement.name && log.loggedAt.startsWith(new Date().toISOString().slice(0, 10))
+              (log) =>
+                (log.supplementId === supplement.id || (!log.supplementId && log.name === supplement.name)) &&
+                log.loggedAt.startsWith(new Date().toISOString().slice(0, 10))
             );
             const logged = todayLog && todayLog.status !== "skipped";
             const skipped = todayLog?.status === "skipped";
+            const scheduleHours = supplement.scheduleHours?.length ? supplement.scheduleHours : supplement.reminderHour !== undefined ? [supplement.reminderHour] : [];
             return (
               <div key={supplement.id} className={!supplement.active ? "muted-row" : ""}>
                 <input
@@ -959,11 +1156,14 @@ function TodayView(props: {
                 <label className="mini-field">
                   <span>Giờ</span>
                   <input
-                    type="number"
-                    min="0"
-                    max="23"
-                    value={supplement.reminderHour ?? 17}
-                    onChange={(event) => props.updateSupplement(supplement.id, { reminderHour: Number(event.target.value) })}
+                    value={scheduleHours.join(",")}
+                    onChange={(event) => {
+                      const hours = event.target.value
+                        .split(",")
+                        .map((value) => Number(value.trim()))
+                        .filter((value) => Number.isInteger(value) && value >= 0 && value <= 23);
+                      props.updateSupplement(supplement.id, { scheduleHours: [...new Set(hours)].sort((a, b) => a - b), reminderHour: hours[0] });
+                    }}
                   />
                 </label>
                 <button className={logged ? "tiny-chip logged" : skipped ? "tiny-chip skipped" : "tiny-chip"} onClick={() => props.logSupplement(supplement)} disabled={!supplement.active}>
@@ -1185,6 +1385,40 @@ function WorkoutView(props: {
                   <Trash2 size={14} />
                 </button>
               </div>
+              <div className="exercise-edit-grid">
+                <label>
+                  <span>Tên</span>
+                  <input value={exercise.name} onChange={(event) => props.updateExerciseTarget(exercise.id, { name: event.target.value })} />
+                </label>
+                <label>
+                  <span>Nhóm cơ</span>
+                  <input value={exercise.muscleGroup} onChange={(event) => props.updateExerciseTarget(exercise.id, { muscleGroup: event.target.value })} />
+                </label>
+                <label>
+                  <span>Sets</span>
+                  <input type="number" min="1" max="10" value={exercise.targetSets} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetSets: Number(event.target.value) })} />
+                </label>
+                <label>
+                  <span>Rep min</span>
+                  <input type="number" min="1" max="50" value={exercise.targetRepsMin} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetRepsMin: Number(event.target.value) })} />
+                </label>
+                <label>
+                  <span>Rep max</span>
+                  <input type="number" min="1" max="50" value={exercise.targetRepsMax} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetRepsMax: Number(event.target.value) })} />
+                </label>
+                <label>
+                  <span>Kg</span>
+                  <input type="number" min="0" step="0.5" value={exercise.targetWeightKg} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetWeightKg: Number(event.target.value) })} />
+                </label>
+                <label>
+                  <span>Nghỉ</span>
+                  <input type="number" min="15" step="15" value={exercise.restSeconds} onChange={(event) => props.updateExerciseTarget(exercise.id, { restSeconds: Number(event.target.value) })} />
+                </label>
+                <label className="wide-field">
+                  <span>Lần trước</span>
+                  <input value={exercise.lastSession} onChange={(event) => props.updateExerciseTarget(exercise.id, { lastSession: event.target.value })} />
+                </label>
+              </div>
             </div>
           ))}
         </div>
@@ -1316,6 +1550,16 @@ function ProgressView(props: {
   setNewMetricWeight: (value: number) => void;
   newMetricBodyFat: number;
   setNewMetricBodyFat: (value: number) => void;
+  newMetricWaist: number;
+  setNewMetricWaist: (value: number) => void;
+  newMetricChest: number;
+  setNewMetricChest: (value: number) => void;
+  newMetricArm: number;
+  setNewMetricArm: (value: number) => void;
+  newMetricThigh: number;
+  setNewMetricThigh: (value: number) => void;
+  newMetricNote: string;
+  setNewMetricNote: (value: string) => void;
   addBodyMetric: () => void;
   deleteBodyMetric: (id: string) => void;
   updateBodyMetric: (id: string, patch: Partial<BodyMetric>) => void;
@@ -1345,23 +1589,37 @@ function ProgressView(props: {
           <h2>Body metrics</h2>
           <span className="sync-pill">{props.weightDelta >= 0 ? "+" : ""}{props.weightDelta}kg</span>
         </div>
-        <div className="inline-form">
-          <input
-            type="number"
-            step="0.1"
-            value={props.newMetricWeight}
-            onChange={(event) => props.setNewMetricWeight(Number(event.target.value))}
-            aria-label="Cân nặng"
-          />
-          <input
-            type="number"
-            step="0.1"
-            value={props.newMetricBodyFat}
-            onChange={(event) => props.setNewMetricBodyFat(Number(event.target.value))}
-            aria-label="Body fat"
-          />
+        <div className="metric-form">
+          <label>
+            <span>Kg</span>
+            <input type="number" step="0.1" value={props.newMetricWeight} onChange={(event) => props.setNewMetricWeight(Number(event.target.value))} />
+          </label>
+          <label>
+            <span>Body fat</span>
+            <input type="number" step="0.1" value={props.newMetricBodyFat} onChange={(event) => props.setNewMetricBodyFat(Number(event.target.value))} />
+          </label>
+          <label>
+            <span>Waist</span>
+            <input type="number" step="0.1" value={props.newMetricWaist} onChange={(event) => props.setNewMetricWaist(Number(event.target.value))} />
+          </label>
+          <label>
+            <span>Chest</span>
+            <input type="number" step="0.1" value={props.newMetricChest} onChange={(event) => props.setNewMetricChest(Number(event.target.value))} />
+          </label>
+          <label>
+            <span>Arm</span>
+            <input type="number" step="0.1" value={props.newMetricArm} onChange={(event) => props.setNewMetricArm(Number(event.target.value))} />
+          </label>
+          <label>
+            <span>Thigh</span>
+            <input type="number" step="0.1" value={props.newMetricThigh} onChange={(event) => props.setNewMetricThigh(Number(event.target.value))} />
+          </label>
+          <label className="wide-field">
+            <span>Note</span>
+            <input value={props.newMetricNote} onChange={(event) => props.setNewMetricNote(event.target.value)} />
+          </label>
           <button className="secondary-button" onClick={props.addBodyMetric}>
-            Lưu
+            Lưu metric
           </button>
         </div>
         <div className="timeline compact">
@@ -1372,7 +1630,7 @@ function ProgressView(props: {
               <div key={metric.id}>
                 <span>{new Date(metric.measuredAt).toLocaleDateString("vi-VN")}</span>
                 <strong>{metric.weightKg}kg</strong>
-                <em>{metric.bodyFatPercent ?? "-"}%</em>
+                <em>{metric.bodyFatPercent ?? "-"}% • W {metric.waistCm ?? "-"}</em>
                 <div className="row-actions">
                   <button onClick={() => props.updateBodyMetric(metric.id, { weightKg: Math.round((metric.weightKg - 0.1) * 10) / 10 })}>
                     -0.1
@@ -1508,7 +1766,12 @@ function SettingsView(props: {
   notificationPermission: NotificationPermission;
   requestNotifications: () => void;
   markQueue: (status: "synced" | "failed") => void;
+  clearQueue: (status?: "synced" | "failed") => void;
+  downloadExport: () => void;
+  downloadCsvExport: () => void;
+  importJsonExport: (file: File) => void;
   updateNotificationSettings: (next: Partial<AppState["notificationSettings"]>) => void;
+  reopenOnboarding: () => void;
 }) {
   const pendingQueue = props.state.syncQueue.filter((item) => item.status === "pending").length;
   const syncedQueue = props.state.syncQueue.filter((item) => item.status === "synced").length;
@@ -1538,6 +1801,9 @@ function SettingsView(props: {
             Google mode
           </button>
         </div>
+        <button className="secondary-button export-button" onClick={props.reopenOnboarding}>
+          Mở lại onboarding
+        </button>
         <label className="setting-row">
           <span>Mục tiêu nước</span>
           <input
@@ -1632,19 +1898,48 @@ function SettingsView(props: {
         </div>
         <div className="split-actions">
           <button className="secondary-button" onClick={() => props.markQueue("synced")} disabled={!pendingQueue}>
-            Mark synced
+            Retry / mark synced
           </button>
           <button className="secondary-button" onClick={() => props.markQueue("failed")} disabled={!pendingQueue}>
             Mark failed
           </button>
         </div>
+        <div className="split-actions">
+          <button className="secondary-button" onClick={() => props.clearQueue("synced")} disabled={!syncedQueue}>
+            Clear synced
+          </button>
+          <button className="secondary-button" onClick={() => props.clearQueue("failed")} disabled={!failedQueue}>
+            Clear failed
+          </button>
+        </div>
+        <div className="sync-preview">
+          {props.state.syncQueue.slice(0, 4).map((item) => (
+            <div key={item.id}>
+              <span>{item.status}</span>
+              <strong>{item.type}</strong>
+              <em>{new Date(item.createdAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</em>
+            </div>
+          ))}
+        </div>
         <p className="privacy-note">Queue hiện lưu local-first để chuẩn bị sync backend và xử lý retry/conflict ở bước production.</p>
       </section>
       <section className="card">
         <h2>Dữ liệu</h2>
-        <button className="secondary-button" onClick={props.reset}>
-          Reset dữ liệu mẫu
-        </button>
+        <div className="settings-actions">
+          <button className="secondary-button" onClick={props.downloadExport}>
+            Export JSON
+          </button>
+          <button className="secondary-button" onClick={props.downloadCsvExport}>
+            Export CSV
+          </button>
+          <label className="secondary-button import-button">
+            Import JSON
+            <input type="file" accept="application/json" onChange={(event) => event.target.files?.[0] && props.importJsonExport(event.target.files[0])} />
+          </label>
+          <button className="secondary-button danger-button" onClick={() => window.confirm("Reset toàn bộ dữ liệu local?") && props.reset()}>
+            Reset dữ liệu mẫu
+          </button>
+        </div>
       </section>
     </div>
   );

@@ -4,24 +4,26 @@ Cap nhat: 2026-08-14
 
 Muc tieu cua file nay la tach ro viec co the lam ngay trong code/UI ma khong can them key, va viec can cau hinh moi truong/key se de o cuoi file.
 
+## 0. Tien Do Thuc Hien
+
+Cap nhat sau commit dang thuc hien:
+
+- Da them `npm run dev:5173` va `npm run check`.
+- Da them `/api/health`, API logging helper, `error.tsx`, `global-error.tsx`, `loading.tsx`, `not-found.tsx`.
+- Da kiem tra runtime local: `/`, `/api/health`, `/api/integrations/status` deu tra `200`.
+- Da them sync status tren header: Offline, Pending sync, Sync failed, Synced.
+- Da them onboarding validation, progress label, goi y water target theo can nang/ngay tap, goi y template theo so ngay tap, va nut mo lai onboarding trong Settings.
+- Da them drink type picker khi log nuoc va quan ly quick amounts pin/delete local.
+- Da chuan hoa supplement log theo `supplementId`, them multi-schedule local bang `scheduleHours`, active toggle, taken/skipped.
+- Da them exercise edit form day du hon: name, muscle group, sets, reps min/max, weight, rest seconds, last session.
+- Da them body metrics form day du hon: weight, body fat, waist, chest, arm, thigh, note.
+- Da them offline retry local khi online, preview/clear queue trong Settings.
+- Da them CSV export theo dataset, JSON import va reset local co confirm.
+- Da them auth session cookie helpers va `/api/auth/callback` cho Supabase session token callback.
+- Da chay `npm run check` pass: 42 tests, lint pass, build pass.
+
 ## 1. Uu Tien Cao - Khong Can Them Key
 
-### 1.1. Xu ly loi server 500 va dev workflow
-
-Trang thai kiem tra gan nhat:
-
-- Chay truc tiep `.\node_modules\.bin\next.cmd dev -p 5173` thi server khoi dong duoc.
-- Cac route da kiem tra local deu tra `200`: `/`, `/hydration`, `/api/integrations/status`, `/api/auth/session`, `/api/hydration/today`.
-- `npm run build` pass va nhan `.env`.
-
-Viec can lam tiep:
-
-- Them script dev port co dinh, vi `npm run dev -- -p 5173` dang bi Next hieu sai thanh project directory `5173` trong moi truong Windows hien tai.
-- Tao trang `/health` hoac API `/api/health` tra ket qua nhe: app version, env readiness dang masked, storage adapter mode.
-- Them error boundary cho App Router: `src/app/error.tsx` va `src/app/global-error.tsx`.
-- Them logging co cau truc cho route handlers: method, path, status, error code, khong log secrets.
-- Tao checklist debug 500 trong docs: local dev, production build, API status, env missing, Supabase RLS, cron secret.
-- Kiem tra loi 500 tren dung URL/port user dang mo. Neu la deployment, can lay log Vercel/hosting tu moi truong deploy.
 
 ### 1.2. Sua va nang cap UX/UI tong the
 
@@ -177,7 +179,7 @@ Ban can cau hinh/cung cap:
 - Supabase project URL tren moi truong deploy.
 - Supabase anon key tren moi truong deploy.
 - Supabase service role key tren moi truong server-only.
-- Chay migration `supabase/migrations/0001_initial_schema.sql` tren Supabase project.
+<!-- - Chay migration `supabase/migrations/0001_initial_schema.sql` tren Supabase project. --> "đã chạy rồi"
 - Cau hinh Auth providers: Email/password, Google OAuth.
 - Cau hinh Site URL va Redirect URLs cho deployment URL.
 

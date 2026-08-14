@@ -1,6 +1,8 @@
-import { NextResponse } from "next/server";
 import { getIntegrationStatus } from "@/lib/integrations";
+import { jsonOk, withApiErrorHandling } from "@/lib/server-response";
 
 export function GET() {
-  return NextResponse.json({ ok: true, data: getIntegrationStatus() });
+  return withApiErrorHandling({ method: "GET", path: "/api/integrations/status" }, () =>
+    jsonOk({ method: "GET", path: "/api/integrations/status" }, getIntegrationStatus())
+  );
 }

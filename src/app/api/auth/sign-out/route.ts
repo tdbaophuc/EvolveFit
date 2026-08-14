@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
-import { signOut } from "@/lib/auth";
+import { authCookieName, signOut } from "@/lib/auth";
 
 export function POST() {
-  return NextResponse.json({ ok: true, data: signOut() });
+  const response = NextResponse.json({ ok: true, data: signOut() });
+  response.cookies.delete(authCookieName);
+  return response;
 }

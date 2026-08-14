@@ -33,8 +33,13 @@ describe("api service layer", () => {
 
   it("validates supplement creation and logging", () => {
     expect(createSupplement({ name: "", defaultAmount: 5 }).ok).toBe(false);
-    expect(createSupplement({ name: "Omega-3", defaultAmount: 2 }).ok).toBe(true);
-    expect(logSupplement({ name: "Omega-3", amount: 2 }).ok).toBe(true);
+    const created = createSupplement({ name: "Omega-3", defaultAmount: 2 });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const logged = logSupplement({ supplementId: created.data.id, name: "Omega-3", amount: 2 });
+    expect(logged.ok).toBe(true);
+    expect(logged.ok && logged.data.supplementId).toBe(created.data.id);
+    expect(logSupplement({ supplementId: created.data.id, name: "Omega-3", amount: 0, status: "skipped", skippedReason: "late" }).ok).toBe(true);
   });
 
   it("recalculates achievements and toggles leaderboard visibility", () => {

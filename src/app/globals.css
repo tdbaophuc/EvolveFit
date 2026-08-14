@@ -47,6 +47,12 @@ button {
     var(--background);
 }
 
+.error-shell {
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+}
+
 .detail-shell {
   max-width: 720px;
 }
@@ -99,6 +105,39 @@ button {
   color: var(--muted);
 }
 
+.sync-status {
+  display: block;
+  width: fit-content;
+  margin: 4px auto 0;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 800;
+  border: 1px solid var(--border);
+  background: #f8fafc;
+  color: var(--muted);
+}
+
+.sync-status.synced {
+  color: #3f6212;
+  background: #ecfccb;
+  border-color: #bef264;
+}
+
+.sync-status.pending,
+.sync-status.offline {
+  color: #075985;
+  background: #e0f2fe;
+  border-color: #7dd3fc;
+}
+
+.sync-status.failed,
+.form-warning {
+  color: #b91c1c;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
 .content {
   padding: 18px 16px 24px;
 }
@@ -136,6 +175,72 @@ button {
   color: var(--muted);
   font-size: 14px;
   line-height: 1.45;
+}
+
+.state-card {
+  width: 100%;
+  display: grid;
+  gap: 16px;
+}
+
+.state-card > svg {
+  color: #b91c1c;
+}
+
+.link-button {
+  text-decoration: none;
+}
+
+.skeleton-line,
+.skeleton-ring,
+.skeleton-grid span {
+  position: relative;
+  overflow: hidden;
+  background: #e2e8f0;
+}
+
+.skeleton-line::after,
+.skeleton-ring::after,
+.skeleton-grid span::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+  animation: skeleton-shimmer 1.2s infinite;
+}
+
+.skeleton-line {
+  height: 22px;
+  border-radius: 999px;
+}
+
+.skeleton-line.wide {
+  width: 72%;
+}
+
+.skeleton-ring {
+  width: 172px;
+  height: 172px;
+  border-radius: 999px;
+  margin: 6px auto;
+}
+
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.skeleton-grid span {
+  height: 54px;
+  border-radius: 12px;
+}
+
+@keyframes skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 .eyebrow {
@@ -339,14 +444,16 @@ input[type="range"] {
 }
 
 .step-dots,
-.day-picker {
+.day-picker,
+.segmented-control {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
 }
 
 .step-dots button,
-.day-picker button {
+.day-picker button,
+.segmented-control button {
   min-width: 38px;
   min-height: 38px;
   border: 1px solid var(--border);
@@ -357,10 +464,28 @@ input[type="range"] {
 }
 
 .step-dots button.active,
-.day-picker button.active {
+.day-picker button.active,
+.segmented-control button.active {
   border-color: var(--training);
   background: #ecfccb;
   color: #3f6212;
+}
+
+.progress-copy,
+.form-warning {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.form-warning {
+  border: 1px solid;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.inline-suggestion {
+  grid-column: 1 / -1;
 }
 
 .supplement-actions {
@@ -415,14 +540,15 @@ input[type="range"] {
 }
 
 .supplement-list,
-.exercise-library {
+.exercise-library,
+.quick-manager {
   display: grid;
   gap: 10px;
   margin: 12px 0;
 }
 
-.supplement-list div,
-.exercise-library div {
+.supplement-list > div,
+.exercise-library > div {
   display: grid;
   grid-template-columns: minmax(96px, 1fr) auto auto auto auto;
   align-items: center;
@@ -433,7 +559,7 @@ input[type="range"] {
   background: #f8fafc;
 }
 
-.supplement-list div {
+.supplement-list > div {
   grid-template-columns: minmax(112px, 1fr) auto 62px auto auto;
 }
 
@@ -477,11 +603,50 @@ button:disabled {
   opacity: 0.55;
 }
 
-.exercise-library div {
+.exercise-library > div {
   grid-template-columns: 28px 1fr auto auto;
 }
 
-.exercise-library div.active {
+.exercise-edit-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.exercise-edit-grid label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.exercise-edit-grid input {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 8px;
+  background: white;
+}
+
+.wide-field {
+  grid-column: 1 / -1;
+}
+
+.quick-manager div {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+}
+
+.exercise-library > div.active {
   border-color: var(--training);
   background: #f7fee7;
 }
@@ -503,6 +668,83 @@ button:disabled {
   gap: 8px;
   align-items: center;
   margin-top: 12px;
+}
+
+.metric-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.metric-form label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.metric-form input {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 8px;
+  background: #f8fafc;
+}
+
+.metric-form button {
+  grid-column: 1 / -1;
+}
+
+.settings-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.import-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.import-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.danger-button {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.sync-preview {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.sync-preview div {
+  display: grid;
+  grid-template-columns: 72px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #f8fafc;
+}
+
+.sync-preview span,
+.sync-preview em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
 }
 
 .readiness-row span {

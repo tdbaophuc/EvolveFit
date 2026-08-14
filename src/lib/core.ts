@@ -7,11 +7,13 @@ export type HydrationLog = {
 
 export type SupplementLog = {
   id: string;
+  supplementId?: string;
   name: string;
   amount: number;
   unit: "g" | "mg" | "capsule";
   loggedAt: string;
   status?: "taken" | "skipped";
+  skippedReason?: string;
 };
 
 export type Supplement = {
@@ -20,6 +22,7 @@ export type Supplement = {
   defaultAmount: number;
   unit: "g" | "mg" | "capsule";
   reminderHour?: number;
+  scheduleHours?: number[];
   active: boolean;
 };
 
@@ -30,6 +33,10 @@ export type BodyMetric = {
   heightCm: number;
   bodyFatPercent?: number;
   waistCm?: number;
+  chestCm?: number;
+  armCm?: number;
+  thighCm?: number;
+  note?: string;
 };
 
 export type QuickAmount = {
@@ -114,6 +121,19 @@ export function hydrationPaceStatus(totalMl: number, expectedMl: number): "ahead
   if (totalMl + threshold < expectedMl) return "behind";
   if (totalMl > expectedMl + threshold) return "ahead";
   return "on-pace";
+}
+
+export function suggestedWaterTargetMl(weightKg: number, workoutDaysPerWeek = 0): number {
+  if (!Number.isFinite(weightKg) || weightKg <= 0) return 2500;
+  const base = weightKg * 35;
+  const trainingBump = Math.min(500, Math.max(0, workoutDaysPerWeek) * 75);
+  return Math.round((base + trainingBump) / 50) * 50;
+}
+
+export function suggestedRoutineTemplate(workoutDaysPerWeek: number): "ppl" | "upper-lower" | "full-body" {
+  if (workoutDaysPerWeek >= 5) return "ppl";
+  if (workoutDaysPerWeek >= 4) return "upper-lower";
+  return "full-body";
 }
 
 export function shouldSendHydrationReminder(params: {
@@ -226,6 +246,19 @@ export function bodyWeightDelta(metrics: BodyMetric[]): number {
 
 export function exportAppData(data: unknown): string {
   return JSON.stringify(data, null, 2);
+}
+
+export function toCsv(rows: Record<string, unknown>[]): string {
+  if (!rows.length) return "";
+  const headers = Array.from(rows.reduce<Set<string>>((set, row) => {
+    Object.keys(row).forEach((key) => set.add(key));
+    return set;
+  }, new Set()));
+  const escape = (value: unknown) => {
+    const text = value === undefined || value === null ? "" : String(value);
+    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  return [headers.join(","), ...rows.map((row) => headers.map((header) => escape(row[header])).join(","))].join("\n");
 }
 
 export function readinessScore(input: { energy: number; sleepQuality: number; soreness: number; stress: number }): number {

@@ -14,6 +14,9 @@ import {
   progressiveOverloadRecommendation,
   shouldSendCreatineReminder,
   shouldSendHydrationReminder,
+  suggestedRoutineTemplate,
+  suggestedWaterTargetMl,
+  toCsv,
   upsertQuickAmount,
   visibleQuickAmounts
 } from "./core";
@@ -70,6 +73,19 @@ describe("quick amount logic", () => {
     );
 
     expect(visibleQuickAmounts(amounts, "hydration", 2).map((item) => item.amount)).toEqual([500, 250]);
+  });
+});
+
+describe("onboarding suggestions", () => {
+  it("suggests water from body weight and training frequency", () => {
+    expect(suggestedWaterTargetMl(72, 3)).toBe(2750);
+    expect(suggestedWaterTargetMl(0, 3)).toBe(2500);
+  });
+
+  it("suggests a routine template from workout days", () => {
+    expect(suggestedRoutineTemplate(2)).toBe("full-body");
+    expect(suggestedRoutineTemplate(4)).toBe("upper-lower");
+    expect(suggestedRoutineTemplate(6)).toBe("ppl");
   });
 });
 
@@ -157,6 +173,10 @@ describe("body metrics and export", () => {
 
     expect(exported).toContain('"hydrationLogs"');
     expect(JSON.parse(exported).hydrationLogs[0].amountMl).toBe(500);
+  });
+
+  it("exports csv with escaped values", () => {
+    expect(toCsv([{ name: "Water, cold", amount: 500 }])).toBe('name,amount\n"Water, cold",500');
   });
 });
 

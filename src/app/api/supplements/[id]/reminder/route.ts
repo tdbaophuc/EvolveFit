@@ -9,7 +9,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
   const [{ id }, body] = await Promise.all([
     context.params,
-    readJson<{ name?: string; defaultAmount?: number; reminderHour?: number }>(request)
+    readJson<{ name?: string; defaultAmount?: number; reminderHour?: number; scheduleHours?: number[]; active?: boolean }>(request)
   ]);
   return NextResponse.json(updateSupplement(id, body ?? {}));
 }
