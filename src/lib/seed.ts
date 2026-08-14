@@ -9,9 +9,12 @@ export type AppState = {
     onboardingCompleted: boolean;
     unitWeight: "kg" | "lb";
     unitVolume: "ml" | "oz";
+    bodyWeightKg: number;
+    heightCm: number;
     waterTargetMl: number;
     wakeHour: number;
     sleepHour: number;
+    workoutDays: string[];
     creatineAmountG: number;
     creatineHour: number;
     remindBeforeMinutes: number;
@@ -181,9 +184,12 @@ export const initialState: AppState = {
     onboardingCompleted: false,
     unitWeight: "kg",
     unitVolume: "ml",
+    bodyWeightKg: 72,
+    heightCm: 174,
     waterTargetMl: 2500,
     wakeHour: 6,
     sleepHour: 23,
+    workoutDays: ["Mon", "Wed", "Fri"],
     creatineAmountG: 5,
     creatineHour: 17,
     remindBeforeMinutes: 15,

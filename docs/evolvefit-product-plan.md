@@ -179,8 +179,8 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
   - Co route `/hydration` rieng voi filter va chart theo gio local-first.
 - Supplement:
   - Co creatine local, slider va reminder rule.
-  - Co them/xoa/edit nhanh supplement custom va log trong ngay.
-  - Chua co schedule rule rieng cho tung supplement.
+  - Co them/xoa/edit nhanh supplement custom, reminder hour rieng, bat/tat, log taken/skipped trong ngay.
+  - Chua co multi-time schedule hoac reminder rule nang cao rieng cho tung supplement.
 - Workout planner:
   - Co routine demo, live workout, exercise library local, them/xoa/sap xep exercise custom.
   - Co template selector PPL/Upper-Lower/Full Body/Custom.
@@ -209,11 +209,11 @@ Cap nhat sau commit `88bbe02 - Build EvolveFit PWA MVP` tren nhanh `breakthrough
 ### Chua lam
 
 - Supabase OAuth callback/session cookie production voi project credentials.
-- Onboarding flow 5 buoc day du voi template selection.
-- Supabase project credentials tren deployment.
+- OAuth/onboarding production gan voi Supabase session that.
+- Supabase project credentials tren deployment; local `.env` da co URL/anon/service-role key.
 - VAPID/FCM credentials tren deployment de bat Web Push production.
 - Hydration detail nang cao voi richer analytics va backend sync.
-- Supplement schedule rieng tung loai va trang thai skipped.
+- Supplement multi-schedule, skip analytics va reminder suggestion khi bo qua lien tiep.
 - Exercise library/routine builder nang cao voi form edit day du va drag-drop gesture.
 - Offline retry worker va conflict resolution voi backend.
 - Data export CSV va export JSON backend-safe.
@@ -716,12 +716,13 @@ Logic de xuat:
 
 ### Phase 0 - Foundation
 
-Trang thai: Partial / foundation va schema da co, con thieu ket noi Supabase that.
+Trang thai: Mostly done local-first / foundation, onboarding va schema da co; local `.env` da co Supabase URL/anon/service-role key, con thieu OAuth callback/session cookie production.
 
 - Khoi tao Next.js + TypeScript + Tailwind.
 - Cau hinh Supabase Auth va database migrations.
 - Thiet ke design tokens mobile-first.
 - Cai PWA manifest/icons/service worker co ban.
+- Onboarding 4-5 buoc.
 
 Da lam:
 
@@ -736,11 +737,14 @@ Da lam:
 - Data adapter factory voi Supabase REST adapter va memory fallback da co.
 - Auth/session UI fallback local/email/google mode da co.
 - Supabase Auth REST adapter va auth API routes da co.
+- Local `.env` da co Supabase URL, anon key va service-role key.
+- Onboarding wizard local-first da co: account/units, body/water/timezone, template/workout days, wake-sleep/creatine.
+- Onboarding complete tao body metric ban dau va enqueue sync queue.
 
 Con lai:
 
 - Chua dung Tailwind; hien dang dung CSS thuan theo design docs.
-- Chua cau hinh Supabase OAuth callback/session cookie voi credentials/deployment URL.
+- Chua cau hinh Supabase OAuth callback/session cookie voi deployment URL.
 
 Exit criteria:
 
@@ -771,6 +775,7 @@ Da lam:
 - Hydration detail route `/hydration` voi filter va chart theo gio da co.
 - Them supplement custom va log supplement trong ngay da co.
 - Edit nhanh ten/amount supplement custom da co.
+- Reminder hour rieng, bat/tat supplement va trang thai taken/skipped trong ngay da co.
 - Daily progress ring da co.
 - Local optimistic update qua React state/localStorage da co.
 - Offline sync queue local da enqueue cac thay doi hydration/supplement.
@@ -778,7 +783,7 @@ Da lam:
 Con lai:
 
 - Chua co sync backend production/retry worker/conflict handling.
-- Chua co schedule rule rieng cho tung supplement.
+- Chua co multi-time supplement schedule va skip analytics nang cao.
 - Chua co notification that gui ve may.
 
 Exit criteria:

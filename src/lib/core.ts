@@ -11,6 +11,7 @@ export type SupplementLog = {
   amount: number;
   unit: "g" | "mg" | "capsule";
   loggedAt: string;
+  status?: "taken" | "skipped";
 };
 
 export type Supplement = {

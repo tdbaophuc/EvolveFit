@@ -77,6 +77,7 @@ export default function AppPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
   const [mounted, setMounted] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(0);
 
   useEffect(() => {
     setState(loadState());
@@ -241,9 +242,22 @@ export default function AppPage() {
       name: supplement.name,
       amount: supplement.defaultAmount,
       unit: supplement.unit,
-      loggedAt: new Date().toISOString()
+      loggedAt: new Date().toISOString(),
+      status: "taken" as const
     };
     withUndo({ ...state, supplementLogs: [...state.supplementLogs, log], syncQueue: enqueueSync(state.syncQueue, { type: "supplement.log", payload: log }) }, supplement.name, `Đã ghi nhận ${supplement.name}`);
+  }
+
+  function skipSupplement(supplement: Supplement) {
+    const log = {
+      id: cryptoSafeId(),
+      name: supplement.name,
+      amount: 0,
+      unit: supplement.unit,
+      loggedAt: new Date().toISOString(),
+      status: "skipped" as const
+    };
+    withUndo({ ...state, supplementLogs: [...state.supplementLogs, log], syncQueue: enqueueSync(state.syncQueue, { type: "supplement.skip", payload: log }) }, supplement.name, `Đã bỏ qua ${supplement.name}`);
   }
 
   function addSupplement() {
@@ -371,7 +385,23 @@ export default function AppPage() {
   }
 
   function completeOnboarding() {
-    commit({ ...state, profile: { ...state.profile, onboardingCompleted: true } }, "Onboarding hoàn tất");
+    const metric: BodyMetric = {
+      id: cryptoSafeId(),
+      measuredAt: new Date().toISOString(),
+      weightKg: state.profile.bodyWeightKg,
+      heightCm: state.profile.heightCm,
+      bodyFatPercent: latestMetric?.bodyFatPercent
+    };
+    commitSynced(
+      {
+        ...state,
+        profile: { ...state.profile, onboardingCompleted: true },
+        bodyMetrics: [...state.bodyMetrics, metric]
+      },
+      "onboarding.complete",
+      { profile: state.profile, bodyMetric: metric },
+      "Onboarding hoàn tất"
+    );
   }
 
   function downloadExport() {
@@ -488,6 +518,10 @@ export default function AppPage() {
           <OnboardingPanel
             profile={state.profile}
             updateProfile={updateProfile}
+            activeTemplate={state.activeTemplate}
+            applyTemplate={applyTemplate}
+            step={onboardingStep}
+            setStep={setOnboardingStep}
             completeOnboarding={completeOnboarding}
           />
         )}
@@ -506,7 +540,9 @@ export default function AppPage() {
             creatineAmount={creatineAmount}
             setCreatineAmount={setCreatineAmount}
             logCreatine={logCreatine}
-            creatineLogged={state.supplementLogs.some((log) => log.loggedAt.startsWith(now.toISOString().slice(0, 10)))}
+            creatineLogged={state.supplementLogs.some(
+              (log) => log.name === "Creatine" && log.status !== "skipped" && log.loggedAt.startsWith(now.toISOString().slice(0, 10))
+            )}
             creatineReminder={creatineReminder}
             workoutName="Push Day"
             setTab={setTab}
@@ -518,6 +554,7 @@ export default function AppPage() {
             supplements={state.supplements}
             supplementLogs={state.supplementLogs}
             logSupplement={logSupplement}
+            skipSupplement={skipSupplement}
             newSupplementName={newSupplementName}
             setNewSupplementName={setNewSupplementName}
             newSupplementAmount={newSupplementAmount}
@@ -626,54 +663,155 @@ export default function AppPage() {
 function OnboardingPanel(props: {
   profile: AppState["profile"];
   updateProfile: (next: Partial<AppState["profile"]>) => void;
+  activeTemplate: AppState["activeTemplate"];
+  applyTemplate: (template: AppState["activeTemplate"]) => void;
+  step: number;
+  setStep: (step: number) => void;
   completeOnboarding: () => void;
 }) {
+  const steps = ["Account", "Body", "Schedule", "Reminders"];
+  const workoutDays = [
+    ["Mon", "T2"],
+    ["Tue", "T3"],
+    ["Wed", "T4"],
+    ["Thu", "T5"],
+    ["Fri", "T6"],
+    ["Sat", "T7"],
+    ["Sun", "CN"]
+  ];
+  const toggleWorkoutDay = (day: string) => {
+    const nextDays = props.profile.workoutDays.includes(day)
+      ? props.profile.workoutDays.filter((item) => item !== day)
+      : [...props.profile.workoutDays, day];
+    props.updateProfile({ workoutDays: nextDays });
+  };
+  const canGoBack = props.step > 0;
+  const canGoNext = props.step < steps.length - 1;
+
   return (
     <section className="card onboarding-card">
       <div className="section-heading">
         <div>
           <p className="eyebrow">Onboarding nhanh</p>
-          <h2>Thiết lập EvolveFit</h2>
+          <h2>{steps[props.step]}</h2>
         </div>
         <CalendarCheck size={22} />
       </div>
-      <div className="onboarding-grid">
-        <label>
-          <span>Tên</span>
-          <input value={props.profile.name} onChange={(event) => props.updateProfile({ name: event.target.value })} />
-        </label>
-        <label>
-          <span>Mục tiêu nước</span>
-          <input
-            type="number"
-            value={props.profile.waterTargetMl}
-            onChange={(event) => props.updateProfile({ waterTargetMl: Number(event.target.value) })}
-          />
-        </label>
-        <label>
-          <span>Giờ dậy</span>
-          <input
-            type="number"
-            min="0"
-            max="23"
-            value={props.profile.wakeHour}
-            onChange={(event) => props.updateProfile({ wakeHour: Number(event.target.value) })}
-          />
-        </label>
-        <label>
-          <span>Giờ ngủ</span>
-          <input
-            type="number"
-            min="0"
-            max="23"
-            value={props.profile.sleepHour}
-            onChange={(event) => props.updateProfile({ sleepHour: Number(event.target.value) })}
-          />
-        </label>
+      <div className="step-dots" aria-label="Onboarding progress">
+        {steps.map((label, index) => (
+          <button key={label} className={props.step === index ? "active" : ""} onClick={() => props.setStep(index)}>
+            {index + 1}
+          </button>
+        ))}
       </div>
-      <button className="primary-button training-bg" onClick={props.completeOnboarding}>
-        Hoàn tất onboarding
-      </button>
+
+      {props.step === 0 && (
+        <div className="onboarding-grid">
+          <label>
+            <span>Tên</span>
+            <input value={props.profile.name} onChange={(event) => props.updateProfile({ name: event.target.value })} />
+          </label>
+          <label>
+            <span>Email</span>
+            <input type="email" value={props.profile.email} onChange={(event) => props.updateProfile({ email: event.target.value })} />
+          </label>
+          <label>
+            <span>Đơn vị cân nặng</span>
+            <select value={props.profile.unitWeight} onChange={(event) => props.updateProfile({ unitWeight: event.target.value as AppState["profile"]["unitWeight"] })}>
+              <option value="kg">kg</option>
+              <option value="lb">lb</option>
+            </select>
+          </label>
+          <label>
+            <span>Đơn vị nước</span>
+            <select value={props.profile.unitVolume} onChange={(event) => props.updateProfile({ unitVolume: event.target.value as AppState["profile"]["unitVolume"] })}>
+              <option value="ml">ml</option>
+              <option value="oz">oz</option>
+            </select>
+          </label>
+        </div>
+      )}
+
+      {props.step === 1 && (
+        <div className="onboarding-grid">
+          <label>
+            <span>Cân nặng</span>
+            <input type="number" value={props.profile.bodyWeightKg} onChange={(event) => props.updateProfile({ bodyWeightKg: Number(event.target.value) })} />
+          </label>
+          <label>
+            <span>Chiều cao</span>
+            <input type="number" value={props.profile.heightCm} onChange={(event) => props.updateProfile({ heightCm: Number(event.target.value) })} />
+          </label>
+          <label>
+            <span>Mục tiêu nước</span>
+            <input type="number" value={props.profile.waterTargetMl} onChange={(event) => props.updateProfile({ waterTargetMl: Number(event.target.value) })} />
+          </label>
+          <label>
+            <span>Timezone</span>
+            <input value={props.profile.timezone} onChange={(event) => props.updateProfile({ timezone: event.target.value })} />
+          </label>
+        </div>
+      )}
+
+      {props.step === 2 && (
+        <div className="stack compact-stack">
+          <div className="template-row" aria-label="Routine templates onboarding">
+            {[
+              ["ppl", "PPL"],
+              ["upper-lower", "Upper/Lower"],
+              ["full-body", "Full Body"],
+              ["custom", "Custom"]
+            ].map(([id, label]) => (
+              <button key={id} className={props.activeTemplate === id ? "active" : ""} onClick={() => props.applyTemplate(id as AppState["activeTemplate"])}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="day-picker">
+            {workoutDays.map(([day, label]) => (
+              <button key={day} className={props.profile.workoutDays.includes(day) ? "active" : ""} onClick={() => toggleWorkoutDay(day)}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {props.step === 3 && (
+        <div className="onboarding-grid">
+          <label>
+            <span>Giờ dậy</span>
+            <input type="number" min="0" max="23" value={props.profile.wakeHour} onChange={(event) => props.updateProfile({ wakeHour: Number(event.target.value) })} />
+          </label>
+          <label>
+            <span>Giờ ngủ</span>
+            <input type="number" min="0" max="23" value={props.profile.sleepHour} onChange={(event) => props.updateProfile({ sleepHour: Number(event.target.value) })} />
+          </label>
+          <label>
+            <span>Creatine</span>
+            <input type="number" min="1" max="20" value={props.profile.creatineAmountG} onChange={(event) => props.updateProfile({ creatineAmountG: Number(event.target.value) })} />
+          </label>
+          <label>
+            <span>Giờ uống</span>
+            <input type="number" min="0" max="23" value={props.profile.creatineHour} onChange={(event) => props.updateProfile({ creatineHour: Number(event.target.value) })} />
+          </label>
+        </div>
+      )}
+
+      <div className="split-actions">
+        <button className="secondary-button" onClick={() => props.setStep(props.step - 1)} disabled={!canGoBack}>
+          Quay lại
+        </button>
+        {canGoNext ? (
+          <button className="primary-button training-bg" onClick={() => props.setStep(props.step + 1)}>
+            Tiếp tục
+          </button>
+        ) : (
+          <button className="primary-button training-bg" onClick={props.completeOnboarding}>
+            Hoàn tất onboarding
+          </button>
+        )}
+      </div>
     </section>
   );
 }
@@ -701,8 +839,9 @@ function TodayView(props: {
   editHydrationLog: (id: string, deltaMl: number) => void;
   deleteHydrationLog: (id: string) => void;
   supplements: Supplement[];
-  supplementLogs: { id: string; name: string; amount: number; unit: string; loggedAt: string }[];
+  supplementLogs: { id: string; name: string; amount: number; unit: string; loggedAt: string; status?: "taken" | "skipped" }[];
   logSupplement: (supplement: Supplement) => void;
+  skipSupplement: (supplement: Supplement) => void;
   newSupplementName: string;
   setNewSupplementName: (value: string) => void;
   newSupplementAmount: number;
@@ -801,18 +940,44 @@ function TodayView(props: {
         </div>
         <div className="supplement-list">
           {props.supplements.map((supplement) => {
-            const logged = props.supplementLogs.some(
+            const todayLog = props.supplementLogs.find(
               (log) => log.name === supplement.name && log.loggedAt.startsWith(new Date().toISOString().slice(0, 10))
             );
+            const logged = todayLog && todayLog.status !== "skipped";
+            const skipped = todayLog?.status === "skipped";
             return (
-              <div key={supplement.id}>
-                <span>{supplement.name}</span>
+              <div key={supplement.id} className={!supplement.active ? "muted-row" : ""}>
+                <input
+                  value={supplement.name}
+                  onChange={(event) => props.updateSupplement(supplement.id, { name: event.target.value })}
+                  aria-label="Tên supplement"
+                />
                 <strong>
                   {supplement.defaultAmount}
                   {supplement.unit}
                 </strong>
-                <button className={logged ? "tiny-chip logged" : "tiny-chip"} onClick={() => props.logSupplement(supplement)}>
-                  {logged ? "Đã dùng" : "Ghi nhận"}
+                <label className="mini-field">
+                  <span>Giờ</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="23"
+                    value={supplement.reminderHour ?? 17}
+                    onChange={(event) => props.updateSupplement(supplement.id, { reminderHour: Number(event.target.value) })}
+                  />
+                </label>
+                <button className={logged ? "tiny-chip logged" : skipped ? "tiny-chip skipped" : "tiny-chip"} onClick={() => props.logSupplement(supplement)} disabled={!supplement.active}>
+                  {logged ? "Đã dùng" : skipped ? "Dùng lại" : "Ghi nhận"}
+                </button>
+                <button className={skipped ? "tiny-chip skipped" : "tiny-chip"} onClick={() => props.skipSupplement(supplement)} disabled={!supplement.active}>
+                  Bỏ qua
+                </button>
+                <button
+                  className="icon-mini"
+                  onClick={() => props.updateSupplement(supplement.id, { active: !supplement.active })}
+                  aria-label="Bật tắt supplement"
+                >
+                  {supplement.active ? "On" : "Off"}
                 </button>
                 <button
                   className="icon-mini"

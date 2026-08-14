@@ -27,7 +27,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -322,6 +323,7 @@ input[type="range"] {
 }
 
 .onboarding-grid input,
+.onboarding-grid select,
 .inline-form input {
   width: 100%;
   min-height: 42px;
@@ -330,6 +332,35 @@ input[type="range"] {
   padding: 0 10px;
   color: var(--text);
   background: #f8fafc;
+}
+
+.compact-stack {
+  gap: 12px;
+}
+
+.step-dots,
+.day-picker {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.step-dots button,
+.day-picker button {
+  min-width: 38px;
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.step-dots button.active,
+.day-picker button.active {
+  border-color: var(--training);
+  background: #ecfccb;
+  color: #3f6212;
 }
 
 .supplement-actions {
@@ -393,13 +424,57 @@ input[type="range"] {
 .supplement-list div,
 .exercise-library div {
   display: grid;
-  grid-template-columns: 1fr auto auto auto auto auto;
+  grid-template-columns: minmax(96px, 1fr) auto auto auto auto;
   align-items: center;
   gap: 10px;
   padding: 12px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: #f8fafc;
+}
+
+.supplement-list div {
+  grid-template-columns: minmax(112px, 1fr) auto 62px auto auto;
+}
+
+.supplement-list input {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+  padding: 0 8px;
+}
+
+.supplement-list .icon-mini:nth-last-child(-n + 3) {
+  grid-row: 2;
+}
+
+.mini-field {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.mini-field input {
+  width: 54px;
+}
+
+.muted-row {
+  opacity: 0.58;
+}
+
+.tiny-chip.skipped {
+  color: #9a3412;
+  background: #ffedd5;
+  border-color: #fdba74;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .exercise-library div {
