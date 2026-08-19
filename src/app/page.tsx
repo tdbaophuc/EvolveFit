@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
+  createCustomExerciseDefinition,
   cryptoSafeId,
   estimatedOneRepMax,
   exportAppData,
@@ -35,6 +36,10 @@ import {
   normalizeDrinkModules,
   parseRoutineCsv,
   readinessScore,
+  filterExerciseLibrary,
+  migrateWorkoutExercisesToRoutine,
+  routineExercisesToWorkoutExercises,
+  selectedWorkoutDay,
   rowsToRoutineCsv,
   enqueueSync,
   markSyncQueue,
@@ -48,8 +53,12 @@ import {
   visibleQuickAmounts,
   type BodyMetric,
   type DrinkModule,
+  type EquipmentType,
+  type ExerciseDefinition,
   type HydrationLog,
+  type MovementPattern,
   type RoutineImportPreview,
+  type RoutineExercise,
   type Supplement,
   type WorkoutExercise,
   type WorkoutSet
@@ -89,6 +98,13 @@ export default function AppPage() {
   const [newSupplementName, setNewSupplementName] = useState("Whey");
   const [newSupplementAmount, setNewSupplementAmount] = useState(30);
   const [newExerciseName, setNewExerciseName] = useState("Lateral Raise");
+  const [librarySearch, setLibrarySearch] = useState("");
+  const [libraryMuscleFilter, setLibraryMuscleFilter] = useState("all");
+  const [libraryEquipmentFilter, setLibraryEquipmentFilter] = useState("all");
+  const [newLibraryExerciseName, setNewLibraryExerciseName] = useState("Cable Fly");
+  const [newLibraryMuscleGroup, setNewLibraryMuscleGroup] = useState("Chest");
+  const [newLibraryEquipment, setNewLibraryEquipment] = useState<EquipmentType>("cable");
+  const [newLibraryPattern, setNewLibraryPattern] = useState<MovementPattern>("isolation");
   const [routineImportPreview, setRoutineImportPreview] = useState<RoutineImportPreview | null>(null);
   const [newMetricWeight, setNewMetricWeight] = useState(72);
   const [newMetricBodyFat, setNewMetricBodyFat] = useState(18);
@@ -273,6 +289,14 @@ export default function AppPage() {
     restSeconds: 60,
     lastSession: "Import or add an exercise to start."
   };
+  const activeRoutine = state.routines.find((routine) => routine.id === state.activeRoutineId) ?? state.routines[0];
+  const activeWorkoutDay =
+    activeRoutine?.days.find((day) => day.id === state.selectedWorkoutDayId) ?? selectedWorkoutDay(activeRoutine, now) ?? activeRoutine?.days[0];
+  const filteredExerciseLibrary = filterExerciseLibrary(state.exerciseLibrary, {
+    query: librarySearch,
+    muscleGroup: libraryMuscleFilter,
+    equipment: libraryEquipmentFilter
+  });
   const activeExercise = state.workoutExercises[state.activeExerciseIndex] ?? state.workoutExercises[0] ?? emptyExercise;
   const completedSetsForActive = state.workoutSets.filter((set) => set.exerciseId === activeExercise.id);
   const achievements = monthlyAchievements({
@@ -468,6 +492,52 @@ export default function AppPage() {
     );
   }
 
+  function routineExerciseFromWorkout(exercise: WorkoutExercise, order: number, definitionId?: string): RoutineExercise {
+    return { ...exercise, definitionId, order };
+  }
+
+  function syncSelectedDay(nextState: AppState): AppState {
+    const routine = nextState.routines.find((item) => item.id === nextState.activeRoutineId) ?? nextState.routines[0];
+    const day = routine?.days.find((item) => item.id === nextState.selectedWorkoutDayId) ?? routine?.days[0];
+    return {
+      ...nextState,
+      activeRoutineId: routine?.id ?? nextState.activeRoutineId,
+      selectedWorkoutDayId: day?.id ?? nextState.selectedWorkoutDayId,
+      workoutExercises: day ? routineExercisesToWorkoutExercises(day.exercises) : nextState.workoutExercises,
+      activeExerciseIndex: Math.min(nextState.activeExerciseIndex, Math.max(0, (day?.exercises.length ?? 1) - 1))
+    };
+  }
+
+  function updateActiveRoutine(patch: (routine: AppState["routines"][number]) => AppState["routines"][number], label = "Updated routine") {
+    if (!activeRoutine) return;
+    const draft = { ...activeRoutine, days: activeRoutine.days.map((day) => ({ ...day, exercises: [...day.exercises] })) };
+    const updatedRoutine = patch(draft);
+    commitSynced(
+      syncSelectedDay({
+        ...state,
+        activeTemplate: "custom",
+        routines: state.routines.map((routine) => (routine.id === updatedRoutine.id ? { ...updatedRoutine, updatedAt: new Date().toISOString() } : routine))
+      }),
+      "routine.update",
+      { routineId: updatedRoutine.id },
+      label
+    );
+  }
+
+  function updateActiveWorkoutDay(
+    patch: (day: AppState["routines"][number]["days"][number]) => AppState["routines"][number]["days"][number],
+    label = "Updated workout day"
+  ) {
+    if (!activeWorkoutDay) return;
+    updateActiveRoutine(
+      (routine) => ({
+        ...routine,
+        days: routine.days.map((day) => (day.id === activeWorkoutDay.id ? patch({ ...day, exercises: [...day.exercises] }) : day))
+      }),
+      label
+    );
+  }
+
   function addExercise() {
     const exercise: WorkoutExercise = {
       id: cryptoSafeId(),
@@ -478,9 +548,12 @@ export default function AppPage() {
       targetRepsMax: 12,
       targetWeightKg: 10,
       restSeconds: 60,
-      lastSession: "Chưa có dữ liệu tuần trước"
+      lastSession: "Custom exercise"
     };
-    commitSynced({ ...state, workoutExercises: [...state.workoutExercises, exercise] }, "exercise.create", exercise, `Đã thêm ${exercise.name}`);
+    updateActiveWorkoutDay(
+      (day) => ({ ...day, exercises: [...day.exercises, routineExerciseFromWorkout(exercise, day.exercises.length)] }),
+      `?? th?m ${exercise.name}`
+    );
   }
 
   async function downloadRoutineSampleXlsx() {
@@ -519,79 +592,275 @@ export default function AppPage() {
 
   function confirmRoutineImport(mode: "replace" | "append") {
     if (!routineImportPreview || routineImportPreview.errors.length || !routineImportPreview.rows.length) return;
-    const imported = routineImportPreview.rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      muscleGroup: row.muscleGroup,
-      targetSets: row.targetSets,
-      targetRepsMin: row.targetRepsMin,
-      targetRepsMax: row.targetRepsMax,
-      targetWeightKg: row.targetWeightKg,
-      restSeconds: row.restSeconds,
-      lastSession: row.lastSession
-    }));
-    const workoutExercises = mode === "replace" ? imported : [...state.workoutExercises, ...imported];
+    const importedDays = routineImportPreview.rows.reduce<AppState["routines"][number]["days"]>((days, row) => {
+      const existingDay = days.find((day) => day.name === row.session && day.day === row.day);
+      const exercise = routineExerciseFromWorkout(
+        {
+          id: row.id,
+          name: row.name,
+          muscleGroup: row.muscleGroup,
+          targetSets: row.targetSets,
+          targetRepsMin: row.targetRepsMin,
+          targetRepsMax: row.targetRepsMax,
+          targetWeightKg: row.targetWeightKg,
+          restSeconds: row.restSeconds,
+          lastSession: row.lastSession
+        },
+        existingDay?.exercises.length ?? 0
+      );
+      if (existingDay) {
+        existingDay.exercises.push(exercise);
+        return days;
+      }
+      return [
+        ...days,
+        {
+          id: `day-${cryptoSafeId()}`,
+          name: row.session,
+          day: row.day,
+          order: days.length,
+          exercises: [exercise]
+        }
+      ];
+    }, []);
+    const nextRoutine = activeRoutine ?? migrateWorkoutExercisesToRoutine(state.workoutExercises);
+    const days = mode === "replace" ? importedDays : [...nextRoutine.days, ...importedDays.map((day, index) => ({ ...day, order: nextRoutine.days.length + index }))];
+    const updatedRoutine = { ...nextRoutine, daysPerWeek: days.length, days, updatedAt: new Date().toISOString() };
     commitSynced(
-      { ...state, activeTemplate: "custom", workoutExercises, workoutSets: [], activeExerciseIndex: 0 },
+      syncSelectedDay({
+        ...state,
+        activeTemplate: "custom",
+        routines: state.routines.some((routine) => routine.id === updatedRoutine.id)
+          ? state.routines.map((routine) => (routine.id === updatedRoutine.id ? updatedRoutine : routine))
+          : [...state.routines, updatedRoutine],
+        activeRoutineId: updatedRoutine.id,
+        selectedWorkoutDayId: days[0]?.id ?? state.selectedWorkoutDayId,
+        workoutSets: [],
+        activeExerciseIndex: 0
+      }),
       "routine.import",
-      { fileName: routineImportPreview.fileName, mode, count: imported.length },
-      `Imported ${imported.length} exercises`
+      { fileName: routineImportPreview.fileName, mode, count: routineImportPreview.rows.length },
+      `Imported ${routineImportPreview.rows.length} exercises`
     );
     setRoutineImportPreview(null);
   }
 
   function deleteExercise(id: string) {
-    const workoutExercises = state.workoutExercises.filter((exercise) => exercise.id !== id);
-    commitSynced(
-      {
-        ...state,
-        workoutExercises,
-        activeExerciseIndex: Math.min(state.activeExerciseIndex, Math.max(0, workoutExercises.length - 1))
-      },
-      "exercise.delete",
-      { id },
-      "Đã xóa bài tập"
+    updateActiveWorkoutDay(
+      (day) => ({
+        ...day,
+        exercises: day.exercises.filter((exercise) => exercise.id !== id).map((exercise, index) => ({ ...exercise, order: index }))
+      }),
+      "?? x?a b?i t?p"
     );
   }
 
   function updateExerciseTarget(id: string, patch: Partial<WorkoutExercise>) {
-    commitSynced(
-      {
-        ...state,
-        workoutExercises: state.workoutExercises.map((exercise) =>
-          exercise.id === id ? { ...exercise, ...patch } : exercise
-        )
-      },
-      "exercise.patch",
-      { id, patch },
-      "Đã cập nhật bài tập"
+    updateActiveWorkoutDay(
+      (day) => ({
+        ...day,
+        exercises: day.exercises.map((exercise) => (exercise.id === id ? { ...exercise, ...patch } : exercise))
+      }),
+      "?? c?p nh?t b?i t?p"
     );
   }
 
   function moveExercise(id: string, direction: -1 | 1) {
-    const index = state.workoutExercises.findIndex((exercise) => exercise.id === id);
+    if (!activeWorkoutDay) return;
+    const ordered = [...activeWorkoutDay.exercises].sort((a, b) => a.order - b.order);
+    const index = ordered.findIndex((exercise) => exercise.id === id);
     const nextIndex = index + direction;
-    if (index < 0 || nextIndex < 0 || nextIndex >= state.workoutExercises.length) return;
-    const workoutExercises = [...state.workoutExercises];
-    const [item] = workoutExercises.splice(index, 1);
-    workoutExercises.splice(nextIndex, 0, item);
-    commitSynced({ ...state, workoutExercises, activeExerciseIndex: nextIndex }, "exercise.reorder", { id, direction }, "Đã sắp xếp routine");
+    if (index < 0 || nextIndex < 0 || nextIndex >= ordered.length) return;
+    const [item] = ordered.splice(index, 1);
+    ordered.splice(nextIndex, 0, item);
+    updateActiveWorkoutDay(
+      (day) => ({ ...day, exercises: ordered.map((exercise, order) => ({ ...exercise, order })) }),
+      "?? s?p x?p routine"
+    );
+  }
+
+  function routineFromTemplate(template: Exclude<AppState["activeTemplate"], "custom">) {
+    const nowIso = new Date().toISOString();
+    const exercise = (name: string, muscleGroup: string, order: number, targetWeightKg = 20): RoutineExercise => ({
+      id: cryptoSafeId(),
+      name,
+      muscleGroup,
+      targetSets: 3,
+      targetRepsMin: 8,
+      targetRepsMax: 12,
+      targetWeightKg,
+      restSeconds: 90,
+      lastSession: "Template exercise",
+      order
+    });
+    const day = (name: string, weekday: string, order: number, exercises: RoutineExercise[]) => ({
+      id: `day-${cryptoSafeId()}`,
+      name,
+      day: weekday,
+      order,
+      exercises
+    });
+    const days =
+      template === "ppl"
+        ? [
+            day("Push Day", "Mon", 0, routineTemplates.ppl.map((item, index) => routineExerciseFromWorkout(item, index))),
+            day("Pull Day", "Wed", 1, [exercise("Chest Supported Row", "Back", 0, 40), exercise("Lat Pulldown", "Back", 1, 45), exercise("Dumbbell Curl", "Arms", 2, 12)]),
+            day("Leg Day", "Fri", 2, [exercise("Back Squat", "Legs", 0, 80), exercise("Romanian Deadlift", "Legs", 1, 70), exercise("Leg Press", "Legs", 2, 120)])
+          ]
+        : template === "upper-lower"
+          ? [
+              day("Upper Day", "Mon", 0, routineTemplates["upper-lower"].map((item, index) => routineExerciseFromWorkout(item, index))),
+              day("Lower Day", "Thu", 1, [exercise("Back Squat", "Legs", 0, 80), exercise("Romanian Deadlift", "Legs", 1, 70), exercise("Leg Press", "Legs", 2, 120)])
+            ]
+          : [
+              day("Full Body A", "Mon", 0, routineTemplates["full-body"].map((item, index) => routineExerciseFromWorkout(item, index))),
+              day("Full Body B", "Wed", 1, [exercise("Barbell Bench Press", "Chest", 0, 60), exercise("Chest Supported Row", "Back", 1, 40), exercise("Back Squat", "Legs", 2, 80)]),
+              day("Full Body C", "Fri", 2, [exercise("Seated Shoulder Press", "Shoulders", 0, 24), exercise("Lat Pulldown", "Back", 1, 45), exercise("Romanian Deadlift", "Legs", 2, 70)])
+            ];
+    return {
+      id: `routine-${template}-${cryptoSafeId()}`,
+      name: template === "ppl" ? "Push/Pull/Legs" : template === "upper-lower" ? "Upper/Lower" : "Full Body",
+      daysPerWeek: days.length,
+      days,
+      createdAt: nowIso,
+      updatedAt: nowIso
+    };
   }
 
   function applyTemplate(template: AppState["activeTemplate"]) {
     if (template === "custom") {
-      commit({ ...state, activeTemplate: "custom" }, "Đã chuyển sang Custom");
+      commit({ ...state, activeTemplate: "custom" }, "?? chuy?n sang Custom");
       return;
     }
+    const routine = routineFromTemplate(template);
     commit(
-      {
+      syncSelectedDay({
         ...state,
         activeTemplate: template,
-        workoutExercises: routineTemplates[template],
+        routines: [...state.routines, routine],
+        activeRoutineId: routine.id,
+        selectedWorkoutDayId: routine.days[0].id,
         workoutSets: [],
         activeExerciseIndex: 0
-      },
-      `Đã áp dụng template ${template}`
+      }),
+      `?? ?p d?ng template ${template}`
+    );
+  }
+
+  function selectWorkoutDay(dayId: string) {
+    const routine = activeRoutine;
+    const day = routine?.days.find((item) => item.id === dayId);
+    if (!routine || !day) return;
+    commitSynced(
+      syncSelectedDay({ ...state, selectedWorkoutDayId: day.id, activeExerciseIndex: 0 }),
+      "routine.day.select",
+      { routineId: routine.id, dayId },
+      `Selected ${day.name}`
+    );
+  }
+
+  function updateRoutineName(name: string) {
+    updateActiveRoutine((routine) => ({ ...routine, name: name || "Untitled Routine" }), "Updated routine name");
+  }
+
+  function updateWorkoutDay(id: string, patch: Partial<AppState["routines"][number]["days"][number]>) {
+    updateActiveRoutine(
+      (routine) => ({
+        ...routine,
+        days: routine.days.map((day) => (day.id === id ? { ...day, ...patch } : day))
+      }),
+      "Updated workout day"
+    );
+  }
+
+  function addWorkoutDay() {
+    updateActiveRoutine((routine) => {
+      const nextIndex = routine.days.length + 1;
+      const day = {
+        id: `day-${cryptoSafeId()}`,
+        name: `Day ${nextIndex}`,
+        day: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][routine.days.length % 7],
+        order: routine.days.length,
+        exercises: []
+      };
+      return { ...routine, daysPerWeek: routine.days.length + 1, days: [...routine.days, day] };
+    }, "Added workout day");
+  }
+
+  function deleteWorkoutDay(id: string) {
+    if (!activeRoutine || activeRoutine.days.length <= 1) return;
+    const nextDays = activeRoutine.days.filter((day) => day.id !== id).map((day, index) => ({ ...day, order: index }));
+    const nextSelected = nextDays[0]?.id ?? state.selectedWorkoutDayId;
+    commitSynced(
+      syncSelectedDay({
+        ...state,
+        routines: state.routines.map((routine) =>
+          routine.id === activeRoutine.id ? { ...routine, daysPerWeek: nextDays.length, days: nextDays, updatedAt: new Date().toISOString() } : routine
+        ),
+        selectedWorkoutDayId: nextSelected,
+        activeExerciseIndex: 0
+      }),
+      "routine.day.delete",
+      { id },
+      "Deleted workout day"
+    );
+  }
+
+  function addExerciseFromLibrary(definition: ExerciseDefinition) {
+    const exercise: WorkoutExercise = {
+      id: cryptoSafeId(),
+      name: definition.name,
+      muscleGroup: definition.muscleGroup,
+      targetSets: 3,
+      targetRepsMin: definition.movementPattern === "core" ? 30 : 8,
+      targetRepsMax: definition.movementPattern === "core" ? 60 : 12,
+      targetWeightKg: definition.equipment === "bodyweight" ? 0 : 20,
+      restSeconds: definition.movementPattern === "isolation" ? 60 : 90,
+      lastSession: definition.builtIn ? "Copied from built-in library" : "Custom library exercise"
+    };
+    updateActiveWorkoutDay(
+      (day) => ({
+        ...day,
+        exercises: [...day.exercises, routineExerciseFromWorkout(exercise, day.exercises.length, definition.id)]
+      }),
+      `Added ${definition.name}`
+    );
+  }
+
+  function addCustomExerciseDefinition() {
+    const exercise = createCustomExerciseDefinition({
+      name: newLibraryExerciseName,
+      muscleGroup: newLibraryMuscleGroup,
+      equipment: newLibraryEquipment,
+      movementPattern: newLibraryPattern
+    });
+    commitSynced(
+      { ...state, exerciseLibrary: [...state.exerciseLibrary, exercise] },
+      "exerciseLibrary.create",
+      exercise,
+      `Created ${exercise.name}`
+    );
+  }
+
+  function updateExerciseDefinition(id: string, patch: Partial<ExerciseDefinition>) {
+    const target = state.exerciseLibrary.find((exercise) => exercise.id === id);
+    if (!target || target.builtIn) return;
+    commitSynced(
+      { ...state, exerciseLibrary: state.exerciseLibrary.map((exercise) => (exercise.id === id ? { ...exercise, ...patch, builtIn: false } : exercise)) },
+      "exerciseLibrary.update",
+      { id, patch },
+      "Updated custom exercise"
+    );
+  }
+
+  function deleteExerciseDefinition(id: string) {
+    const target = state.exerciseLibrary.find((exercise) => exercise.id === id);
+    if (!target || target.builtIn) return;
+    commitSynced(
+      { ...state, exerciseLibrary: state.exerciseLibrary.filter((exercise) => exercise.id !== id) },
+      "exerciseLibrary.delete",
+      { id },
+      "Deleted custom exercise"
     );
   }
 
@@ -1055,6 +1324,9 @@ export default function AppPage() {
         {tab === "workout" && (
           <WorkoutView
             state={state}
+            activeRoutine={activeRoutine}
+            activeWorkoutDay={activeWorkoutDay}
+            filteredExerciseLibrary={filteredExerciseLibrary}
             activeExercise={activeExercise}
             completedSets={completedSetsForActive}
             setWeight={setWeight}
@@ -1079,6 +1351,20 @@ export default function AppPage() {
             skipCurrentSet={skipCurrentSet}
             updateWorkoutSet={updateWorkoutSet}
             deleteWorkoutSet={deleteWorkoutSet}
+            librarySearch={librarySearch}
+            setLibrarySearch={setLibrarySearch}
+            libraryMuscleFilter={libraryMuscleFilter}
+            setLibraryMuscleFilter={setLibraryMuscleFilter}
+            libraryEquipmentFilter={libraryEquipmentFilter}
+            setLibraryEquipmentFilter={setLibraryEquipmentFilter}
+            newLibraryExerciseName={newLibraryExerciseName}
+            setNewLibraryExerciseName={setNewLibraryExerciseName}
+            newLibraryMuscleGroup={newLibraryMuscleGroup}
+            setNewLibraryMuscleGroup={setNewLibraryMuscleGroup}
+            newLibraryEquipment={newLibraryEquipment}
+            setNewLibraryEquipment={setNewLibraryEquipment}
+            newLibraryPattern={newLibraryPattern}
+            setNewLibraryPattern={setNewLibraryPattern}
             newExerciseName={newExerciseName}
             setNewExerciseName={setNewExerciseName}
             addExercise={addExercise}
@@ -1091,6 +1377,15 @@ export default function AppPage() {
             moveExercise={moveExercise}
             applyTemplate={applyTemplate}
             updateExerciseTarget={updateExerciseTarget}
+            updateRoutineName={updateRoutineName}
+            selectWorkoutDay={selectWorkoutDay}
+            updateWorkoutDay={updateWorkoutDay}
+            addWorkoutDay={addWorkoutDay}
+            deleteWorkoutDay={deleteWorkoutDay}
+            addExerciseFromLibrary={addExerciseFromLibrary}
+            addCustomExerciseDefinition={addCustomExerciseDefinition}
+            updateExerciseDefinition={updateExerciseDefinition}
+            deleteExerciseDefinition={deleteExerciseDefinition}
           />
         )}
 
@@ -1699,6 +1994,9 @@ function TodayView(props: {
 
 function WorkoutView(props: {
   state: AppState;
+  activeRoutine?: AppState["routines"][number];
+  activeWorkoutDay?: AppState["routines"][number]["days"][number];
+  filteredExerciseLibrary: ExerciseDefinition[];
   activeExercise: AppState["workoutExercises"][number];
   completedSets: WorkoutSet[];
   setWeight: number;
@@ -1723,6 +2021,20 @@ function WorkoutView(props: {
   skipCurrentSet: () => void;
   updateWorkoutSet: (id: string, patch: Partial<WorkoutSet>) => void;
   deleteWorkoutSet: (id: string) => void;
+  librarySearch: string;
+  setLibrarySearch: (value: string) => void;
+  libraryMuscleFilter: string;
+  setLibraryMuscleFilter: (value: string) => void;
+  libraryEquipmentFilter: string;
+  setLibraryEquipmentFilter: (value: string) => void;
+  newLibraryExerciseName: string;
+  setNewLibraryExerciseName: (value: string) => void;
+  newLibraryMuscleGroup: string;
+  setNewLibraryMuscleGroup: (value: string) => void;
+  newLibraryEquipment: EquipmentType;
+  setNewLibraryEquipment: (value: EquipmentType) => void;
+  newLibraryPattern: MovementPattern;
+  setNewLibraryPattern: (value: MovementPattern) => void;
   newExerciseName: string;
   setNewExerciseName: (value: string) => void;
   addExercise: () => void;
@@ -1735,6 +2047,15 @@ function WorkoutView(props: {
   moveExercise: (id: string, direction: -1 | 1) => void;
   applyTemplate: (template: AppState["activeTemplate"]) => void;
   updateExerciseTarget: (id: string, patch: Partial<WorkoutExercise>) => void;
+  updateRoutineName: (name: string) => void;
+  selectWorkoutDay: (id: string) => void;
+  updateWorkoutDay: (id: string, patch: Partial<AppState["routines"][number]["days"][number]>) => void;
+  addWorkoutDay: () => void;
+  deleteWorkoutDay: (id: string) => void;
+  addExerciseFromLibrary: (definition: ExerciseDefinition) => void;
+  addCustomExerciseDefinition: () => void;
+  updateExerciseDefinition: (id: string, patch: Partial<ExerciseDefinition>) => void;
+  deleteExerciseDefinition: (id: string) => void;
 }) {
   const totalVolume = props.state.workoutSets.reduce((sum, set) => sum + set.actualWeightKg * set.actualReps, 0);
   const completedExerciseCount = new Set(props.state.workoutSets.map((set) => set.exerciseId)).size;
@@ -1760,9 +2081,9 @@ function WorkoutView(props: {
       <div className="stack workout-plan">
         <section className="workout-hero">
           <div>
-            <p className="eyebrow">Today workout</p>
-            <h1>Push Day</h1>
-            <p>{props.state.workoutExercises.length} exercises - about 45 minutes</p>
+            <p className="eyebrow">Plan mode</p>
+            <h1>{props.activeWorkoutDay?.name ?? "Workout day"}</h1>
+            <p>{props.activeRoutine?.name ?? "Routine"} - {props.state.workoutExercises.length} exercises in selected day</p>
           </div>
           <div className="action-icon workout-icon">
             <Dumbbell size={24} />
@@ -1775,15 +2096,17 @@ function WorkoutView(props: {
         <section className="card">
           <div className="section-heading">
             <h2>Weekly schedule</h2>
-            <span className="sync-pill">{props.state.activeTemplate}</span>
+            <span className="sync-pill">{props.activeRoutine?.daysPerWeek ?? props.activeRoutine?.days.length ?? 0} days/week</span>
           </div>
           <div className="week-strip">
-            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, index) => (
-              <span key={day} className={index === 0 ? "active" : index < 3 ? "done" : ""}>
+            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => {
+              const planned = props.activeRoutine?.days.find((item) => item.day === day);
+              return (
+              <button key={day} className={planned?.id === props.activeWorkoutDay?.id ? "active" : planned ? "done" : ""} onClick={() => planned && props.selectWorkoutDay(planned.id)} disabled={!planned}>
                 <strong>{day.slice(0, 1)}</strong>
-                <em>{index === 0 ? "Train" : index < 3 ? "Done" : "-"}</em>
-              </span>
-            ))}
+                <em>{planned?.name ?? "-"}</em>
+              </button>
+            );})}
           </div>
         </section>
 
@@ -1794,6 +2117,35 @@ function WorkoutView(props: {
               <h2>Routine editor</h2>
             </div>
             <Dumbbell size={22} />
+          </div>
+          <div className="exercise-edit-grid">
+            <label className="wide-field">
+              <span>Routine name</span>
+              <input value={props.activeRoutine?.name ?? ""} onChange={(event) => props.updateRoutineName(event.target.value)} />
+            </label>
+            <label>
+              <span>Session name</span>
+              <input value={props.activeWorkoutDay?.name ?? ""} onChange={(event) => props.activeWorkoutDay && props.updateWorkoutDay(props.activeWorkoutDay.id, { name: event.target.value })} />
+            </label>
+            <label>
+              <span>Day</span>
+              <select value={props.activeWorkoutDay?.day ?? "Mon"} onChange={(event) => props.activeWorkoutDay && props.updateWorkoutDay(props.activeWorkoutDay.id, { day: event.target.value })}>
+                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => <option key={day} value={day}>{day}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>Days/week</span>
+              <input value={props.activeRoutine?.days.length ?? 0} readOnly />
+            </label>
+          </div>
+          <div className="template-row" aria-label="Workout days">
+            {[...(props.activeRoutine?.days ?? [])].sort((a, b) => a.order - b.order).map((day) => (
+              <button key={day.id} className={day.id === props.activeWorkoutDay?.id ? "active" : ""} onClick={() => props.selectWorkoutDay(day.id)}>
+                {day.name}
+              </button>
+            ))}
+            <button onClick={props.addWorkoutDay}>+ Day</button>
+            {props.activeWorkoutDay && <button onClick={() => props.deleteWorkoutDay(props.activeWorkoutDay!.id)} disabled={(props.activeRoutine?.days.length ?? 0) <= 1}>Delete day</button>}
           </div>
           <div className="template-row" aria-label="Routine templates">
             {[
@@ -1836,6 +2188,74 @@ function WorkoutView(props: {
           <div className="inline-form">
             <input value={props.newExerciseName} onChange={(event) => props.setNewExerciseName(event.target.value)} aria-label="New exercise name" />
             <button className="secondary-button" onClick={props.addExercise}>Add exercise</button>
+          </div>
+        </section>
+
+        <section className="card">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Exercise library</p>
+              <h2>Pick or customize</h2>
+            </div>
+            <Plus size={20} />
+          </div>
+          <div className="exercise-edit-grid">
+            <label className="wide-field">
+              <span>Search</span>
+              <input value={props.librarySearch} onChange={(event) => props.setLibrarySearch(event.target.value)} placeholder="Bench, back, cable..." />
+            </label>
+            <label>
+              <span>Muscle</span>
+              <select value={props.libraryMuscleFilter} onChange={(event) => props.setLibraryMuscleFilter(event.target.value)}>
+                {["all", "Chest", "Back", "Legs", "Shoulders", "Arms", "Core", "Custom"].map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>Equipment</span>
+              <select value={props.libraryEquipmentFilter} onChange={(event) => props.setLibraryEquipmentFilter(event.target.value)}>
+                {["all", "barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "other"].map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="exercise-library plan-list">
+            {props.filteredExerciseLibrary.slice(0, 10).map((exercise) => (
+              <div key={exercise.id}>
+                <span>{exercise.builtIn ? "Built-in" : "Custom"}</span>
+                <button className="exercise-select" onClick={() => props.addExerciseFromLibrary(exercise)}>
+                  <strong>{exercise.name}</strong>
+                  <em>{exercise.muscleGroup} - {exercise.equipment} - {exercise.movementPattern}</em>
+                </button>
+                {!exercise.builtIn && (
+                  <div className="row-actions">
+                    <button onClick={() => props.updateExerciseDefinition(exercise.id, { name: `${exercise.name}*` })}>Edit</button>
+                    <button onClick={() => props.deleteExerciseDefinition(exercise.id)}><Trash2 size={14} /></button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="exercise-edit-grid">
+            <label>
+              <span>Custom name</span>
+              <input value={props.newLibraryExerciseName} onChange={(event) => props.setNewLibraryExerciseName(event.target.value)} />
+            </label>
+            <label>
+              <span>Muscle</span>
+              <input value={props.newLibraryMuscleGroup} onChange={(event) => props.setNewLibraryMuscleGroup(event.target.value)} />
+            </label>
+            <label>
+              <span>Equipment</span>
+              <select value={props.newLibraryEquipment} onChange={(event) => props.setNewLibraryEquipment(event.target.value as EquipmentType)}>
+                {["barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "other"].map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>Pattern</span>
+              <select value={props.newLibraryPattern} onChange={(event) => props.setNewLibraryPattern(event.target.value as MovementPattern)}>
+                {["push", "pull", "squat", "hinge", "lunge", "carry", "isolation", "core"].map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+            </label>
+            <button className="secondary-button" onClick={props.addCustomExerciseDefinition}>Add custom exercise</button>
           </div>
         </section>
 
@@ -1902,8 +2322,8 @@ function WorkoutView(props: {
       <section className="card">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">Routine builder</p>
-            <h2>Push Day</h2>
+            <p className="eyebrow">Live mode</p>
+            <h2>{props.activeWorkoutDay?.name ?? "Workout session"}</h2>
           </div>
           <Dumbbell size={22} />
         </div>
@@ -2008,7 +2428,7 @@ function WorkoutView(props: {
       <section className="card workout-overview">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">Push Day • Exercise {props.state.activeExerciseIndex + 1}/{props.state.workoutExercises.length}</p>
+            <p className="eyebrow">{props.activeWorkoutDay?.name ?? "Session"} ? Exercise {props.state.activeExerciseIndex + 1}/{props.state.workoutExercises.length}</p>
             <h1>{props.activeExercise.name}</h1>
             <p>{props.activeExercise.muscleGroup} • Target {props.activeExercise.targetSets} x {props.activeExercise.targetRepsMin}-{props.activeExercise.targetRepsMax}</p>
           </div>

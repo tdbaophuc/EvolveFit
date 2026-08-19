@@ -1,4 +1,4 @@
-import { normalizeDrinkModules } from "./core";
+import { builtInExerciseDefinitions, migrateWorkoutExercisesToRoutine, routineExercisesToWorkoutExercises, selectedWorkoutDay, normalizeDrinkModules } from "./core";
 import { initialState, type AppState } from "./seed";
 
 const key = "evolvefit-state-v1";
@@ -11,6 +11,14 @@ export function loadState(): AppState {
     if (!raw) return initialState;
     const parsed = JSON.parse(raw) as Partial<AppState>;
     const profile = { ...initialState.profile, ...parsed.profile };
+    const legacyExercises = parsed.workoutExercises ?? initialState.workoutExercises;
+    const routines = parsed.routines?.length
+      ? parsed.routines
+      : [migrateWorkoutExercisesToRoutine(legacyExercises, { routineId: "routine-migrated", name: "Migrated Routine" })];
+    const activeRoutineId = parsed.activeRoutineId ?? routines[0]?.id ?? initialState.activeRoutineId;
+    const activeRoutine = routines.find((routine) => routine.id === activeRoutineId) ?? routines[0];
+    const selectedDay = activeRoutine?.days.find((day) => day.id === parsed.selectedWorkoutDayId) ?? selectedWorkoutDay(activeRoutine) ?? activeRoutine?.days[0];
+    const workoutExercises = selectedDay ? routineExercisesToWorkoutExercises(selectedDay.exercises) : legacyExercises;
     return {
       ...initialState,
       ...parsed,
@@ -22,7 +30,14 @@ export function loadState(): AppState {
       supplements: parsed.supplements ?? initialState.supplements,
       supplementLogs: parsed.supplementLogs ?? initialState.supplementLogs,
       quickAmounts: parsed.quickAmounts ?? initialState.quickAmounts,
-      workoutExercises: parsed.workoutExercises ?? initialState.workoutExercises,
+      routines,
+      activeRoutineId,
+      selectedWorkoutDayId: selectedDay?.id ?? initialState.selectedWorkoutDayId,
+      exerciseLibrary: [
+        ...builtInExerciseDefinitions,
+        ...((parsed.exerciseLibrary ?? initialState.exerciseLibrary).filter((exercise) => !exercise.builtIn))
+      ],
+      workoutExercises,
       workoutSets: parsed.workoutSets ?? initialState.workoutSets,
       bodyMetrics: parsed.bodyMetrics ?? initialState.bodyMetrics,
       activeTemplate: parsed.activeTemplate ?? initialState.activeTemplate,

@@ -1,4 +1,19 @@
-import { defaultDrinkModules, type BodyMetric, type DrinkModule, type HydrationLog, type QuickAmount, type ReminderMode, type Supplement, type SupplementLog, type WorkoutExercise, type WorkoutSet } from "./core";
+import {
+  builtInExerciseDefinitions,
+  defaultDrinkModules,
+  migrateWorkoutExercisesToRoutine,
+  type BodyMetric,
+  type DrinkModule,
+  type ExerciseDefinition,
+  type HydrationLog,
+  type QuickAmount,
+  type ReminderMode,
+  type Routine,
+  type Supplement,
+  type SupplementLog,
+  type WorkoutExercise,
+  type WorkoutSet
+} from "./core";
 
 export type AppState = {
   profile: {
@@ -49,6 +64,10 @@ export type AppState = {
   supplements: Supplement[];
   supplementLogs: SupplementLog[];
   quickAmounts: QuickAmount[];
+  routines: Routine[];
+  activeRoutineId: string;
+  selectedWorkoutDayId: string;
+  exerciseLibrary: ExerciseDefinition[];
   workoutExercises: WorkoutExercise[];
   workoutSets: WorkoutSet[];
   bodyMetrics: BodyMetric[];
@@ -187,6 +206,14 @@ export const routineTemplates: Record<AppState["activeTemplate"], WorkoutExercis
   custom: []
 };
 
+const defaultRoutine = migrateWorkoutExercisesToRoutine(routineTemplates.ppl, {
+  routineId: "routine-ppl",
+  name: "Push/Pull/Legs",
+  day: "Mon",
+  dayName: "Push Day",
+  now
+});
+
 export const initialState: AppState = {
   profile: {
     name: "Phúc",
@@ -250,6 +277,10 @@ export const initialState: AppState = {
     { id: "qa3", category: "hydration", label: "+750ml", amount: 750, unit: "ml", pinned: true, uses: 4 },
     { id: "qa4", category: "supplement", label: "5g", amount: 5, unit: "g", pinned: true, uses: 9 }
   ],
+  routines: [defaultRoutine],
+  activeRoutineId: defaultRoutine.id,
+  selectedWorkoutDayId: defaultRoutine.days[0].id,
+  exerciseLibrary: builtInExerciseDefinitions,
   workoutExercises: routineTemplates.ppl,
   workoutSets: [],
   bodyMetrics: [

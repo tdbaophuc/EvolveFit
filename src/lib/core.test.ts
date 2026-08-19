@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   defaultDrinkModules,
+  builtInExerciseDefinitions,
+  createCustomExerciseDefinition,
   expectedHydrationByNow,
   bodyWeightDelta,
   exportAppData,
@@ -14,6 +16,8 @@ import {
   latestBodyMetric,
   normalizeDrinkModules,
   parseRoutineCsv,
+  filterExerciseLibrary,
+  migrateWorkoutExercisesToRoutine,
   readinessScore,
   enqueueSync,
   markSyncQueue,
@@ -22,6 +26,7 @@ import {
   shouldSendHydrationReminder,
   suggestedRoutineTemplate,
   suggestedWaterTargetMl,
+  selectedWorkoutDay,
   toCsv,
   upsertQuickAmount,
   visibleHydrationLogs,
@@ -242,6 +247,67 @@ describe("routine import parser", () => {
 
     expect(preview.rows).toHaveLength(2);
     expect(preview.errors).toContain('Line 3, column exercise: duplicate exercise "Bench Press" in session "Push".');
+  });
+});
+
+describe("routine model and exercise library", () => {
+  it("migrates legacy workout exercises into a routine without losing targets", () => {
+    const legacy = [
+      {
+        id: "ex-1",
+        name: "Bench Press",
+        muscleGroup: "Chest",
+        targetSets: 3,
+        targetRepsMin: 8,
+        targetRepsMax: 10,
+        targetWeightKg: 60,
+        restSeconds: 90,
+        lastSession: "60kg x 8"
+      }
+    ];
+    const routine = migrateWorkoutExercisesToRoutine(legacy, { routineId: "r1", name: "Migrated", day: "Wed", dayName: "Upper" });
+
+    expect(routine).toMatchObject({ id: "r1", name: "Migrated", daysPerWeek: 1 });
+    expect(routine.days[0]).toMatchObject({ name: "Upper", day: "Wed" });
+    expect(routine.days[0].exercises[0]).toMatchObject({ name: "Bench Press", targetWeightKg: 60, order: 0 });
+  });
+
+  it("selects the workout day matching the date weekday with fallback to first day", () => {
+    const routine = migrateWorkoutExercisesToRoutine([], { routineId: "r2" });
+    routine.days = [
+      { id: "d1", name: "Push", day: "Mon", order: 0, exercises: [] },
+      { id: "d2", name: "Pull", day: "Wed", order: 1, exercises: [] }
+    ];
+
+    expect(selectedWorkoutDay(routine, new Date("2026-08-19T08:00:00.000Z"))?.id).toBe("d2");
+    expect(selectedWorkoutDay(routine, new Date("2026-08-20T08:00:00.000Z"))?.id).toBe("d1");
+  });
+
+  it("filters the exercise library by search, muscle and equipment", () => {
+    const results = filterExerciseLibrary(builtInExerciseDefinitions, {
+      query: "press",
+      muscleGroup: "Chest",
+      equipment: "barbell"
+    });
+
+    expect(results.map((exercise) => exercise.name)).toEqual(["Barbell Bench Press"]);
+  });
+
+  it("creates custom exercise definitions as editable non-built-in records", () => {
+    const custom = createCustomExerciseDefinition({
+      name: "Reverse Sled Drag",
+      muscleGroup: "Legs",
+      equipment: "other",
+      movementPattern: "lunge"
+    });
+
+    expect(custom).toMatchObject({
+      name: "Reverse Sled Drag",
+      muscleGroup: "Legs",
+      equipment: "other",
+      movementPattern: "lunge",
+      builtIn: false
+    });
   });
 });
 

@@ -88,6 +88,50 @@ export type WorkoutExercise = {
   lastSession: string;
 };
 
+export type EquipmentType = "barbell" | "dumbbell" | "cable" | "machine" | "bodyweight" | "kettlebell" | "other";
+
+export type MovementPattern =
+  | "push"
+  | "pull"
+  | "squat"
+  | "hinge"
+  | "lunge"
+  | "carry"
+  | "isolation"
+  | "core";
+
+export type ExerciseDefinition = {
+  id: string;
+  name: string;
+  muscleGroup: string;
+  equipment: EquipmentType;
+  movementPattern: MovementPattern;
+  builtIn: boolean;
+  notes?: string;
+};
+
+export type RoutineExercise = WorkoutExercise & {
+  definitionId?: string;
+  order: number;
+};
+
+export type WorkoutDay = {
+  id: string;
+  name: string;
+  day: string;
+  order: number;
+  exercises: RoutineExercise[];
+};
+
+export type Routine = {
+  id: string;
+  name: string;
+  daysPerWeek: number;
+  days: WorkoutDay[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type RoutineImportRow = WorkoutExercise & {
   sourceLine: number;
   session: string;
@@ -119,6 +163,24 @@ export type AchievementStatus = {
 };
 
 export const todayKey = (date = new Date()) => date.toISOString().slice(0, 10);
+
+export const builtInExerciseDefinitions: ExerciseDefinition[] = [
+  { id: "lib-bench-press", name: "Barbell Bench Press", muscleGroup: "Chest", equipment: "barbell", movementPattern: "push", builtIn: true },
+  { id: "lib-incline-db-press", name: "Incline Dumbbell Press", muscleGroup: "Chest", equipment: "dumbbell", movementPattern: "push", builtIn: true },
+  { id: "lib-push-up", name: "Push-up", muscleGroup: "Chest", equipment: "bodyweight", movementPattern: "push", builtIn: true },
+  { id: "lib-row", name: "Chest Supported Row", muscleGroup: "Back", equipment: "machine", movementPattern: "pull", builtIn: true },
+  { id: "lib-lat-pulldown", name: "Lat Pulldown", muscleGroup: "Back", equipment: "cable", movementPattern: "pull", builtIn: true },
+  { id: "lib-pull-up", name: "Pull-up", muscleGroup: "Back", equipment: "bodyweight", movementPattern: "pull", builtIn: true },
+  { id: "lib-squat", name: "Back Squat", muscleGroup: "Legs", equipment: "barbell", movementPattern: "squat", builtIn: true },
+  { id: "lib-rdl", name: "Romanian Deadlift", muscleGroup: "Legs", equipment: "barbell", movementPattern: "hinge", builtIn: true },
+  { id: "lib-leg-press", name: "Leg Press", muscleGroup: "Legs", equipment: "machine", movementPattern: "squat", builtIn: true },
+  { id: "lib-shoulder-press", name: "Seated Shoulder Press", muscleGroup: "Shoulders", equipment: "dumbbell", movementPattern: "push", builtIn: true },
+  { id: "lib-lateral-raise", name: "Lateral Raise", muscleGroup: "Shoulders", equipment: "dumbbell", movementPattern: "isolation", builtIn: true },
+  { id: "lib-curl", name: "Dumbbell Curl", muscleGroup: "Arms", equipment: "dumbbell", movementPattern: "isolation", builtIn: true },
+  { id: "lib-triceps-pushdown", name: "Cable Triceps Pushdown", muscleGroup: "Arms", equipment: "cable", movementPattern: "isolation", builtIn: true },
+  { id: "lib-plank", name: "Plank", muscleGroup: "Core", equipment: "bodyweight", movementPattern: "core", builtIn: true },
+  { id: "lib-cable-crunch", name: "Cable Crunch", muscleGroup: "Core", equipment: "cable", movementPattern: "core", builtIn: true }
+];
 
 export const defaultDrinkModules: DrinkModule[] = [
   {
@@ -373,6 +435,89 @@ export function visibleQuickAmounts(amounts: QuickAmount[], category: QuickAmoun
     .filter((amount) => amount.category === category && amount.pinned)
     .sort((a, b) => b.uses - a.uses || a.amount - b.amount)
     .slice(0, limit);
+}
+
+export function workoutExerciseToRoutineExercise(exercise: WorkoutExercise, order: number): RoutineExercise {
+  return {
+    ...exercise,
+    order
+  };
+}
+
+export function routineExercisesToWorkoutExercises(exercises: RoutineExercise[]): WorkoutExercise[] {
+  return [...exercises]
+    .sort((a, b) => a.order - b.order)
+    .map((exercise) => ({
+      id: exercise.id,
+      name: exercise.name,
+      muscleGroup: exercise.muscleGroup,
+      targetSets: exercise.targetSets,
+      targetRepsMin: exercise.targetRepsMin,
+      targetRepsMax: exercise.targetRepsMax,
+      targetWeightKg: exercise.targetWeightKg,
+      restSeconds: exercise.restSeconds,
+      lastSession: exercise.lastSession
+    }));
+}
+
+export function migrateWorkoutExercisesToRoutine(
+  exercises: WorkoutExercise[],
+  options: { routineId?: string; name?: string; day?: string; dayName?: string; now?: Date } = {}
+): Routine {
+  const nowIso = (options.now ?? new Date()).toISOString();
+  return {
+    id: options.routineId ?? "routine-local",
+    name: options.name ?? "Current Routine",
+    daysPerWeek: 1,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    days: [
+      {
+        id: `${options.routineId ?? "routine-local"}-day-1`,
+        name: options.dayName ?? "Day 1",
+        day: options.day ?? "Mon",
+        order: 0,
+        exercises: exercises.map((exercise, index) => workoutExerciseToRoutineExercise(exercise, index))
+      }
+    ]
+  };
+}
+
+export function selectedWorkoutDay(routine: Routine | undefined, date = new Date()): WorkoutDay | undefined {
+  if (!routine?.days.length) return undefined;
+  const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][date.getDay()];
+  return routine.days.find((day) => day.day === weekday) ?? [...routine.days].sort((a, b) => a.order - b.order)[0];
+}
+
+export function filterExerciseLibrary(
+  exercises: ExerciseDefinition[],
+  filters: { query?: string; muscleGroup?: string; equipment?: string; movementPattern?: string }
+): ExerciseDefinition[] {
+  const query = filters.query?.trim().toLowerCase() ?? "";
+  return exercises
+    .filter((exercise) => !query || exercise.name.toLowerCase().includes(query) || exercise.muscleGroup.toLowerCase().includes(query))
+    .filter((exercise) => !filters.muscleGroup || filters.muscleGroup === "all" || exercise.muscleGroup === filters.muscleGroup)
+    .filter((exercise) => !filters.equipment || filters.equipment === "all" || exercise.equipment === filters.equipment)
+    .filter((exercise) => !filters.movementPattern || filters.movementPattern === "all" || exercise.movementPattern === filters.movementPattern)
+    .sort((a, b) => Number(b.builtIn) - Number(a.builtIn) || a.muscleGroup.localeCompare(b.muscleGroup) || a.name.localeCompare(b.name));
+}
+
+export function createCustomExerciseDefinition(input: {
+  name: string;
+  muscleGroup: string;
+  equipment: EquipmentType;
+  movementPattern: MovementPattern;
+  notes?: string;
+}): ExerciseDefinition {
+  return {
+    id: cryptoSafeId(),
+    name: input.name.trim() || "Custom Exercise",
+    muscleGroup: input.muscleGroup.trim() || "Custom",
+    equipment: input.equipment,
+    movementPattern: input.movementPattern,
+    notes: input.notes,
+    builtIn: false
+  };
 }
 
 export function splitCsvLine(line: string): string[] {
