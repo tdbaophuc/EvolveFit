@@ -1,4 +1,11 @@
-import { builtInExerciseDefinitions, migrateWorkoutExercisesToRoutine, routineExercisesToWorkoutExercises, selectedWorkoutDay, normalizeDrinkModules } from "./core";
+import {
+  builtInExerciseDefinitions,
+  migrateLegacyWorkoutSession,
+  migrateWorkoutExercisesToRoutine,
+  normalizeDrinkModules,
+  routineExercisesToWorkoutExercises,
+  selectedWorkoutDay
+} from "./core";
 import { initialState, type AppState } from "./seed";
 
 const key = "evolvefit-state-v1";
@@ -19,6 +26,15 @@ export function loadState(): AppState {
     const activeRoutine = routines.find((routine) => routine.id === activeRoutineId) ?? routines[0];
     const selectedDay = activeRoutine?.days.find((day) => day.id === parsed.selectedWorkoutDayId) ?? selectedWorkoutDay(activeRoutine) ?? activeRoutine?.days[0];
     const workoutExercises = selectedDay ? routineExercisesToWorkoutExercises(selectedDay.exercises) : legacyExercises;
+    const legacySessionMigration = migrateLegacyWorkoutSession({
+      sets: parsed.workoutSets ?? initialState.workoutSets,
+      routineId: activeRoutineId,
+      workoutDayId: selectedDay?.id ?? initialState.selectedWorkoutDayId,
+      sessionName: selectedDay?.name ?? "Legacy Workout"
+    });
+    const migratedSessions = legacySessionMigration.sessions.length
+      ? [...(parsed.workoutSessions ?? []), ...legacySessionMigration.sessions]
+      : (parsed.workoutSessions ?? initialState.workoutSessions);
     return {
       ...initialState,
       ...parsed,
@@ -38,7 +54,9 @@ export function loadState(): AppState {
         ...((parsed.exerciseLibrary ?? initialState.exerciseLibrary).filter((exercise) => !exercise.builtIn))
       ],
       workoutExercises,
-      workoutSets: parsed.workoutSets ?? initialState.workoutSets,
+      workoutSessions: migratedSessions,
+      activeWorkoutSessionId: parsed.activeWorkoutSessionId,
+      workoutSets: legacySessionMigration.sets,
       bodyMetrics: parsed.bodyMetrics ?? initialState.bodyMetrics,
       activeTemplate: parsed.activeTemplate ?? initialState.activeTemplate,
       recommendationDecisions: parsed.recommendationDecisions ?? initialState.recommendationDecisions,

@@ -22,6 +22,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import {
   createCustomExerciseDefinition,
+  createWorkoutSession,
   cryptoSafeId,
   estimatedOneRepMax,
   exportAppData,
@@ -37,7 +38,10 @@ import {
   parseRoutineCsv,
   readinessScore,
   filterExerciseLibrary,
+  finishWorkoutSession,
   migrateWorkoutExercisesToRoutine,
+  pauseWorkoutSession,
+  resumeWorkoutSession,
   routineExercisesToWorkoutExercises,
   selectedWorkoutDay,
   rowsToRoutineCsv,
@@ -292,13 +296,17 @@ export default function AppPage() {
   const activeRoutine = state.routines.find((routine) => routine.id === state.activeRoutineId) ?? state.routines[0];
   const activeWorkoutDay =
     activeRoutine?.days.find((day) => day.id === state.selectedWorkoutDayId) ?? selectedWorkoutDay(activeRoutine, now) ?? activeRoutine?.days[0];
+  const activeWorkoutSession = state.workoutSessions.find((session) => session.id === state.activeWorkoutSessionId);
+  const currentSessionSets = activeWorkoutSession
+    ? state.workoutSets.filter((set) => set.sessionId === activeWorkoutSession.id)
+    : [];
   const filteredExerciseLibrary = filterExerciseLibrary(state.exerciseLibrary, {
     query: librarySearch,
     muscleGroup: libraryMuscleFilter,
     equipment: libraryEquipmentFilter
   });
   const activeExercise = state.workoutExercises[state.activeExerciseIndex] ?? state.workoutExercises[0] ?? emptyExercise;
-  const completedSetsForActive = state.workoutSets.filter((set) => set.exerciseId === activeExercise.id);
+  const completedSetsForActive = currentSessionSets.filter((set) => set.exerciseId === activeExercise.id);
   const achievements = monthlyAchievements({
     hydrationGoalDays: 18,
     hydrationTargetDays: 24,
@@ -1000,12 +1008,18 @@ export default function AppPage() {
     setRestPausedSeconds(null);
     setRestNotifiedFor(null);
     setNowMs(Date.now());
+    const finishedSession =
+      workoutWouldFinishOnNextSet && activeWorkoutSession ? finishWorkoutSession(activeWorkoutSession) : undefined;
     withUndo(
       {
         ...state,
         workoutSets: [...state.workoutSets, completed],
+        workoutSessions: finishedSession
+          ? state.workoutSessions.map((session) => (session.id === finishedSession.id ? finishedSession : session))
+          : state.workoutSessions,
+        activeWorkoutSessionId: finishedSession ? undefined : state.activeWorkoutSessionId,
         activeExerciseIndex: nextExerciseIndex,
-        restEndsAt,
+        restEndsAt: finishedSession ? undefined : restEndsAt,
         syncQueue: enqueueSync(state.syncQueue, { type: label === "skip set" ? "workout.set.skip" : "workout.set.create", payload: completed })
       },
       label,
@@ -1018,8 +1032,13 @@ export default function AppPage() {
       setToast("Add or import an exercise before logging a set.");
       return;
     }
+    if (!activeWorkoutSession) {
+      startWorkout();
+      return;
+    }
     const completed: WorkoutSet = {
       id: cryptoSafeId(),
+      sessionId: activeWorkoutSession.id,
       exerciseId: activeExercise.id,
       exerciseName: activeExercise.name,
       targetWeightKg: activeExercise.targetWeightKg,
@@ -1034,8 +1053,13 @@ export default function AppPage() {
 
   function skipCurrentSet() {
     if (!state.workoutExercises.length) return;
+    if (!activeWorkoutSession) {
+      startWorkout();
+      return;
+    }
     const skipped: WorkoutSet = {
       id: cryptoSafeId(),
+      sessionId: activeWorkoutSession.id,
       exerciseId: activeExercise.id,
       exerciseName: activeExercise.name,
       targetWeightKg: activeExercise.targetWeightKg,
@@ -1073,14 +1097,44 @@ export default function AppPage() {
       setToast("Add or import an exercise before starting a workout.");
       return;
     }
+    const session = createWorkoutSession({
+      routineId: activeRoutine?.id ?? state.activeRoutineId,
+      workoutDayId: activeWorkoutDay?.id ?? state.selectedWorkoutDayId,
+      sessionName: activeWorkoutDay?.name ?? "Workout Session",
+      sessionExerciseOrder: state.workoutExercises.map((exercise) => exercise.id)
+    });
     setWorkoutMode("live");
     setRestPausedSeconds(null);
     setRestNotifiedFor(null);
-    commit({ ...state, activeExerciseIndex: 0, restEndsAt: undefined }, "Start workout");
+    commit(
+      {
+        ...state,
+        workoutSessions: [...state.workoutSessions, session],
+        activeWorkoutSessionId: session.id,
+        activeExerciseIndex: 0,
+        restEndsAt: undefined,
+        syncQueue: enqueueSync(state.syncQueue, { type: "workout.session.start", payload: session })
+      },
+      "Start workout"
+    );
   }
 
   function finishWorkout() {
     setRestPausedSeconds(null);
+    if (activeWorkoutSession) {
+      const finished = finishWorkoutSession(activeWorkoutSession);
+      commitSynced(
+        {
+          ...state,
+          workoutSessions: state.workoutSessions.map((session) => (session.id === finished.id ? finished : session)),
+          activeWorkoutSessionId: undefined,
+          restEndsAt: undefined
+        },
+        "workout.session.finish",
+        finished,
+        "Finished workout session"
+      );
+    }
     setWorkoutMode("finished");
   }
 
@@ -1096,14 +1150,29 @@ export default function AppPage() {
   }
 
   function pauseRestTimer() {
-    if (!state.restEndsAt) return;
-    setRestPausedSeconds(Math.max(0, Math.ceil((new Date(state.restEndsAt).getTime() - Date.now()) / 1000)));
+    if (state.restEndsAt) {
+      setRestPausedSeconds(Math.max(0, Math.ceil((new Date(state.restEndsAt).getTime() - Date.now()) / 1000)));
+    }
+    if (activeWorkoutSession) {
+      const paused = pauseWorkoutSession(activeWorkoutSession);
+      commit({ ...state, workoutSessions: state.workoutSessions.map((session) => (session.id === paused.id ? paused : session)) }, "Pause workout session");
+    }
   }
 
   function resumeRestTimer() {
-    if (restPausedSeconds === null) return;
+    if (!activeWorkoutSession && restPausedSeconds === null) return;
     setRestNotifiedFor(null);
-    commit({ ...state, restEndsAt: new Date(Date.now() + restPausedSeconds * 1000).toISOString() }, "Resume rest timer");
+    const resumedSessions = activeWorkoutSession
+      ? state.workoutSessions.map((session) => (session.id === activeWorkoutSession.id ? resumeWorkoutSession(session) : session))
+      : state.workoutSessions;
+    commit(
+      {
+        ...state,
+        workoutSessions: resumedSessions,
+        restEndsAt: restPausedSeconds !== null ? new Date(Date.now() + restPausedSeconds * 1000).toISOString() : state.restEndsAt
+      },
+      "Resume workout session"
+    );
     setRestPausedSeconds(null);
     setNowMs(Date.now());
   }
@@ -1326,6 +1395,8 @@ export default function AppPage() {
             state={state}
             activeRoutine={activeRoutine}
             activeWorkoutDay={activeWorkoutDay}
+            activeWorkoutSession={activeWorkoutSession}
+            currentSessionSets={currentSessionSets}
             filteredExerciseLibrary={filteredExerciseLibrary}
             activeExercise={activeExercise}
             completedSets={completedSetsForActive}
@@ -1343,7 +1414,7 @@ export default function AppPage() {
             selectExercise={selectWorkoutExercise}
             skipExercise={skipActiveExercise}
             restSeconds={restSeconds}
-            restPaused={restPausedSeconds !== null}
+            restPaused={restPausedSeconds !== null || activeWorkoutSession?.status === "paused"}
             pauseRestTimer={pauseRestTimer}
             resumeRestTimer={resumeRestTimer}
             adjustRestTimer={adjustRestTimer}
@@ -1996,6 +2067,8 @@ function WorkoutView(props: {
   state: AppState;
   activeRoutine?: AppState["routines"][number];
   activeWorkoutDay?: AppState["routines"][number]["days"][number];
+  activeWorkoutSession?: AppState["workoutSessions"][number];
+  currentSessionSets: WorkoutSet[];
   filteredExerciseLibrary: ExerciseDefinition[];
   activeExercise: AppState["workoutExercises"][number];
   completedSets: WorkoutSet[];
@@ -2057,8 +2130,8 @@ function WorkoutView(props: {
   updateExerciseDefinition: (id: string, patch: Partial<ExerciseDefinition>) => void;
   deleteExerciseDefinition: (id: string) => void;
 }) {
-  const totalVolume = props.state.workoutSets.reduce((sum, set) => sum + set.actualWeightKg * set.actualReps, 0);
-  const completedExerciseCount = new Set(props.state.workoutSets.map((set) => set.exerciseId)).size;
+  const totalVolume = props.currentSessionSets.reduce((sum, set) => sum + set.actualWeightKg * set.actualReps, 0);
+  const completedExerciseCount = new Set(props.currentSessionSets.map((set) => set.exerciseId)).size;
 
   if (props.mode === "finished") {
     return (
@@ -2067,7 +2140,7 @@ function WorkoutView(props: {
           <Check size={38} />
         </div>
         <h1>Workout complete</h1>
-        <p>{props.state.workoutSets.length} sets - {Math.round(totalVolume)}kg volume - {completedExerciseCount} exercises</p>
+        <p>{props.currentSessionSets.length} sets - {Math.round(totalVolume)}kg volume - {completedExerciseCount} exercises</p>
         <div className="finish-actions">
           <button className="primary-button training-bg" onClick={props.backToPlan}>Back to workout</button>
           <button className="secondary-button" onClick={props.startWorkout}>Start again</button>
@@ -2497,7 +2570,7 @@ function WorkoutView(props: {
       <section className="card">
         <div className="section-heading">
           <h2>Workout queue</h2>
-          <span className="sync-pill">Session only</span>
+            <span className="sync-pill">{props.activeWorkoutSession?.status ?? "no session"}</span>
         </div>
         <div className="queue-list">
           {props.state.workoutExercises.map((exercise, index) => (
@@ -2519,8 +2592,8 @@ function WorkoutView(props: {
           <Activity size={22} />
         </div>
         <div className="timeline compact">
-          {props.state.workoutSets.length ? (
-            props.state.workoutSets
+          {props.currentSessionSets.length ? (
+            props.currentSessionSets
               .slice()
               .reverse()
               .map((set) => (
@@ -2551,6 +2624,32 @@ function WorkoutView(props: {
               ))
           ) : (
             <p>Chưa có set nào trong buổi hiện tại.</p>
+          )}
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="section-heading">
+          <h2>Session history</h2>
+          <span className="sync-pill">{props.state.workoutSessions.length} sessions</span>
+        </div>
+        <div className="timeline compact">
+          {props.state.workoutSessions.length ? (
+            props.state.workoutSessions
+              .slice()
+              .reverse()
+              .map((session) => {
+                const setCount = props.state.workoutSets.filter((set) => set.sessionId === session.id).length;
+                return (
+                  <div key={session.id}>
+                    <span>{session.sessionName}</span>
+                    <strong>{session.status}</strong>
+                    <em>{setCount} sets - {Math.round(session.durationSeconds / 60)}m</em>
+                  </div>
+                );
+              })
+          ) : (
+            <p>No workout sessions yet.</p>
           )}
         </div>
       </section>

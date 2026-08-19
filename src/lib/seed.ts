@@ -12,6 +12,7 @@ import {
   type Supplement,
   type SupplementLog,
   type WorkoutExercise,
+  type WorkoutSession,
   type WorkoutSet
 } from "./core";
 
@@ -69,6 +70,8 @@ export type AppState = {
   selectedWorkoutDayId: string;
   exerciseLibrary: ExerciseDefinition[];
   workoutExercises: WorkoutExercise[];
+  workoutSessions: WorkoutSession[];
+  activeWorkoutSessionId?: string;
   workoutSets: WorkoutSet[];
   bodyMetrics: BodyMetric[];
   activeTemplate: "ppl" | "upper-lower" | "full-body" | "custom";
@@ -282,6 +285,8 @@ export const initialState: AppState = {
   selectedWorkoutDayId: defaultRoutine.days[0].id,
   exerciseLibrary: builtInExerciseDefinitions,
   workoutExercises: routineTemplates.ppl,
+  workoutSessions: [],
+  activeWorkoutSessionId: undefined,
   workoutSets: [],
   bodyMetrics: [
     { id: "bm1", measuredAt: `${today}T07:00:00.000Z`, weightKg: 72.4, heightCm: 174, bodyFatPercent: 18, waistCm: 82 },

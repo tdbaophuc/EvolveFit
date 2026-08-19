@@ -5,7 +5,9 @@ import {
   defaultDrinkModules,
   builtInExerciseDefinitions,
   createCustomExerciseDefinition,
+  createWorkoutSession,
   expectedHydrationByNow,
+  finishWorkoutSession,
   bodyWeightDelta,
   exportAppData,
   hydrationPaceStatus,
@@ -18,6 +20,7 @@ import {
   parseRoutineCsv,
   filterExerciseLibrary,
   migrateWorkoutExercisesToRoutine,
+  migrateLegacyWorkoutSession,
   readinessScore,
   enqueueSync,
   markSyncQueue,
@@ -27,6 +30,7 @@ import {
   suggestedRoutineTemplate,
   suggestedWaterTargetMl,
   selectedWorkoutDay,
+  workoutSessionDurationSeconds,
   toCsv,
   upsertQuickAmount,
   visibleHydrationLogs,
@@ -308,6 +312,72 @@ describe("routine model and exercise library", () => {
       movementPattern: "lunge",
       builtIn: false
     });
+  });
+});
+
+describe("workout session model", () => {
+  it("calculates workout session duration from start to end", () => {
+    expect(
+      workoutSessionDurationSeconds(
+        { startedAt: "2026-08-20T08:00:00.000Z", endedAt: "2026-08-20T08:45:30.000Z" },
+        new Date("2026-08-20T09:00:00.000Z")
+      )
+    ).toBe(2730);
+  });
+
+  it("starts and finishes a workout session with exercise order", () => {
+    const session = createWorkoutSession({
+      routineId: "routine-1",
+      workoutDayId: "day-1",
+      sessionName: "Push Day",
+      sessionExerciseOrder: ["bench", "press"],
+      now: new Date("2026-08-20T08:00:00.000Z")
+    });
+    const finished = finishWorkoutSession(session, new Date("2026-08-20T09:15:00.000Z"));
+
+    expect(session).toMatchObject({
+      routineId: "routine-1",
+      workoutDayId: "day-1",
+      sessionName: "Push Day",
+      status: "active",
+      sessionExerciseOrder: ["bench", "press"]
+    });
+    expect(finished).toMatchObject({ status: "finished", durationSeconds: 4500, endedAt: "2026-08-20T09:15:00.000Z" });
+  });
+
+  it("migrates legacy workout sets into a finished legacy session", () => {
+    const legacySets = [
+      {
+        id: "set-1",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        targetWeightKg: 60,
+        targetReps: 8,
+        actualWeightKg: 60,
+        actualReps: 8,
+        completedAt: "2026-08-20T08:10:00.000Z"
+      },
+      {
+        id: "set-2",
+        exerciseId: "row",
+        exerciseName: "Row",
+        targetWeightKg: 40,
+        targetReps: 10,
+        actualWeightKg: 40,
+        actualReps: 10,
+        completedAt: "2026-08-20T08:40:00.000Z"
+      }
+    ];
+    const migrated = migrateLegacyWorkoutSession({
+      sets: legacySets,
+      routineId: "routine-1",
+      workoutDayId: "day-1",
+      sessionName: "Upper"
+    });
+
+    expect(migrated.sessions).toHaveLength(1);
+    expect(migrated.sessions[0]).toMatchObject({ id: "session-legacy", status: "finished", sessionExerciseOrder: ["bench", "row"] });
+    expect(migrated.sets.every((set) => set.sessionId === "session-legacy")).toBe(true);
   });
 });
 

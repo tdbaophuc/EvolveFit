@@ -66,6 +66,7 @@ export type ReminderMode = "fixed" | "interval";
 
 export type WorkoutSet = {
   id: string;
+  sessionId?: string;
   exerciseId: string;
   exerciseName: string;
   targetWeightKg: number;
@@ -74,6 +75,20 @@ export type WorkoutSet = {
   actualReps: number;
   rpe?: number;
   completedAt?: string;
+};
+
+export type WorkoutSessionStatus = "active" | "paused" | "finished" | "cancelled";
+
+export type WorkoutSession = {
+  id: string;
+  routineId: string;
+  workoutDayId: string;
+  sessionName: string;
+  startedAt: string;
+  endedAt?: string;
+  durationSeconds: number;
+  status: WorkoutSessionStatus;
+  sessionExerciseOrder: string[];
 };
 
 export type WorkoutExercise = {
@@ -517,6 +532,84 @@ export function createCustomExerciseDefinition(input: {
     movementPattern: input.movementPattern,
     notes: input.notes,
     builtIn: false
+  };
+}
+
+export function workoutSessionDurationSeconds(session: Pick<WorkoutSession, "startedAt" | "endedAt">, now = new Date()): number {
+  const end = session.endedAt ? new Date(session.endedAt) : now;
+  return Math.max(0, Math.round((end.getTime() - new Date(session.startedAt).getTime()) / 1000));
+}
+
+export function createWorkoutSession(input: {
+  routineId: string;
+  workoutDayId: string;
+  sessionName: string;
+  sessionExerciseOrder: string[];
+  now?: Date;
+}): WorkoutSession {
+  const startedAt = (input.now ?? new Date()).toISOString();
+  return {
+    id: cryptoSafeId(),
+    routineId: input.routineId,
+    workoutDayId: input.workoutDayId,
+    sessionName: input.sessionName,
+    startedAt,
+    durationSeconds: 0,
+    status: "active",
+    sessionExerciseOrder: input.sessionExerciseOrder
+  };
+}
+
+export function finishWorkoutSession(session: WorkoutSession, now = new Date()): WorkoutSession {
+  const endedAt = now.toISOString();
+  return {
+    ...session,
+    endedAt,
+    durationSeconds: workoutSessionDurationSeconds({ ...session, endedAt }),
+    status: "finished"
+  };
+}
+
+export function pauseWorkoutSession(session: WorkoutSession, now = new Date()): WorkoutSession {
+  return {
+    ...session,
+    durationSeconds: workoutSessionDurationSeconds(session, now),
+    status: "paused"
+  };
+}
+
+export function resumeWorkoutSession(session: WorkoutSession): WorkoutSession {
+  return {
+    ...session,
+    status: "active"
+  };
+}
+
+export function migrateLegacyWorkoutSession(params: {
+  sets: WorkoutSet[];
+  routineId: string;
+  workoutDayId: string;
+  sessionName: string;
+  now?: Date;
+}): { sessions: WorkoutSession[]; sets: WorkoutSet[] } {
+  if (!params.sets.length || params.sets.every((set) => set.sessionId)) return { sessions: [], sets: params.sets };
+  const completedTimes = params.sets.map((set) => set.completedAt).filter(Boolean).sort() as string[];
+  const startedAt = completedTimes[0] ?? (params.now ?? new Date()).toISOString();
+  const endedAt = completedTimes[completedTimes.length - 1] ?? startedAt;
+  const session: WorkoutSession = {
+    id: "session-legacy",
+    routineId: params.routineId,
+    workoutDayId: params.workoutDayId,
+    sessionName: `${params.sessionName} (legacy)`,
+    startedAt,
+    endedAt,
+    durationSeconds: workoutSessionDurationSeconds({ startedAt, endedAt }),
+    status: "finished",
+    sessionExerciseOrder: Array.from(new Set(params.sets.map((set) => set.exerciseId)))
+  };
+  return {
+    sessions: [session],
+    sets: params.sets.map((set) => ({ ...set, sessionId: set.sessionId ?? session.id }))
   };
 }
 
