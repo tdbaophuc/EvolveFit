@@ -2,6 +2,7 @@ import {
   cryptoSafeId,
   hydrationTotal,
   monthlyAchievements,
+  normalizeDrinkModules,
   progressiveOverloadRecommendation,
   shouldSendCreatineReminder,
   shouldSendHydrationReminder,
@@ -37,7 +38,8 @@ export async function readJson<T>(request: Request): Promise<T | undefined> {
 }
 
 export function getHydrationToday(date = new Date()) {
-  const totalMl = hydrationTotal(serverState.hydrationLogs, date);
+  const drinkModules = normalizeDrinkModules(serverState.drinkModules, serverState.profile.waterTargetMl, serverState.profile.creatineAmountG);
+  const totalMl = hydrationTotal(serverState.hydrationLogs, date, drinkModules);
   const expectedMl = expectedHydrationByNow(
     serverState.profile.waterTargetMl,
     serverState.profile.wakeHour,
@@ -200,20 +202,28 @@ export async function coachRecommend() {
 }
 
 export function hydrationReminderEvents(date = new Date()) {
+  const drinkModules = normalizeDrinkModules(serverState.drinkModules, serverState.profile.waterTargetMl, serverState.profile.creatineAmountG);
   const expectedMl = expectedHydrationByNow(
     serverState.profile.waterTargetMl,
     serverState.profile.wakeHour,
     serverState.profile.sleepHour,
     date
   );
-  const totalMl = hydrationTotal(serverState.hydrationLogs, date);
+  const totalMl = hydrationTotal(serverState.hydrationLogs, date, drinkModules);
   const lastLogAt = serverState.hydrationLogs.at(-1)?.loggedAt;
   const shouldSend = shouldSendHydrationReminder({
     totalMl,
     expectedMl,
     lastLogAt,
+    lastReminderAt: serverState.notificationSettings.lastHydrationReminderAt,
     now: date,
-    quietHours: { start: serverState.profile.sleepHour, end: serverState.profile.wakeHour }
+    quietHours: { start: serverState.notificationSettings.quietHoursStart, end: serverState.notificationSettings.quietHoursEnd },
+    quietHoursEnabled: serverState.notificationSettings.quietHoursEnabled,
+    mode: serverState.notificationSettings.hydrationMode,
+    times: serverState.notificationSettings.hydrationTimes,
+    intervalHours: serverState.notificationSettings.hydrationIntervalHours,
+    snoozeUntil: serverState.notificationSettings.snoozeUntil,
+    enabled: serverState.notificationSettings.hydrationEnabled
   });
 
   return ok({
@@ -232,6 +242,7 @@ export function hydrationReminderEvents(date = new Date()) {
 export async function sendHydrationReminderEvents(date = new Date()) {
   const result = hydrationReminderEvents(date);
   if (!result.ok || !result.data.event) return ok({ sent: 0, skipped: true, reason: "no-event" });
+  serverState.notificationSettings.lastHydrationReminderAt = date.toISOString();
   const payload = notificationPayload(result.data.event.title, result.data.event.body, "hydration-reminder", [
     { action: "log-water-250", title: "Log 250ml" },
     { action: "snooze", title: "Snooze" }
@@ -243,8 +254,16 @@ export function creatineReminderEvents(date = new Date()) {
   const shouldSend = shouldSendCreatineReminder({
     logs: serverState.supplementLogs,
     scheduledHour: serverState.profile.creatineHour,
+    scheduleHours: serverState.notificationSettings.creatineTimes,
     remindBeforeMinutes: serverState.profile.remindBeforeMinutes,
-    now: date
+    lastReminderAt: serverState.notificationSettings.lastCreatineReminderAt,
+    now: date,
+    quietHours: { start: serverState.notificationSettings.quietHoursStart, end: serverState.notificationSettings.quietHoursEnd },
+    quietHoursEnabled: serverState.notificationSettings.quietHoursEnabled,
+    mode: serverState.notificationSettings.creatineMode,
+    intervalHours: serverState.notificationSettings.creatineIntervalHours,
+    snoozeUntil: serverState.notificationSettings.snoozeUntil,
+    enabled: serverState.notificationSettings.creatineEnabled
   });
 
   return ok({
@@ -263,6 +282,7 @@ export function creatineReminderEvents(date = new Date()) {
 export async function sendCreatineReminderEvents(date = new Date()) {
   const result = creatineReminderEvents(date);
   if (!result.ok || !result.data.event) return ok({ sent: 0, skipped: true, reason: "no-event" });
+  serverState.notificationSettings.lastCreatineReminderAt = date.toISOString();
   const payload = notificationPayload(result.data.event.title, result.data.event.body, "creatine-reminder", [
     { action: "log-creatine", title: `Log ${serverState.profile.creatineAmountG}g` },
     { action: "snooze", title: "Snooze" }

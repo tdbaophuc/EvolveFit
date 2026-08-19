@@ -315,10 +315,14 @@ export default function AppPage() {
       totalMl: totalWater,
       expectedMl: expectedWater,
       lastLogAt: lastHydrationLog?.loggedAt,
+      lastReminderAt: state.notificationSettings.lastHydrationReminderAt,
       now,
-      quietHours: state.notificationSettings.quietHoursEnabled
-        ? { start: state.profile.sleepHour, end: state.profile.wakeHour }
-        : { start: -1, end: -1 },
+      quietHours: { start: state.notificationSettings.quietHoursStart, end: state.notificationSettings.quietHoursEnd },
+      quietHoursEnabled: state.notificationSettings.quietHoursEnabled,
+      mode: state.notificationSettings.hydrationMode,
+      times: state.notificationSettings.hydrationTimes,
+      intervalHours: state.notificationSettings.hydrationIntervalHours,
+      snoozeUntil: state.notificationSettings.snoozeUntil,
       enabled: isDrinkModuleActive(drinkModules, "water")
     });
   const creatineReminder =
@@ -328,12 +332,47 @@ export default function AppPage() {
     shouldSendCreatineReminder({
       logs: state.supplementLogs,
       scheduledHour: state.profile.creatineHour,
+      scheduleHours: state.notificationSettings.creatineTimes,
       remindBeforeMinutes: state.profile.remindBeforeMinutes,
+      lastReminderAt: state.notificationSettings.lastCreatineReminderAt,
       now,
+      quietHours: { start: state.notificationSettings.quietHoursStart, end: state.notificationSettings.quietHoursEnd },
+      quietHoursEnabled: state.notificationSettings.quietHoursEnabled,
+      mode: state.notificationSettings.creatineMode,
+      intervalHours: state.notificationSettings.creatineIntervalHours,
+      snoozeUntil: state.notificationSettings.snoozeUntil,
       enabled: creatineActive
     });
   const quickWater = visibleQuickAmounts(state.quickAmounts, "hydration", 3);
   const quickCreatine = visibleQuickAmounts(state.quickAmounts, "supplement", 2);
+  const hydrationReminderLabel =
+    state.notificationSettings.snoozeUntil && new Date(state.notificationSettings.snoozeUntil).getTime() > now.getTime()
+      ? `Snooze đến ${new Date(state.notificationSettings.snoozeUntil).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}`
+      : state.notificationSettings.hydrationMode === "fixed"
+        ? `Giờ cố định ${state.notificationSettings.hydrationTimes.join(", ")}h`
+        : `Mỗi ${state.notificationSettings.hydrationIntervalHours} giờ`;
+
+  useEffect(() => {
+    if (!mounted || !state.notificationSettings.inAppFallbackEnabled || notificationPermission === "granted") return;
+    if (!hydrationReminder && !creatineReminder) return;
+
+    const remindedAt = new Date().toISOString();
+    if (hydrationReminder) {
+      setToast("Đến giờ uống nước. Hãy log khi bạn uống xong.");
+      setState((current) => ({
+        ...current,
+        notificationSettings: { ...current.notificationSettings, lastHydrationReminderAt: remindedAt }
+      }));
+      return;
+    }
+
+    setToast("Đến giờ creatine. Log taken hoặc skip để không nhắc lại hôm nay.");
+    setState((current) => ({
+      ...current,
+      notificationSettings: { ...current.notificationSettings, lastCreatineReminderAt: remindedAt }
+    }));
+  }, [creatineReminder, hydrationReminder, mounted, notificationPermission, state.notificationSettings.inAppFallbackEnabled]);
+
   const emptyExercise: WorkoutExercise = {
     id: "empty-exercise",
     name: "No exercise selected",
@@ -1020,6 +1059,7 @@ export default function AppPage() {
     deleteSupplement,
     updateSupplement: updateSupplementLocal,
     waterReminderEnabled: waterModule?.reminderEnabled !== false && state.notificationSettings.hydrationEnabled,
+    waterReminderLabel: hydrationReminderLabel,
     updateProfile,
     updateNotificationSettings
   };
@@ -1532,6 +1572,7 @@ function TodayView(props: {
   deleteSupplement: (id: string) => void;
   updateSupplement: (id: string, patch: Partial<Supplement>) => void;
   waterReminderEnabled?: boolean;
+  waterReminderLabel?: string;
   updateProfile?: (next: Partial<AppState["profile"]>) => void;
   updateNotificationSettings?: (next: Partial<AppState["notificationSettings"]>) => void;
 }) {
@@ -1648,7 +1689,7 @@ function TodayView(props: {
         <div className="hydration-setting-row">
           <div>
             <p>Nhắc uống nước</p>
-            <span>{props.waterReminderEnabled ? "Mỗi 2 giờ - 09:00-21:00" : "Đang tắt"}</span>
+            <span>{props.waterReminderEnabled ? props.waterReminderLabel : "?ang t?t"}</span>
           </div>
           <button
             className={props.waterReminderEnabled ? "toggle-switch active" : "toggle-switch"}
@@ -2503,6 +2544,19 @@ function SettingsView(props: {
     props.updateDrinkModule(module.id, { goal });
   }
 
+  function parseHours(value: string): number[] {
+    return value
+      .split(",")
+      .map((item) => Number(item.trim()))
+      .filter((hour) => Number.isInteger(hour) && hour >= 0 && hour <= 23)
+      .filter((hour, index, list) => list.indexOf(hour) === index)
+      .sort((a, b) => a - b);
+  }
+
+  function snooze(minutes: number) {
+    props.updateNotificationSettings({ snoozeUntil: new Date(Date.now() + minutes * 60000).toISOString() });
+  }
+
   return (
     <div className="stack settings-screen">
       <section className="card settings-profile-card">
@@ -2640,15 +2694,46 @@ function SettingsView(props: {
           Bật thông báo
         </button>
         <label className="toggle-row">
-          <span>Nhắc uống nước</span>
+          <span>Nh?c u?ng n??c</span>
           <input
             type="checkbox"
             checked={props.state.notificationSettings.hydrationEnabled}
             onChange={(event) => props.updateNotificationSettings({ hydrationEnabled: event.target.checked })}
           />
         </label>
+        <div className="settings-inline-grid">
+          <label>
+            <span>Water mode</span>
+            <select
+              value={props.state.notificationSettings.hydrationMode}
+              onChange={(event) => props.updateNotificationSettings({ hydrationMode: event.target.value as AppState["notificationSettings"]["hydrationMode"] })}
+            >
+              <option value="interval">Interval</option>
+              <option value="fixed">Fixed times</option>
+            </select>
+          </label>
+          <label>
+            <span>Fixed hours</span>
+            <input
+              value={props.state.notificationSettings.hydrationTimes.join(", ")}
+              onChange={(event) => props.updateNotificationSettings({ hydrationTimes: parseHours(event.target.value) })}
+              aria-label="Water fixed reminder hours"
+            />
+          </label>
+          <label>
+            <span>Interval hours</span>
+            <input
+              type="number"
+              min="1"
+              max="8"
+              step="0.5"
+              value={props.state.notificationSettings.hydrationIntervalHours}
+              onChange={(event) => props.updateNotificationSettings({ hydrationIntervalHours: Number(event.target.value) })}
+            />
+          </label>
+        </div>
         <label className="toggle-row">
-          <span>Nhắc creatine</span>
+          <span>Nh?c creatine</span>
           <input
             type="checkbox"
             checked={creatineActive && props.state.notificationSettings.creatineEnabled}
@@ -2656,14 +2741,88 @@ function SettingsView(props: {
             onChange={(event) => props.updateNotificationSettings({ creatineEnabled: event.target.checked })}
           />
         </label>
+        <div className="settings-inline-grid">
+          <label>
+            <span>Creatine mode</span>
+            <select
+              value={props.state.notificationSettings.creatineMode}
+              disabled={!creatineActive}
+              onChange={(event) => props.updateNotificationSettings({ creatineMode: event.target.value as AppState["notificationSettings"]["creatineMode"] })}
+            >
+              <option value="fixed">Fixed times</option>
+              <option value="interval">Interval</option>
+            </select>
+          </label>
+          <label>
+            <span>Fixed hours</span>
+            <input
+              value={props.state.notificationSettings.creatineTimes.join(", ")}
+              disabled={!creatineActive}
+              onChange={(event) => props.updateNotificationSettings({ creatineTimes: parseHours(event.target.value) })}
+              aria-label="Creatine fixed reminder hours"
+            />
+          </label>
+          <label>
+            <span>Interval hours</span>
+            <input
+              type="number"
+              min="1"
+              max="24"
+              value={props.state.notificationSettings.creatineIntervalHours}
+              disabled={!creatineActive}
+              onChange={(event) => props.updateNotificationSettings({ creatineIntervalHours: Number(event.target.value) })}
+            />
+          </label>
+        </div>
         <label className="toggle-row">
-          <span>Quiet hours theo giờ ngủ</span>
+          <span>Quiet hours</span>
           <input
             type="checkbox"
             checked={props.state.notificationSettings.quietHoursEnabled}
             onChange={(event) => props.updateNotificationSettings({ quietHoursEnabled: event.target.checked })}
           />
         </label>
+        <div className="settings-inline-grid">
+          <label>
+            <span>Quiet start</span>
+            <input
+              type="number"
+              min="0"
+              max="23"
+              value={props.state.notificationSettings.quietHoursStart}
+              onChange={(event) => props.updateNotificationSettings({ quietHoursStart: Number(event.target.value) })}
+            />
+          </label>
+          <label>
+            <span>Quiet end</span>
+            <input
+              type="number"
+              min="0"
+              max="23"
+              value={props.state.notificationSettings.quietHoursEnd}
+              onChange={(event) => props.updateNotificationSettings({ quietHoursEnd: Number(event.target.value) })}
+            />
+          </label>
+          <label className="toggle-row compact-toggle">
+            <span>In-app fallback</span>
+            <input
+              type="checkbox"
+              checked={props.state.notificationSettings.inAppFallbackEnabled}
+              onChange={(event) => props.updateNotificationSettings({ inAppFallbackEnabled: event.target.checked })}
+            />
+          </label>
+        </div>
+        <div className="split-actions">
+          <button className="secondary-button" onClick={() => snooze(30)}>
+            Snooze 30m
+          </button>
+          <button className="secondary-button" onClick={() => snooze(120)}>
+            Snooze 2h
+          </button>
+        </div>
+        <button className="secondary-button export-button" onClick={() => props.updateNotificationSettings({ snoozeUntil: undefined })}>
+          Clear snooze {props.state.notificationSettings.snoozeUntil ? `(${new Date(props.state.notificationSettings.snoozeUntil).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })})` : ""}
+        </button>
         <p className="privacy-note">Web Push thật cần VAPID/FCM credentials; app hiện đã có service worker action handler và API subscription contract.</p>
       </section>
       <section className="card">

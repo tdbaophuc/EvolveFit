@@ -1,4 +1,4 @@
-import { defaultDrinkModules, type BodyMetric, type DrinkModule, type HydrationLog, type QuickAmount, type Supplement, type SupplementLog, type WorkoutExercise, type WorkoutSet } from "./core";
+import { defaultDrinkModules, type BodyMetric, type DrinkModule, type HydrationLog, type QuickAmount, type ReminderMode, type Supplement, type SupplementLog, type WorkoutExercise, type WorkoutSet } from "./core";
 
 export type AppState = {
   profile: {
@@ -30,8 +30,19 @@ export type AppState = {
   notificationSettings: {
     hydrationEnabled: boolean;
     creatineEnabled: boolean;
+    hydrationMode: ReminderMode;
+    hydrationTimes: number[];
+    hydrationIntervalHours: number;
+    creatineMode: ReminderMode;
+    creatineTimes: number[];
+    creatineIntervalHours: number;
     quietHoursEnabled: boolean;
+    quietHoursStart: number;
+    quietHoursEnd: number;
+    inAppFallbackEnabled: boolean;
     snoozeUntil?: string;
+    lastHydrationReminderAt?: string;
+    lastCreatineReminderAt?: string;
   };
   hydrationLogs: HydrationLog[];
   drinkModules: DrinkModule[];
@@ -206,7 +217,16 @@ export const initialState: AppState = {
   notificationSettings: {
     hydrationEnabled: true,
     creatineEnabled: true,
-    quietHoursEnabled: true
+    hydrationMode: "interval",
+    hydrationTimes: [9, 11, 13, 15, 17, 19, 21],
+    hydrationIntervalHours: 2,
+    creatineMode: "fixed",
+    creatineTimes: [17],
+    creatineIntervalHours: 24,
+    quietHoursEnabled: true,
+    quietHoursStart: 23,
+    quietHoursEnd: 6,
+    inAppFallbackEnabled: true
   },
   drinkModules: defaultDrinkModules.map((module) =>
     module.id === "water"

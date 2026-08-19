@@ -1943,7 +1943,8 @@ button:disabled {
   font-weight: 800;
 }
 
-.settings-inline-grid input[type="number"] {
+.settings-inline-grid input,
+.settings-inline-grid select {
   width: 100%;
   min-height: 36px;
   border: 1px solid var(--border);

@@ -62,6 +62,8 @@ export type QuickAmount = {
   uses: number;
 };
 
+export type ReminderMode = "fixed" | "interval";
+
 export type WorkoutSet = {
   id: string;
   exerciseId: string;
@@ -246,6 +248,45 @@ export function hydrationPaceStatus(totalMl: number, expectedMl: number): "ahead
   return "on-pace";
 }
 
+export function isInQuietHours(now: Date, quietHours: { start: number; end: number }): boolean {
+  if (quietHours.start < 0 || quietHours.end < 0 || quietHours.start === quietHours.end) return false;
+  const hour = now.getHours();
+  return quietHours.start > quietHours.end
+    ? hour >= quietHours.start || hour < quietHours.end
+    : hour >= quietHours.start && hour < quietHours.end;
+}
+
+export function isSnoozed(snoozeUntil: string | undefined, now = new Date()): boolean {
+  return Boolean(snoozeUntil && new Date(snoozeUntil).getTime() > now.getTime());
+}
+
+function minutesSince(iso: string | undefined, now: Date): number | undefined {
+  if (!iso) return undefined;
+  return (now.getTime() - new Date(iso).getTime()) / 60000;
+}
+
+function scheduledDateForHour(now: Date, hour: number, minuteOffset = 0): Date {
+  const scheduled = new Date(now);
+  scheduled.setHours(hour, 0, 0, 0);
+  scheduled.setMinutes(scheduled.getMinutes() + minuteOffset);
+  return scheduled;
+}
+
+function fixedReminderDue(params: {
+  times: number[];
+  now: Date;
+  lastReminderAt?: string;
+  minuteOffset?: number;
+}): boolean {
+  const today = todayKey(params.now);
+  const lastReminderAt = params.lastReminderAt ? new Date(params.lastReminderAt) : undefined;
+  return params.times.some((hour) => {
+    const scheduled = scheduledDateForHour(params.now, hour, params.minuteOffset);
+    if (scheduled.toISOString().slice(0, 10) !== today || params.now < scheduled) return false;
+    return !lastReminderAt || lastReminderAt < scheduled;
+  });
+}
+
 export function suggestedWaterTargetMl(weightKg: number, workoutDaysPerWeek = 0): number {
   if (!Number.isFinite(weightKg) || weightKg <= 0) return 2500;
   const base = weightKg * 35;
@@ -263,23 +304,34 @@ export function shouldSendHydrationReminder(params: {
   totalMl: number;
   expectedMl: number;
   lastLogAt?: string;
+  lastReminderAt?: string;
   now?: Date;
   quietHours: { start: number; end: number };
   enabled?: boolean;
+  mode?: ReminderMode;
+  times?: number[];
+  intervalHours?: number;
+  snoozeUntil?: string;
+  quietHoursEnabled?: boolean;
 }): boolean {
   if (params.enabled === false) return false;
   const now = params.now ?? new Date();
-  const hour = now.getHours();
-  const inQuietHours =
-    params.quietHours.start > params.quietHours.end
-      ? hour >= params.quietHours.start || hour < params.quietHours.end
-      : hour >= params.quietHours.start && hour < params.quietHours.end;
+  if (isSnoozed(params.snoozeUntil, now)) return false;
+  if (params.quietHoursEnabled !== false && isInQuietHours(now, params.quietHours)) return false;
+  if (params.totalMl >= params.expectedMl - 250) return false;
 
-  if (inQuietHours || params.totalMl >= params.expectedMl - 250) return false;
-  if (!params.lastLogAt) return true;
+  const mode = params.mode ?? "interval";
+  const intervalHours = Math.max(1, params.intervalHours ?? 1.25);
+  const minutesSinceLastLog = minutesSince(params.lastLogAt, now);
+  const minutesSinceLastReminder = minutesSince(params.lastReminderAt, now);
+  if (minutesSinceLastLog !== undefined && minutesSinceLastLog < intervalHours * 60) return false;
 
-  const minutesSinceLastLog = (now.getTime() - new Date(params.lastLogAt).getTime()) / 60000;
-  return minutesSinceLastLog >= 75;
+  if (mode === "fixed") {
+    return fixedReminderDue({ times: params.times?.length ? params.times : [9, 11, 13, 15, 17, 19, 21], now, lastReminderAt: params.lastReminderAt });
+  }
+
+  if (minutesSinceLastReminder !== undefined && minutesSinceLastReminder < intervalHours * 60) return false;
+  return true;
 }
 
 export function upsertQuickAmount(amounts: QuickAmount[], next: Omit<QuickAmount, "id" | "uses">): QuickAmount[] {
@@ -450,21 +502,39 @@ export function monthlyAchievements(params: {
 export function shouldSendCreatineReminder(params: {
   logs: SupplementLog[];
   scheduledHour: number;
+  scheduleHours?: number[];
   remindBeforeMinutes: number;
+  lastReminderAt?: string;
   now?: Date;
   enabled?: boolean;
+  mode?: ReminderMode;
+  intervalHours?: number;
+  snoozeUntil?: string;
+  quietHours?: { start: number; end: number };
+  quietHoursEnabled?: boolean;
 }): boolean {
   if (params.enabled === false) return false;
   const now = params.now ?? new Date();
+  if (isSnoozed(params.snoozeUntil, now)) return false;
+  if (params.quietHours && params.quietHoursEnabled !== false && isInQuietHours(now, params.quietHours)) return false;
   const today = todayKey(now);
   const loggedToday = params.logs.some((log) => log.name.toLowerCase() === "creatine" && log.loggedAt.startsWith(today));
   if (loggedToday) return false;
 
-  const reminderTime = new Date(now);
-  reminderTime.setHours(params.scheduledHour, 0, 0, 0);
-  reminderTime.setMinutes(reminderTime.getMinutes() - params.remindBeforeMinutes);
+  const mode = params.mode ?? "fixed";
+  if (mode === "interval") {
+    const intervalHours = Math.max(1, params.intervalHours ?? 24);
+    const minutesSinceLastReminder = minutesSince(params.lastReminderAt, now);
+    if (minutesSinceLastReminder !== undefined && minutesSinceLastReminder < intervalHours * 60) return false;
+    return true;
+  }
 
-  return now >= reminderTime;
+  return fixedReminderDue({
+    times: params.scheduleHours?.length ? params.scheduleHours : [params.scheduledHour],
+    now,
+    lastReminderAt: params.lastReminderAt,
+    minuteOffset: -params.remindBeforeMinutes
+  });
 }
 
 export function cryptoSafeId(): string {

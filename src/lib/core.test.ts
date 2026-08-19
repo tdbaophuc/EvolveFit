@@ -106,6 +106,39 @@ describe("hydration logic", () => {
       })
     ).toBe(false);
   });
+
+  it("honors fixed reminder slots and does not repeat the same slot", () => {
+    const now = new Date(2026, 7, 14, 10, 5);
+    const params = {
+      totalMl: 300,
+      expectedMl: 1200,
+      now,
+      quietHours: { start: 23, end: 6 },
+      mode: "fixed" as const,
+      times: [9, 10, 14],
+      intervalHours: 2
+    };
+
+    expect(shouldSendHydrationReminder(params)).toBe(true);
+    expect(shouldSendHydrationReminder({ ...params, lastReminderAt: new Date(2026, 7, 14, 10, 1).toISOString() })).toBe(false);
+  });
+
+  it("honors interval reminders, snooze and quiet-hour opt out", () => {
+    const now = new Date(2026, 7, 14, 14, 0);
+    const base = {
+      totalMl: 300,
+      expectedMl: 1500,
+      now,
+      quietHours: { start: 23, end: 6 },
+      mode: "interval" as const,
+      intervalHours: 2
+    };
+
+    expect(shouldSendHydrationReminder({ ...base, lastReminderAt: new Date(2026, 7, 14, 13, 0).toISOString() })).toBe(false);
+    expect(shouldSendHydrationReminder({ ...base, snoozeUntil: new Date(2026, 7, 14, 14, 30).toISOString() })).toBe(false);
+    expect(shouldSendHydrationReminder({ ...base, now: new Date(2026, 7, 14, 23, 30) })).toBe(false);
+    expect(shouldSendHydrationReminder({ ...base, now: new Date(2026, 7, 14, 23, 30), quietHoursEnabled: false })).toBe(true);
+  });
 });
 
 describe("quick amount logic", () => {
@@ -168,6 +201,30 @@ describe("supplement reminders", () => {
         enabled: false
       })
     ).toBe(false);
+  });
+
+  it("does not remind for creatine when skipped today, snoozed, quiet, or fixed slot already reminded", () => {
+    const now = new Date(2026, 7, 14, 16, 50);
+    const base = {
+      logs: [],
+      scheduledHour: 17,
+      scheduleHours: [17],
+      remindBeforeMinutes: 15,
+      now,
+      quietHours: { start: 23, end: 6 },
+      mode: "fixed" as const
+    };
+
+    expect(shouldSendCreatineReminder(base)).toBe(true);
+    expect(
+      shouldSendCreatineReminder({
+        ...base,
+        logs: [{ id: "skip-1", name: "Creatine", amount: 5, unit: "g", status: "skipped", loggedAt: "2026-08-14T08:00:00.000Z" }]
+      })
+    ).toBe(false);
+    expect(shouldSendCreatineReminder({ ...base, snoozeUntil: new Date(2026, 7, 14, 17, 30).toISOString() })).toBe(false);
+    expect(shouldSendCreatineReminder({ ...base, now: new Date(2026, 7, 14, 23, 30) })).toBe(false);
+    expect(shouldSendCreatineReminder({ ...base, lastReminderAt: new Date(2026, 7, 14, 16, 46).toISOString() })).toBe(false);
   });
 });
 
