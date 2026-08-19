@@ -88,6 +88,19 @@ export type WorkoutExercise = {
   lastSession: string;
 };
 
+export type RoutineImportRow = WorkoutExercise & {
+  sourceLine: number;
+  session: string;
+  day: string;
+  note: string;
+};
+
+export type RoutineImportPreview = {
+  fileName: string;
+  rows: RoutineImportRow[];
+  errors: string[];
+};
+
 export type Recommendation = {
   title: string;
   reason: string;
@@ -360,6 +373,187 @@ export function visibleQuickAmounts(amounts: QuickAmount[], category: QuickAmoun
     .filter((amount) => amount.category === category && amount.pinned)
     .sort((a, b) => b.uses - a.uses || a.amount - b.amount)
     .slice(0, limit);
+}
+
+export function splitCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let current = "";
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+    if (char === '"' && quoted && next === '"') {
+      current += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      cells.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+function normalizeHeader(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+const routineColumnAliases = {
+  session: ["session", "session name", "buoi", "buoi tap", "phien", "lich"],
+  day: ["day", "workout day", "ngay", "thu", "ngay tap"],
+  exercise: ["exercise", "exercise name", "name", "bai tap", "ten bai tap"],
+  muscleGroup: ["muscle group", "muscle", "group", "nhom co"],
+  sets: ["sets", "set", "so set", "so sets"],
+  repsMin: ["reps min", "rep min", "min reps", "reps from", "rep toi thieu", "reps toi thieu"],
+  repsMax: ["reps max", "rep max", "max reps", "reps", "reps to", "rep toi da", "reps toi da"],
+  weight: ["weight", "weight kg", "kg", "target weight", "muc ta", "ta", "trong luong"],
+  restSeconds: ["rest seconds", "rest", "rest sec", "nghi giay", "thoi gian nghi"],
+  note: ["note", "notes", "ghi chu"]
+} satisfies Record<string, string[]>;
+
+function routineHeaderIndexes(headers: string[]) {
+  const normalized = headers.map(normalizeHeader);
+  const findHeader = (aliases: string[]) => aliases.map(normalizeHeader).map((name) => normalized.indexOf(name)).find((index) => index >= 0) ?? -1;
+  return {
+    session: findHeader(routineColumnAliases.session),
+    day: findHeader(routineColumnAliases.day),
+    exercise: findHeader(routineColumnAliases.exercise),
+    muscleGroup: findHeader(routineColumnAliases.muscleGroup),
+    sets: findHeader(routineColumnAliases.sets),
+    repsMin: findHeader(routineColumnAliases.repsMin),
+    repsMax: findHeader(routineColumnAliases.repsMax),
+    weight: findHeader(routineColumnAliases.weight),
+    restSeconds: findHeader(routineColumnAliases.restSeconds),
+    note: findHeader(routineColumnAliases.note)
+  };
+}
+
+export function rowsToRoutineCsv(rows: unknown[][]): string {
+  return rows
+    .map((row) =>
+      row
+        .map((cell) => {
+          const text = cell === undefined || cell === null ? "" : String(cell);
+          return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+        })
+        .join(",")
+    )
+    .join("\n");
+}
+
+export function parseRoutineCsv(text: string, fileName: string): RoutineImportPreview {
+  const lines = text
+    .replace(/^\uFEFF/, "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const errors: string[] = [];
+  if (lines.length < 2) return { fileName, rows: [], errors: ["CSV needs a header row and at least one exercise row."] };
+
+  const headers = splitCsvLine(lines[0]);
+  const indexes = routineHeaderIndexes(headers);
+  const requiredColumns: [keyof typeof indexes, string][] = [
+    ["session", "session"],
+    ["day", "day"],
+    ["exercise", "exercise"],
+    ["muscleGroup", "muscle group"],
+    ["sets", "sets"],
+    ["repsMin", "reps min"],
+    ["repsMax", "reps max"],
+    ["weight", "weight"],
+    ["restSeconds", "rest seconds"]
+  ];
+
+  requiredColumns.forEach(([key, label]) => {
+    if (indexes[key] < 0) errors.push(`Missing required column: ${label}.`);
+  });
+  if (errors.length) return { fileName, rows: [], errors };
+
+  const numberAt = (cells: string[], index: number) => Number(cells[index]);
+  const textAt = (cells: string[], index: number) => (index >= 0 && cells[index] ? cells[index].trim() : "");
+  const seen = new Set<string>();
+
+  const rows = lines.slice(1).flatMap<RoutineImportRow>((line, index) => {
+    const sourceLine = index + 2;
+    const cells = splitCsvLine(line);
+    const session = textAt(cells, indexes.session);
+    const day = textAt(cells, indexes.day);
+    const name = textAt(cells, indexes.exercise);
+    const muscleGroup = textAt(cells, indexes.muscleGroup);
+    const targetSets = numberAt(cells, indexes.sets);
+    const targetRepsMin = numberAt(cells, indexes.repsMin);
+    const targetRepsMax = numberAt(cells, indexes.repsMax);
+    const targetWeightKg = numberAt(cells, indexes.weight);
+    const restSeconds = numberAt(cells, indexes.restSeconds);
+    const note = textAt(cells, indexes.note);
+    const duplicateKey = `${normalizeHeader(session)}::${normalizeHeader(name)}`;
+    const duplicated = Boolean(session && name && seen.has(duplicateKey));
+
+    if (!session) errors.push(`Line ${sourceLine}, column session: value is required.`);
+    if (!day) errors.push(`Line ${sourceLine}, column day: value is required.`);
+    if (!name) errors.push(`Line ${sourceLine}, column exercise: value is required.`);
+    if (!muscleGroup) errors.push(`Line ${sourceLine}, column muscle group: value is required.`);
+    if (!Number.isInteger(targetSets) || targetSets < 1) errors.push(`Line ${sourceLine}, column sets: must be a positive integer.`);
+    if (!Number.isFinite(targetRepsMin) || targetRepsMin < 1) errors.push(`Line ${sourceLine}, column reps min: must be positive.`);
+    if (!Number.isFinite(targetRepsMax) || targetRepsMax < 1) errors.push(`Line ${sourceLine}, column reps max: must be positive.`);
+    if (Number.isFinite(targetRepsMin) && Number.isFinite(targetRepsMax) && targetRepsMin > targetRepsMax) {
+      errors.push(`Line ${sourceLine}, column reps min: must be less than or equal to reps max.`);
+    }
+    if (!Number.isFinite(targetWeightKg) || targetWeightKg < 0) errors.push(`Line ${sourceLine}, column weight: must be zero or positive.`);
+    if (!Number.isFinite(restSeconds) || restSeconds < 15) errors.push(`Line ${sourceLine}, column rest seconds: must be at least 15.`);
+    if (duplicated) errors.push(`Line ${sourceLine}, column exercise: duplicate exercise "${name}" in session "${session}".`);
+    if (session && name) seen.add(duplicateKey);
+
+    const valid =
+      session &&
+      day &&
+      name &&
+      muscleGroup &&
+      Number.isInteger(targetSets) &&
+      targetSets >= 1 &&
+      Number.isFinite(targetRepsMin) &&
+      Number.isFinite(targetRepsMax) &&
+      targetRepsMin >= 1 &&
+      targetRepsMax >= 1 &&
+      targetRepsMin <= targetRepsMax &&
+      Number.isFinite(targetWeightKg) &&
+      targetWeightKg >= 0 &&
+      Number.isFinite(restSeconds) &&
+      restSeconds >= 15 &&
+      !duplicated;
+
+    if (!valid) return [];
+
+    return [
+      {
+        id: `import-${sourceLine}-${cryptoSafeId()}`,
+        sourceLine,
+        session,
+        day,
+        name,
+        muscleGroup,
+        targetSets,
+        targetRepsMin,
+        targetRepsMax,
+        targetWeightKg,
+        restSeconds,
+        note,
+        lastSession: note || `${session} - ${day}`
+      }
+    ];
+  });
+
+  return { fileName, rows, errors };
 }
 
 export function progressiveOverloadRecommendation(params: {

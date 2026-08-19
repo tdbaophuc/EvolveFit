@@ -33,7 +33,9 @@ import {
   isDrinkModuleActive,
   monthlyAchievements,
   normalizeDrinkModules,
+  parseRoutineCsv,
   readinessScore,
+  rowsToRoutineCsv,
   enqueueSync,
   markSyncQueue,
   shouldSendCreatineReminder,
@@ -47,6 +49,7 @@ import {
   type BodyMetric,
   type DrinkModule,
   type HydrationLog,
+  type RoutineImportPreview,
   type Supplement,
   type WorkoutExercise,
   type WorkoutSet
@@ -57,12 +60,6 @@ import { loadState, resetState, saveState } from "@/lib/storage";
 type Tab = "today" | "hydration" | "workout" | "progress" | "settings";
 type SyncStatus = "offline" | "pending" | "failed" | "synced";
 type CsvDataset = "hydration" | "creatine" | "workouts" | "body-metrics";
-type RoutineImportRow = WorkoutExercise & { sourceLine: number };
-type RoutineImportPreview = {
-  fileName: string;
-  rows: RoutineImportRow[];
-  errors: string[];
-};
 type WakeLockSentinelLike = { release: () => Promise<void> };
 type NavigatorWithWakeLock = Navigator & {
   wakeLock?: { request: (type: "screen") => Promise<WakeLockSentinelLike> };
@@ -81,114 +78,6 @@ function syncStatusLabel(status: SyncStatus) {
   if (status === "pending") return "Pending sync";
   if (status === "failed") return "Sync failed";
   return "Synced";
-}
-
-function splitCsvLine(line: string): string[] {
-  const cells: string[] = [];
-  let current = "";
-  let quoted = false;
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-    const next = line[index + 1];
-    if (char === '"' && quoted && next === '"') {
-      current += '"';
-      index += 1;
-    } else if (char === '"') {
-      quoted = !quoted;
-    } else if (char === "," && !quoted) {
-      cells.push(current.trim());
-      current = "";
-    } else {
-      current += char;
-    }
-  }
-  cells.push(current.trim());
-  return cells;
-}
-
-function parseRoutineCsv(text: string, fileName: string): RoutineImportPreview {
-  const lines = text
-    .replace(/^\uFEFF/, "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const errors: string[] = [];
-  if (lines.length < 2) return { fileName, rows: [], errors: ["CSV needs a header row and at least one exercise row."] };
-
-  const headers = splitCsvLine(lines[0]).map((header) => header.toLowerCase());
-  const findHeader = (...names: string[]) => names.map((name) => headers.indexOf(name)).find((index) => index >= 0) ?? -1;
-  const indexes = {
-    name: findHeader("exercise", "exercise name", "ten bai tap", "tên bài tập"),
-    muscle: findHeader("muscle group", "muscle", "nhom co", "nhóm cơ"),
-    sets: findHeader("sets", "set"),
-    repsMin: findHeader("reps min", "rep min", "min reps"),
-    repsMax: findHeader("reps max", "rep max", "max reps", "reps"),
-    weight: findHeader("weight", "weight kg", "kg"),
-    rest: findHeader("rest seconds", "rest", "rest sec"),
-    note: findHeader("note", "notes", "ghi chu", "ghi chú")
-  };
-
-  if (indexes.name < 0) errors.push("Missing required column: exercise.");
-  if (indexes.sets < 0) errors.push("Missing required column: sets.");
-  if (indexes.repsMax < 0) errors.push("Missing required column: reps max or reps.");
-  if (errors.length) return { fileName, rows: [], errors };
-
-  const numberAt = (cells: string[], index: number, fallback: number) => {
-    if (index < 0) return fallback;
-    const value = Number(cells[index]);
-    return Number.isFinite(value) ? value : fallback;
-  };
-  const textAt = (cells: string[], index: number, fallback = "") => (index >= 0 && cells[index] ? cells[index] : fallback);
-
-  const rows = lines.slice(1).flatMap<RoutineImportRow>((line, index) => {
-    const sourceLine = index + 2;
-    const cells = splitCsvLine(line);
-    const name = textAt(cells, indexes.name).trim();
-    const targetSets = numberAt(cells, indexes.sets, 0);
-    const targetRepsMax = numberAt(cells, indexes.repsMax, 0);
-    const targetRepsMin = numberAt(cells, indexes.repsMin, targetRepsMax);
-    const targetWeightKg = numberAt(cells, indexes.weight, 0);
-    const restSeconds = numberAt(cells, indexes.rest, 60);
-
-    if (!name) errors.push(`Line ${sourceLine}: exercise is required.`);
-    if (!Number.isInteger(targetSets) || targetSets < 1) errors.push(`Line ${sourceLine}: sets must be a positive integer.`);
-    if (!Number.isFinite(targetRepsMax) || targetRepsMax < 1) errors.push(`Line ${sourceLine}: reps max must be positive.`);
-    if (!Number.isFinite(targetRepsMin) || targetRepsMin < 1 || targetRepsMin > targetRepsMax) {
-      errors.push(`Line ${sourceLine}: reps min must be between 1 and reps max.`);
-    }
-    if (!Number.isFinite(targetWeightKg) || targetWeightKg < 0) errors.push(`Line ${sourceLine}: weight must be zero or positive.`);
-    if (!Number.isFinite(restSeconds) || restSeconds < 15) errors.push(`Line ${sourceLine}: rest seconds must be at least 15.`);
-
-    if (!name || targetSets < 1 || targetRepsMax < 1 || targetRepsMin < 1 || targetRepsMin > targetRepsMax) return [];
-
-    return [{
-      id: `import-${sourceLine}-${cryptoSafeId()}`,
-      sourceLine,
-      name,
-      muscleGroup: textAt(cells, indexes.muscle, "Custom"),
-      targetSets,
-      targetRepsMin,
-      targetRepsMax,
-      targetWeightKg,
-      restSeconds,
-      lastSession: textAt(cells, indexes.note, "Imported routine")
-    }];
-  });
-
-  return { fileName, rows, errors };
-}
-
-function rowsToRoutineCsv(rows: unknown[][]): string {
-  return rows
-    .map((row) =>
-      row
-        .map((cell) => {
-          const text = cell === undefined || cell === null ? "" : String(cell);
-          return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-        })
-        .join(",")
-    )
-    .join("\n");
 }
 
 export default function AppPage() {
@@ -592,6 +481,14 @@ export default function AppPage() {
       lastSession: "Chưa có dữ liệu tuần trước"
     };
     commitSynced({ ...state, workoutExercises: [...state.workoutExercises, exercise] }, "exercise.create", exercise, `Đã thêm ${exercise.name}`);
+  }
+
+  async function downloadRoutineSampleXlsx() {
+    const response = await fetch("/samples/evolvefit-routine-template.csv");
+    const csv = await response.text();
+    const XLSX = await import("xlsx");
+    const workbook = XLSX.read(csv, { type: "string" });
+    XLSX.writeFile(workbook, "evolvefit-routine-template.xlsx");
   }
 
   function previewRoutineImport(file: File) {
@@ -1187,6 +1084,7 @@ export default function AppPage() {
             addExercise={addExercise}
             routineImportPreview={routineImportPreview}
             previewRoutineImport={previewRoutineImport}
+            downloadRoutineSampleXlsx={downloadRoutineSampleXlsx}
             confirmRoutineImport={confirmRoutineImport}
             clearRoutineImport={() => setRoutineImportPreview(null)}
             deleteExercise={deleteExercise}
@@ -1830,6 +1728,7 @@ function WorkoutView(props: {
   addExercise: () => void;
   routineImportPreview: RoutineImportPreview | null;
   previewRoutineImport: (file: File) => void;
+  downloadRoutineSampleXlsx: () => void;
   confirmRoutineImport: (mode: "replace" | "append") => void;
   clearRoutineImport: () => void;
   deleteExercise: (id: string) => void;
@@ -1948,11 +1847,19 @@ function WorkoutView(props: {
             </div>
             <Plus size={20} />
           </div>
-          <p>CSV/XLSX columns: exercise, muscle group, sets, reps min, reps max, weight, rest seconds, note.</p>
-          <label className="secondary-button import-button">
-            Choose CSV/XLSX
-            <input type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={(event) => event.target.files?.[0] && props.previewRoutineImport(event.target.files[0])} />
-          </label>
+          <p>CSV/XLSX columns: session, day, exercise, muscle group, sets, reps min, reps max, weight, rest seconds, note.</p>
+          <div className="split-actions">
+            <a className="secondary-button import-button" href="/samples/evolvefit-routine-template.csv" download>
+              Download sample CSV
+            </a>
+            <button className="secondary-button" onClick={props.downloadRoutineSampleXlsx}>
+              Download sample XLSX
+            </button>
+            <label className="secondary-button import-button">
+              Choose CSV/XLSX
+              <input type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={(event) => event.target.files?.[0] && props.previewRoutineImport(event.target.files[0])} />
+            </label>
+          </div>
           {props.routineImportPreview && (
             <div className="import-preview">
               <div className="section-heading">
@@ -1972,7 +1879,7 @@ function WorkoutView(props: {
                       <div key={row.id}>
                         <span>Line {row.sourceLine}</span>
                         <strong>{row.name}</strong>
-                        <em>{row.muscleGroup} - {row.targetSets} x {row.targetRepsMin}-{row.targetRepsMax} - {row.targetWeightKg}kg</em>
+                        <em>{row.session} / {row.day} - {row.muscleGroup} - {row.targetSets} x {row.targetRepsMin}-{row.targetRepsMax} - {row.targetWeightKg}kg</em>
                       </div>
                     ))}
                   </div>

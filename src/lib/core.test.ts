@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   defaultDrinkModules,
   expectedHydrationByNow,
@@ -11,6 +13,7 @@ import {
   monthlyAchievements,
   latestBodyMetric,
   normalizeDrinkModules,
+  parseRoutineCsv,
   readinessScore,
   enqueueSync,
   markSyncQueue,
@@ -165,6 +168,80 @@ describe("onboarding suggestions", () => {
     expect(suggestedRoutineTemplate(2)).toBe("full-body");
     expect(suggestedRoutineTemplate(4)).toBe("upper-lower");
     expect(suggestedRoutineTemplate(6)).toBe("ppl");
+  });
+});
+
+describe("routine import parser", () => {
+  it("parses the public sample CSV without errors and includes session/day", () => {
+    const sample = readFileSync(join(process.cwd(), "public/samples/evolvefit-routine-template.csv"), "utf-8");
+    const preview = parseRoutineCsv(sample, "evolvefit-routine-template.csv");
+
+    expect(preview.errors).toEqual([]);
+    expect(preview.rows).toHaveLength(6);
+    expect(preview.rows[0]).toMatchObject({
+      session: "Push Day",
+      day: "Monday",
+      name: "Incline Bench Press",
+      muscleGroup: "Chest",
+      targetSets: 3,
+      targetRepsMin: 8,
+      targetRepsMax: 10,
+      targetWeightKg: 42.5,
+      restSeconds: 90
+    });
+  });
+
+  it("supports Vietnamese and English column aliases", () => {
+    const csv = [
+      "Buổi tập,Ngày,Tên bài tập,Nhóm cơ,Số set,Rep tối thiểu,Rep tối đa,Tạ,Nghỉ giây,Ghi chú",
+      "Push,T2,Incline Bench Press,Ngực,3,8,10,42.5,90,Tempo control"
+    ].join("\n");
+    const preview = parseRoutineCsv(csv, "alias.csv");
+
+    expect(preview.errors).toEqual([]);
+    expect(preview.rows[0]).toMatchObject({ session: "Push", day: "T2", name: "Incline Bench Press" });
+  });
+
+  it("reports missing required columns clearly", () => {
+    const preview = parseRoutineCsv("session,day,exercise,sets,reps max\nPush,Monday,Bench,3,10", "missing.csv");
+
+    expect(preview.rows).toEqual([]);
+    expect(preview.errors).toContain("Missing required column: muscle group.");
+    expect(preview.errors).toContain("Missing required column: reps min.");
+    expect(preview.errors).toContain("Missing required column: weight.");
+    expect(preview.errors).toContain("Missing required column: rest seconds.");
+  });
+
+  it("reports invalid row values with line and column context", () => {
+    const csv = [
+      "session,day,exercise,muscle group,sets,reps min,reps max,weight,rest seconds,note",
+      "Push,Monday,,Chest,0,12,8,-1,5,Bad row"
+    ].join("\n");
+    const preview = parseRoutineCsv(csv, "invalid.csv");
+
+    expect(preview.rows).toEqual([]);
+    expect(preview.errors).toEqual(
+      expect.arrayContaining([
+        "Line 2, column exercise: value is required.",
+        "Line 2, column sets: must be a positive integer.",
+        "Line 2, column reps min: must be less than or equal to reps max.",
+        "Line 2, column weight: must be zero or positive.",
+        "Line 2, column rest seconds: must be at least 15."
+      ])
+    );
+  });
+
+  it("detects duplicate exercise in the same session", () => {
+    const csv = [
+      "session,day,exercise,muscle group,sets,reps min,reps max,weight,rest seconds,note",
+      "Push,Monday,Bench Press,Chest,3,8,10,60,90,",
+      "Push,Monday,Bench Press,Chest,3,8,10,60,90,",
+      "Pull,Wednesday,Bench Press,Chest,3,8,10,60,90,"
+    ].join("\n");
+    const preview = parseRoutineCsv(csv, "duplicate.csv");
+
+    expect(preview.rows).toHaveLength(2);
+    expect(preview.errors).toContain('Line 3, column exercise: duplicate exercise "Bench Press" in session "Push".');
   });
 });
 
