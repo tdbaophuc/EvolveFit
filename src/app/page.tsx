@@ -4,7 +4,6 @@ import {
   Activity,
   Award,
   Bell,
-  Bot,
   CalendarCheck,
   Check,
   ChevronRight,
@@ -17,7 +16,8 @@ import {
   Trash2,
   Trophy,
   User,
-  Waves
+  Waves,
+  X
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -30,8 +30,9 @@ import {
   hydrationPaceStatus,
   hydrationPercent,
   hydrationTotal,
+  isDrinkModuleActive,
   monthlyAchievements,
-  progressiveOverloadRecommendation,
+  normalizeDrinkModules,
   readinessScore,
   enqueueSync,
   markSyncQueue,
@@ -41,8 +42,10 @@ import {
   suggestedWaterTargetMl,
   toCsv,
   upsertQuickAmount,
+  visibleHydrationLogs,
   visibleQuickAmounts,
   type BodyMetric,
+  type DrinkModule,
   type HydrationLog,
   type Supplement,
   type WorkoutExercise,
@@ -51,19 +54,26 @@ import {
 import { initialState, routineTemplates, type AppState } from "@/lib/seed";
 import { loadState, resetState, saveState } from "@/lib/storage";
 
-type Tab = "today" | "workout" | "progress" | "coach" | "settings";
+type Tab = "today" | "hydration" | "workout" | "progress" | "settings";
 type SyncStatus = "offline" | "pending" | "failed" | "synced";
+type CsvDataset = "hydration" | "creatine" | "workouts" | "body-metrics";
+type RoutineImportRow = WorkoutExercise & { sourceLine: number };
+type RoutineImportPreview = {
+  fileName: string;
+  rows: RoutineImportRow[];
+  errors: string[];
+};
 type WakeLockSentinelLike = { release: () => Promise<void> };
 type NavigatorWithWakeLock = Navigator & {
   wakeLock?: { request: (type: "screen") => Promise<WakeLockSentinelLike> };
 };
 
 const tabs: { id: Tab; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
-  { id: "today", label: "Hôm nay", icon: Home },
-  { id: "workout", label: "Tập luyện", icon: Dumbbell },
-  { id: "progress", label: "Tiến độ", icon: Activity },
-  { id: "coach", label: "HLV", icon: Bot },
-  { id: "settings", label: "Cài đặt", icon: Settings }
+  { id: "today", label: "Today", icon: Home },
+  { id: "hydration", label: "Water", icon: Waves },
+  { id: "workout", label: "Workout", icon: Dumbbell },
+  { id: "progress", label: "Progress", icon: Activity },
+  { id: "settings", label: "Settings", icon: Settings }
 ];
 
 function syncStatusLabel(status: SyncStatus) {
@@ -73,14 +83,124 @@ function syncStatusLabel(status: SyncStatus) {
   return "Synced";
 }
 
+function splitCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let current = "";
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+    if (char === '"' && quoted && next === '"') {
+      current += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      cells.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+function parseRoutineCsv(text: string, fileName: string): RoutineImportPreview {
+  const lines = text
+    .replace(/^\uFEFF/, "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const errors: string[] = [];
+  if (lines.length < 2) return { fileName, rows: [], errors: ["CSV needs a header row and at least one exercise row."] };
+
+  const headers = splitCsvLine(lines[0]).map((header) => header.toLowerCase());
+  const findHeader = (...names: string[]) => names.map((name) => headers.indexOf(name)).find((index) => index >= 0) ?? -1;
+  const indexes = {
+    name: findHeader("exercise", "exercise name", "ten bai tap", "tên bài tập"),
+    muscle: findHeader("muscle group", "muscle", "nhom co", "nhóm cơ"),
+    sets: findHeader("sets", "set"),
+    repsMin: findHeader("reps min", "rep min", "min reps"),
+    repsMax: findHeader("reps max", "rep max", "max reps", "reps"),
+    weight: findHeader("weight", "weight kg", "kg"),
+    rest: findHeader("rest seconds", "rest", "rest sec"),
+    note: findHeader("note", "notes", "ghi chu", "ghi chú")
+  };
+
+  if (indexes.name < 0) errors.push("Missing required column: exercise.");
+  if (indexes.sets < 0) errors.push("Missing required column: sets.");
+  if (indexes.repsMax < 0) errors.push("Missing required column: reps max or reps.");
+  if (errors.length) return { fileName, rows: [], errors };
+
+  const numberAt = (cells: string[], index: number, fallback: number) => {
+    if (index < 0) return fallback;
+    const value = Number(cells[index]);
+    return Number.isFinite(value) ? value : fallback;
+  };
+  const textAt = (cells: string[], index: number, fallback = "") => (index >= 0 && cells[index] ? cells[index] : fallback);
+
+  const rows = lines.slice(1).flatMap<RoutineImportRow>((line, index) => {
+    const sourceLine = index + 2;
+    const cells = splitCsvLine(line);
+    const name = textAt(cells, indexes.name).trim();
+    const targetSets = numberAt(cells, indexes.sets, 0);
+    const targetRepsMax = numberAt(cells, indexes.repsMax, 0);
+    const targetRepsMin = numberAt(cells, indexes.repsMin, targetRepsMax);
+    const targetWeightKg = numberAt(cells, indexes.weight, 0);
+    const restSeconds = numberAt(cells, indexes.rest, 60);
+
+    if (!name) errors.push(`Line ${sourceLine}: exercise is required.`);
+    if (!Number.isInteger(targetSets) || targetSets < 1) errors.push(`Line ${sourceLine}: sets must be a positive integer.`);
+    if (!Number.isFinite(targetRepsMax) || targetRepsMax < 1) errors.push(`Line ${sourceLine}: reps max must be positive.`);
+    if (!Number.isFinite(targetRepsMin) || targetRepsMin < 1 || targetRepsMin > targetRepsMax) {
+      errors.push(`Line ${sourceLine}: reps min must be between 1 and reps max.`);
+    }
+    if (!Number.isFinite(targetWeightKg) || targetWeightKg < 0) errors.push(`Line ${sourceLine}: weight must be zero or positive.`);
+    if (!Number.isFinite(restSeconds) || restSeconds < 15) errors.push(`Line ${sourceLine}: rest seconds must be at least 15.`);
+
+    if (!name || targetSets < 1 || targetRepsMax < 1 || targetRepsMin < 1 || targetRepsMin > targetRepsMax) return [];
+
+    return [{
+      id: `import-${sourceLine}-${cryptoSafeId()}`,
+      sourceLine,
+      name,
+      muscleGroup: textAt(cells, indexes.muscle, "Custom"),
+      targetSets,
+      targetRepsMin,
+      targetRepsMax,
+      targetWeightKg,
+      restSeconds,
+      lastSession: textAt(cells, indexes.note, "Imported routine")
+    }];
+  });
+
+  return { fileName, rows, errors };
+}
+
+function rowsToRoutineCsv(rows: unknown[][]): string {
+  return rows
+    .map((row) =>
+      row
+        .map((cell) => {
+          const text = cell === undefined || cell === null ? "" : String(cell);
+          return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+        })
+        .join(",")
+    )
+    .join("\n");
+}
+
 export default function AppPage() {
   const [state, setState] = useState<AppState>(initialState);
   const [tab, setTab] = useState<Tab>("today");
+  const [workoutMode, setWorkoutMode] = useState<"plan" | "live" | "finished">("plan");
   const [waterAmount, setWaterAmount] = useState(650);
   const [creatineAmount, setCreatineAmount] = useState(5);
   const [newSupplementName, setNewSupplementName] = useState("Whey");
   const [newSupplementAmount, setNewSupplementAmount] = useState(30);
   const [newExerciseName, setNewExerciseName] = useState("Lateral Raise");
+  const [routineImportPreview, setRoutineImportPreview] = useState<RoutineImportPreview | null>(null);
   const [newMetricWeight, setNewMetricWeight] = useState(72);
   const [newMetricBodyFat, setNewMetricBodyFat] = useState(18);
   const [newMetricWaist, setNewMetricWaist] = useState(82);
@@ -97,6 +217,9 @@ export default function AppPage() {
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [drinkType, setDrinkType] = useState<HydrationLog["drinkType"]>("water");
   const [isOnline, setIsOnline] = useState(true);
+  const [nowMs, setNowMs] = useState(Date.now());
+  const [restPausedSeconds, setRestPausedSeconds] = useState<number | null>(null);
+  const [restNotifiedFor, setRestNotifiedFor] = useState<string | null>(null);
 
   useEffect(() => {
     setState(loadState());
@@ -134,6 +257,23 @@ export default function AppPage() {
   }, [mounted, isOnline, state.syncQueue]);
 
   useEffect(() => {
+    if (tab !== "workout" || workoutMode !== "live" || !state.restEndsAt || restPausedSeconds !== null) return;
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [restPausedSeconds, state.restEndsAt, tab, workoutMode]);
+
+  useEffect(() => {
+    if (!state.restEndsAt || restPausedSeconds !== null) return;
+    const remaining = Math.max(0, Math.ceil((new Date(state.restEndsAt).getTime() - nowMs) / 1000));
+    if (remaining > 0 || restNotifiedFor === state.restEndsAt) return;
+    setRestNotifiedFor(state.restEndsAt);
+    setToast("Đã hết giờ nghỉ. Sẵn sàng set tiếp theo.");
+    if (notificationPermission === "granted") {
+      new Notification("EvolveFit", { body: "Đã hết giờ nghỉ. Sẵn sàng set tiếp theo." });
+    }
+  }, [notificationPermission, nowMs, restNotifiedFor, restPausedSeconds, state.restEndsAt]);
+
+  useEffect(() => {
     let wakeLock: WakeLockSentinelLike | undefined;
     const wakeLockNavigator = navigator as NavigatorWithWakeLock;
     if (tab !== "workout" || !wakeLockNavigator.wakeLock) return;
@@ -151,7 +291,14 @@ export default function AppPage() {
   }, [tab]);
 
   const now = new Date();
-  const totalWater = hydrationTotal(state.hydrationLogs, now);
+  const drinkModules = normalizeDrinkModules(state.drinkModules, state.profile.waterTargetMl, state.profile.creatineAmountG);
+  const activeHydrationLogs = visibleHydrationLogs(state.hydrationLogs, drinkModules);
+  const waterModule = drinkModules.find((module) => module.id === "water");
+  const creatineModule = drinkModules.find((module) => module.id === "creatine");
+  const creatineActive = isDrinkModuleActive(drinkModules, "creatine");
+  const optionalDrinkModules = drinkModules.filter((module) => module.category === "drink");
+  const activeOptionalDrinkModules = optionalDrinkModules.filter((module) => module.active);
+  const totalWater = hydrationTotal(state.hydrationLogs, now, drinkModules);
   const percent = hydrationPercent(totalWater, state.profile.waterTargetMl);
   const expectedWater = expectedHydrationByNow(
     state.profile.waterTargetMl,
@@ -160,8 +307,9 @@ export default function AppPage() {
     now
   );
   const pace = hydrationPaceStatus(totalWater, expectedWater);
-  const lastHydrationLog = state.hydrationLogs[state.hydrationLogs.length - 1];
+  const lastHydrationLog = activeHydrationLogs[activeHydrationLogs.length - 1];
   const hydrationReminder =
+    waterModule?.reminderEnabled !== false &&
     state.notificationSettings.hydrationEnabled &&
     shouldSendHydrationReminder({
       totalMl: totalWater,
@@ -170,31 +318,35 @@ export default function AppPage() {
       now,
       quietHours: state.notificationSettings.quietHoursEnabled
         ? { start: state.profile.sleepHour, end: state.profile.wakeHour }
-        : { start: -1, end: -1 }
+        : { start: -1, end: -1 },
+      enabled: isDrinkModuleActive(drinkModules, "water")
     });
   const creatineReminder =
+    creatineActive &&
+    creatineModule?.reminderEnabled !== false &&
     state.notificationSettings.creatineEnabled &&
     shouldSendCreatineReminder({
       logs: state.supplementLogs,
       scheduledHour: state.profile.creatineHour,
       remindBeforeMinutes: state.profile.remindBeforeMinutes,
-      now
+      now,
+      enabled: creatineActive
     });
   const quickWater = visibleQuickAmounts(state.quickAmounts, "hydration", 3);
   const quickCreatine = visibleQuickAmounts(state.quickAmounts, "supplement", 2);
-  const activeExercise = state.workoutExercises[state.activeExerciseIndex] ?? state.workoutExercises[0];
+  const emptyExercise: WorkoutExercise = {
+    id: "empty-exercise",
+    name: "No exercise selected",
+    muscleGroup: "Routine",
+    targetSets: 1,
+    targetRepsMin: 1,
+    targetRepsMax: 1,
+    targetWeightKg: 0,
+    restSeconds: 60,
+    lastSession: "Import or add an exercise to start."
+  };
+  const activeExercise = state.workoutExercises[state.activeExerciseIndex] ?? state.workoutExercises[0] ?? emptyExercise;
   const completedSetsForActive = state.workoutSets.filter((set) => set.exerciseId === activeExercise.id);
-  const activeRecommendation = progressiveOverloadRecommendation({
-    exerciseName: activeExercise.name,
-    targetWeightKg: activeExercise.targetWeightKg,
-    targetRepsMax: activeExercise.targetRepsMax,
-    recentSets: completedSetsForActive.length
-      ? completedSetsForActive
-      : [
-          { actualWeightKg: activeExercise.targetWeightKg, actualReps: activeExercise.targetRepsMin, rpe: 8 },
-          { actualWeightKg: activeExercise.targetWeightKg, actualReps: activeExercise.targetRepsMin - 1, rpe: 9 }
-        ]
-  });
   const achievements = monthlyAchievements({
     hydrationGoalDays: 18,
     hydrationTargetDays: 24,
@@ -234,6 +386,10 @@ export default function AppPage() {
   }
 
   function logWater(amountMl: number, pin = false, type: HydrationLog["drinkType"] = drinkType) {
+    if (!isDrinkModuleActive(drinkModules, type)) {
+      setToast(`${type} is disabled in Drink settings.`);
+      return;
+    }
     const log = { id: cryptoSafeId(), amountMl, drinkType: type, loggedAt: new Date().toISOString() };
     const quickAmounts = upsertQuickAmount(state.quickAmounts, {
       category: "hydration",
@@ -265,6 +421,10 @@ export default function AppPage() {
   }
 
   function logCreatine(amount = state.profile.creatineAmountG, pin = false) {
+    if (!creatineActive) {
+      setToast("Creatine is disabled in Drink settings.");
+      return;
+    }
     const creatine = state.supplements.find((supplement) => supplement.name.toLowerCase() === "creatine");
     const log = {
       id: cryptoSafeId(),
@@ -286,6 +446,7 @@ export default function AppPage() {
   }
 
   function logSupplement(supplement: Supplement) {
+    if (!supplement.active) return;
     const log = {
       id: cryptoSafeId(),
       supplementId: supplement.id,
@@ -299,6 +460,7 @@ export default function AppPage() {
   }
 
   function skipSupplement(supplement: Supplement) {
+    if (!supplement.active) return;
     const log = {
       id: cryptoSafeId(),
       supplementId: supplement.id,
@@ -323,15 +485,54 @@ export default function AppPage() {
     commitSynced({ ...state, supplements: [...state.supplements, supplement] }, "supplement.create", supplement, `Đã thêm ${supplement.name}`);
   }
 
+  function updateDrinkModule(id: DrinkModule["id"], patch: Partial<DrinkModule>) {
+    if (id === "water" && patch.active === false) {
+      setToast("Water is the primary drink and cannot be disabled.");
+      return;
+    }
+    const nextModules = normalizeDrinkModules(state.drinkModules, state.profile.waterTargetMl, state.profile.creatineAmountG).map((module) =>
+      module.id === id ? { ...module, ...patch, active: id === "water" ? true : (patch.active ?? module.active) } : module
+    );
+    const nextSupplements =
+      id === "creatine" && patch.active !== undefined
+        ? state.supplements.map((supplement) => (supplement.name.toLowerCase() === "creatine" ? { ...supplement, active: Boolean(patch.active) } : supplement))
+        : state.supplements;
+    commitSynced(
+      {
+        ...state,
+        drinkModules: nextModules,
+        supplements: nextSupplements,
+        notificationSettings:
+          id === "creatine" && patch.active === false
+            ? { ...state.notificationSettings, creatineEnabled: false }
+            : state.notificationSettings
+      },
+      "drinkModule.update",
+      { id, patch },
+      "Updated drink settings"
+    );
+  }
+
   function deleteSupplement(id: string) {
     commitSynced({ ...state, supplements: state.supplements.filter((supplement) => supplement.id !== id) }, "supplement.delete", { id }, "Đã xóa supplement");
   }
 
   function updateSupplementLocal(id: string, patch: Partial<Supplement>) {
+    const target = state.supplements.find((supplement) => supplement.id === id);
+    const syncCreatineActive = target?.name.toLowerCase() === "creatine" && patch.active !== undefined;
     commitSynced(
       {
         ...state,
-        supplements: state.supplements.map((supplement) => (supplement.id === id ? { ...supplement, ...patch } : supplement))
+        supplements: state.supplements.map((supplement) => (supplement.id === id ? { ...supplement, ...patch } : supplement)),
+        drinkModules: syncCreatineActive
+          ? normalizeDrinkModules(state.drinkModules, state.profile.waterTargetMl, state.profile.creatineAmountG).map((module) =>
+              module.id === "creatine" ? { ...module, active: Boolean(patch.active) } : module
+            )
+          : state.drinkModules,
+        notificationSettings:
+          syncCreatineActive && patch.active === false
+            ? { ...state.notificationSettings, creatineEnabled: false }
+            : state.notificationSettings
       },
       "supplement.patch",
       { id, patch },
@@ -352,6 +553,55 @@ export default function AppPage() {
       lastSession: "Chưa có dữ liệu tuần trước"
     };
     commitSynced({ ...state, workoutExercises: [...state.workoutExercises, exercise] }, "exercise.create", exercise, `Đã thêm ${exercise.name}`);
+  }
+
+  function previewRoutineImport(file: File) {
+    const lowerName = file.name.toLowerCase();
+    if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls")) {
+      file
+        .arrayBuffer()
+        .then(async (buffer) => {
+          const XLSX = await import("xlsx");
+          const workbook = XLSX.read(buffer, { type: "array" });
+          const firstSheetName = workbook.SheetNames[0];
+          if (!firstSheetName) {
+            setRoutineImportPreview({ fileName: file.name, rows: [], errors: ["Workbook does not contain a worksheet."] });
+            return;
+          }
+          const rows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[firstSheetName], { header: 1, blankrows: false });
+          setRoutineImportPreview(parseRoutineCsv(rowsToRoutineCsv(rows), file.name));
+        })
+        .catch(() => setRoutineImportPreview({ fileName: file.name, rows: [], errors: ["Could not read the selected spreadsheet."] }));
+      return;
+    }
+
+    file
+      .text()
+      .then((text) => setRoutineImportPreview(parseRoutineCsv(text, file.name)))
+      .catch(() => setRoutineImportPreview({ fileName: file.name, rows: [], errors: ["Could not read the selected file."] }));
+  }
+
+  function confirmRoutineImport(mode: "replace" | "append") {
+    if (!routineImportPreview || routineImportPreview.errors.length || !routineImportPreview.rows.length) return;
+    const imported = routineImportPreview.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      muscleGroup: row.muscleGroup,
+      targetSets: row.targetSets,
+      targetRepsMin: row.targetRepsMin,
+      targetRepsMax: row.targetRepsMax,
+      targetWeightKg: row.targetWeightKg,
+      restSeconds: row.restSeconds,
+      lastSession: row.lastSession
+    }));
+    const workoutExercises = mode === "replace" ? imported : [...state.workoutExercises, ...imported];
+    commitSynced(
+      { ...state, activeTemplate: "custom", workoutExercises, workoutSets: [], activeExerciseIndex: 0 },
+      "routine.import",
+      { fileName: routineImportPreview.fileName, mode, count: imported.length },
+      `Imported ${imported.length} exercises`
+    );
+    setRoutineImportPreview(null);
   }
 
   function deleteExercise(id: string) {
@@ -478,15 +728,16 @@ export default function AppPage() {
     URL.revokeObjectURL(url);
   }
 
-  function downloadCsvExport() {
-    const datasets = [
-      ["hydration", state.hydrationLogs],
-      ["supplements", state.supplementLogs],
-      ["workouts", state.workoutSets],
-      ["body-metrics", state.bodyMetrics]
-    ] as const;
-    datasets.forEach(([name, rows]) => {
-      const csv = toCsv(rows.map((row) => ({ ...row })));
+  function downloadCsvExport(dataset?: CsvDataset) {
+    const datasets: Record<CsvDataset, Record<string, unknown>[]> = {
+      hydration: state.hydrationLogs.map((row) => ({ ...row })),
+      creatine: state.supplementLogs.filter((row) => row.name === "Creatine").map((row) => ({ ...row })),
+      workouts: state.workoutSets.map((row) => ({ ...row })),
+      "body-metrics": state.bodyMetrics.map((row) => ({ ...row }))
+    };
+    const selected = dataset ? [[dataset, datasets[dataset]]] as const : Object.entries(datasets);
+    selected.forEach(([name, rows]) => {
+      const csv = toCsv(rows);
       const blob = new Blob([csv], { type: "text/csv" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -532,7 +783,36 @@ export default function AppPage() {
     commit(state.undo.state, `Đã hoàn tác ${state.undo.label}`);
   }
 
+  function commitWorkoutSet(completed: WorkoutSet, label: string, message: string) {
+    const finishedExercise = completedSetsForActive.length + 1 >= activeExercise.targetSets;
+    const nextExerciseIndex = finishedExercise
+      ? Math.min(state.activeExerciseIndex + 1, state.workoutExercises.length - 1)
+      : state.activeExerciseIndex;
+    const restEndsAt = new Date(Date.now() + activeExercise.restSeconds * 1000).toISOString();
+    if (workoutWouldFinishOnNextSet) {
+      setWorkoutMode("finished");
+    }
+    setRestPausedSeconds(null);
+    setRestNotifiedFor(null);
+    setNowMs(Date.now());
+    withUndo(
+      {
+        ...state,
+        workoutSets: [...state.workoutSets, completed],
+        activeExerciseIndex: nextExerciseIndex,
+        restEndsAt,
+        syncQueue: enqueueSync(state.syncQueue, { type: label === "skip set" ? "workout.set.skip" : "workout.set.create", payload: completed })
+      },
+      label,
+      message
+    );
+  }
+
   function completeSet() {
+    if (!state.workoutExercises.length) {
+      setToast("Add or import an exercise before logging a set.");
+      return;
+    }
     const completed: WorkoutSet = {
       id: cryptoSafeId(),
       exerciseId: activeExercise.id,
@@ -544,28 +824,112 @@ export default function AppPage() {
       rpe: setRpe,
       completedAt: new Date().toISOString()
     };
-    const finishedExercise = completedSetsForActive.length + 1 >= activeExercise.targetSets;
-    const nextExerciseIndex = finishedExercise
-      ? Math.min(state.activeExerciseIndex + 1, state.workoutExercises.length - 1)
-      : state.activeExerciseIndex;
+    commitWorkoutSet(completed, "set", `Ho?n th?nh set ${completedSetsForActive.length + 1}`);
+  }
+
+  function skipCurrentSet() {
+    if (!state.workoutExercises.length) return;
+    const skipped: WorkoutSet = {
+      id: cryptoSafeId(),
+      exerciseId: activeExercise.id,
+      exerciseName: activeExercise.name,
+      targetWeightKg: activeExercise.targetWeightKg,
+      targetReps: activeExercise.targetRepsMin,
+      actualWeightKg: activeExercise.targetWeightKg,
+      actualReps: 0,
+      completedAt: new Date().toISOString()
+    };
+    commitWorkoutSet(skipped, "skip set", `?? b? qua set ${completedSetsForActive.length + 1}`);
+  }
+
+  function updateWorkoutSet(id: string, patch: Partial<WorkoutSet>) {
+    const workoutSets = state.workoutSets.map((set) => (set.id === id ? { ...set, ...patch } : set));
     withUndo(
-      {
-        ...state,
-        workoutSets: [...state.workoutSets, completed],
-        activeExerciseIndex: nextExerciseIndex,
-        restEndsAt: new Date(Date.now() + activeExercise.restSeconds * 1000).toISOString()
-      },
-      "set",
-      `Hoàn thành set ${completedSetsForActive.length + 1}`
+      { ...state, workoutSets, syncQueue: enqueueSync(state.syncQueue, { type: "workout.set.patch", payload: { id, patch } }) },
+      "edit set",
+      "?? c?p nh?t set"
     );
   }
 
-  function updateProfile(next: Partial<AppState["profile"]>) {
-    commit({ ...state, profile: { ...state.profile, ...next } });
+  function deleteWorkoutSet(id: string) {
+    withUndo(
+      { ...state, workoutSets: state.workoutSets.filter((set) => set.id !== id), syncQueue: enqueueSync(state.syncQueue, { type: "workout.set.delete", payload: { id } }) },
+      "delete set",
+      "?? x?a set"
+    );
   }
 
-  function updateRecovery(next: Partial<AppState["recovery"]>) {
-    commit({ ...state, recovery: { ...state.recovery, ...next } });
+  const workoutWouldFinishOnNextSet =
+    completedSetsForActive.length + 1 >= activeExercise.targetSets &&
+    state.activeExerciseIndex >= state.workoutExercises.length - 1;
+
+  function startWorkout() {
+    if (!state.workoutExercises.length) {
+      setToast("Add or import an exercise before starting a workout.");
+      return;
+    }
+    setWorkoutMode("live");
+    setRestPausedSeconds(null);
+    setRestNotifiedFor(null);
+    commit({ ...state, activeExerciseIndex: 0, restEndsAt: undefined }, "Start workout");
+  }
+
+  function finishWorkout() {
+    setRestPausedSeconds(null);
+    setWorkoutMode("finished");
+  }
+
+  function selectWorkoutExercise(id: string) {
+    const index = state.workoutExercises.findIndex((exercise) => exercise.id === id);
+    if (index < 0) return;
+    commitSynced({ ...state, activeExerciseIndex: index }, "workout.session.selectExercise", { id }, "Selected exercise");
+  }
+
+  function skipActiveExercise() {
+    const nextIndex = Math.min(state.activeExerciseIndex + 1, state.workoutExercises.length - 1);
+    commitSynced({ ...state, activeExerciseIndex: nextIndex }, "workout.session.skipExercise", { from: activeExercise.id }, "Skipped exercise");
+  }
+
+  function pauseRestTimer() {
+    if (!state.restEndsAt) return;
+    setRestPausedSeconds(Math.max(0, Math.ceil((new Date(state.restEndsAt).getTime() - Date.now()) / 1000)));
+  }
+
+  function resumeRestTimer() {
+    if (restPausedSeconds === null) return;
+    setRestNotifiedFor(null);
+    commit({ ...state, restEndsAt: new Date(Date.now() + restPausedSeconds * 1000).toISOString() }, "Resume rest timer");
+    setRestPausedSeconds(null);
+    setNowMs(Date.now());
+  }
+
+  function adjustRestTimer(deltaSeconds: number) {
+    if (restPausedSeconds !== null) {
+      setRestPausedSeconds(Math.max(0, restPausedSeconds + deltaSeconds));
+      return;
+    }
+    const currentRemaining = state.restEndsAt ? Math.max(0, Math.ceil((new Date(state.restEndsAt).getTime() - Date.now()) / 1000)) : 0;
+    const nextRemaining = Math.max(0, currentRemaining + deltaSeconds);
+    setRestNotifiedFor(null);
+    commit({ ...state, restEndsAt: nextRemaining ? new Date(Date.now() + nextRemaining * 1000).toISOString() : undefined }, "Adjust rest timer");
+    setNowMs(Date.now());
+  }
+
+  function resetRestTimer() {
+    setRestPausedSeconds(null);
+    setRestNotifiedFor(null);
+    commit({ ...state, restEndsAt: new Date(Date.now() + activeExercise.restSeconds * 1000).toISOString() }, "Reset rest timer");
+    setNowMs(Date.now());
+  }
+
+  function updateProfile(next: Partial<AppState["profile"]>) {
+    const nextProfile = { ...state.profile, ...next };
+    const nextDrinkModules = normalizeDrinkModules(state.drinkModules, nextProfile.waterTargetMl, nextProfile.creatineAmountG).map((module) => {
+      if (module.id === "water" && next.waterTargetMl !== undefined) return { ...module, goal: nextProfile.waterTargetMl };
+      if (module.id === "creatine" && next.creatineAmountG !== undefined) return { ...module, goal: nextProfile.creatineAmountG };
+      return module;
+    });
+    commit({ ...state, profile: nextProfile, drinkModules: nextDrinkModules });
   }
 
   function updateNotificationSettings(next: Partial<AppState["notificationSettings"]>) {
@@ -583,6 +947,12 @@ export default function AppPage() {
     );
   }
 
+  const activeRecommendation = {
+    title: "V1 insight moved to Progress",
+    reason: "Coach không nằm trong navigation chính của V1."
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   function decideRecommendation(decision: "accepted" | "rejected") {
     commit(
       {
@@ -602,10 +972,63 @@ export default function AppPage() {
     );
   }
 
+  const hydrationViewProps = {
+    totalWater,
+    percent,
+    target: state.profile.waterTargetMl,
+    pace,
+    quickWater,
+    waterAmount,
+    setWaterAmount,
+    logWater,
+    drinkType,
+    setDrinkType,
+    quickAmounts: state.quickAmounts.filter((item) => item.category === "hydration"),
+    updateQuickAmount: (id: string, patch: { pinned?: boolean }) =>
+      commit({
+        ...state,
+        quickAmounts: state.quickAmounts.map((item) => (item.id === id ? { ...item, ...patch } : item))
+      }),
+    deleteQuickAmount: (id: string) => commit({ ...state, quickAmounts: state.quickAmounts.filter((item) => item.id !== id) }),
+    quickCreatine,
+    creatineAmount,
+    setCreatineAmount,
+    logCreatine,
+    creatineLogged: state.supplementLogs.some(
+      (log) => log.name === "Creatine" && log.status !== "skipped" && log.loggedAt.startsWith(now.toISOString().slice(0, 10))
+    ),
+    creatineActive,
+    creatineReminder,
+    drinkModules,
+    activeOptionalDrinkModules,
+    workoutName: "Push Day",
+    setTab,
+    achievements,
+    recentLogs: activeHydrationLogs.slice(-3).reverse(),
+    hydrationLogs: activeHydrationLogs,
+    editHydrationLog,
+    deleteHydrationLog,
+    supplements: state.supplements,
+    supplementLogs: state.supplementLogs,
+    logSupplement,
+    skipSupplement,
+    newSupplementName,
+    setNewSupplementName,
+    newSupplementAmount,
+    setNewSupplementAmount,
+    addSupplement,
+    deleteSupplement,
+    updateSupplement: updateSupplementLocal,
+    waterReminderEnabled: waterModule?.reminderEnabled !== false && state.notificationSettings.hydrationEnabled,
+    updateProfile,
+    updateNotificationSettings
+  };
+
   const restSeconds = useMemo(() => {
+    if (restPausedSeconds !== null) return restPausedSeconds;
     if (!state.restEndsAt) return 0;
-    return Math.max(0, Math.ceil((new Date(state.restEndsAt).getTime() - Date.now()) / 1000));
-  }, [state.restEndsAt]);
+    return Math.max(0, Math.ceil((new Date(state.restEndsAt).getTime() - nowMs) / 1000));
+  }, [nowMs, restPausedSeconds, state.restEndsAt]);
 
   return (
     <main className="app-shell">
@@ -637,7 +1060,7 @@ export default function AppPage() {
         )}
 
         {tab === "today" && (
-          <TodayView
+          <TodayOverview
             totalWater={totalWater}
             percent={percent}
             target={state.profile.waterTargetMl}
@@ -663,12 +1086,17 @@ export default function AppPage() {
             creatineLogged={state.supplementLogs.some(
               (log) => log.name === "Creatine" && log.status !== "skipped" && log.loggedAt.startsWith(now.toISOString().slice(0, 10))
             )}
+            creatineActive={creatineActive}
             creatineReminder={creatineReminder}
+            drinkModules={drinkModules}
+            activeOptionalDrinkModules={activeOptionalDrinkModules}
             workoutName="Push Day"
+            workoutExerciseCount={state.workoutExercises.length}
             setTab={setTab}
             achievements={achievements}
-            recentLogs={state.hydrationLogs.slice(-3).reverse()}
-            hydrationLogs={state.hydrationLogs}
+            recentLogs={activeHydrationLogs.slice(-3).reverse()}
+            latestMetric={latestMetric}
+            hydrationLogs={activeHydrationLogs}
             editHydrationLog={editHydrationLog}
             deleteHydrationLog={deleteHydrationLog}
             supplements={state.supplements}
@@ -685,6 +1113,8 @@ export default function AppPage() {
           />
         )}
 
+        {tab === "hydration" && <TodayView {...hydrationViewProps} />}
+
         {tab === "workout" && (
           <WorkoutView
             state={state}
@@ -696,11 +1126,29 @@ export default function AppPage() {
             setSetReps={setSetReps}
             setRpe={setRpe}
             setSetRpe={setSetRpe}
+            mode={workoutMode}
+            startWorkout={startWorkout}
+            finishWorkout={finishWorkout}
+            backToPlan={() => setWorkoutMode("plan")}
             completeSet={completeSet}
+            selectExercise={selectWorkoutExercise}
+            skipExercise={skipActiveExercise}
             restSeconds={restSeconds}
+            restPaused={restPausedSeconds !== null}
+            pauseRestTimer={pauseRestTimer}
+            resumeRestTimer={resumeRestTimer}
+            adjustRestTimer={adjustRestTimer}
+            resetRestTimer={resetRestTimer}
+            skipCurrentSet={skipCurrentSet}
+            updateWorkoutSet={updateWorkoutSet}
+            deleteWorkoutSet={deleteWorkoutSet}
             newExerciseName={newExerciseName}
             setNewExerciseName={setNewExerciseName}
             addExercise={addExercise}
+            routineImportPreview={routineImportPreview}
+            previewRoutineImport={previewRoutineImport}
+            confirmRoutineImport={confirmRoutineImport}
+            clearRoutineImport={() => setRoutineImportPreview(null)}
             deleteExercise={deleteExercise}
             moveExercise={moveExercise}
             applyTemplate={applyTemplate}
@@ -739,17 +1187,6 @@ export default function AppPage() {
           />
         )}
 
-        {tab === "coach" && (
-          <CoachView
-            recommendation={activeRecommendation}
-            achievements={achievements}
-            recovery={state.recovery}
-            updateRecovery={updateRecovery}
-            decisions={state.recommendationDecisions}
-            decideRecommendation={decideRecommendation}
-          />
-        )}
-
         {tab === "settings" && (
           <SettingsView
             state={state}
@@ -764,6 +1201,8 @@ export default function AppPage() {
             downloadCsvExport={downloadCsvExport}
             importJsonExport={importJsonExport}
             updateNotificationSettings={updateNotificationSettings}
+            drinkModules={drinkModules}
+            updateDrinkModule={updateDrinkModule}
             reopenOnboarding={() => {
               setOnboardingStep(0);
               updateProfile({ onboardingCompleted: false });
@@ -976,6 +1415,81 @@ function OnboardingPanel(props: {
   );
 }
 
+function TodayOverview(props: Parameters<typeof TodayView>[0] & { latestMetric?: BodyMetric; workoutExerciseCount?: number }) {
+  const paceLabel = props.pace === "behind" ? "Chậm nhịp" : props.pace === "ahead" ? "Vượt nhịp" : "Đúng nhịp";
+
+  return (
+    <div className="stack today-overview">
+      <section className="action-grid">
+        <button className="action-card hydration-action" onClick={() => props.setTab("hydration")}>
+          <div className="action-icon">
+            <Waves size={22} />
+          </div>
+          <span>Hydration today</span>
+          <strong>
+            {props.totalWater.toLocaleString("vi-VN")} / {props.target.toLocaleString("vi-VN")} ml
+          </strong>
+          <em>
+            {props.percent}% mục tiêu - {paceLabel}
+          </em>
+          <b>Mở màn nước</b>
+        </button>
+
+        <button className="action-card workout-action" onClick={() => props.setTab("workout")}>
+          <div className="action-icon">
+            <Dumbbell size={22} />
+          </div>
+          <span>Workout today</span>
+          <strong>{props.workoutName}</strong>
+          <em>{props.workoutExerciseCount ?? 6} bài - focus mode</em>
+          <b>Bắt đầu tập</b>
+        </button>
+      </section>
+
+      {props.creatineActive && (
+        <section className="card supplement-card compact-card">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Creatine</p>
+              <h2>{props.creatineLogged ? "?? log h?m nay" : "Ch?a log h?m nay"}</h2>
+            </div>
+            <button className="icon-button" onClick={() => props.logCreatine(props.creatineAmount)}>
+              {props.creatineLogged ? <Check size={18} /> : <Plus size={18} />}
+            </button>
+          </div>
+          <p>M?c ti?u {props.creatineAmount}g m?i ng?y, nh?c trong Settings.</p>
+        </section>
+      )}
+
+      <section className="stats-grid">
+        <MetricCard label="N??c" value={`${props.percent}%`} accent="hydration" />
+        {props.creatineActive && <MetricCard label="Creatine" value={props.creatineLogged ? "Done" : "Open"} accent="neutral" />}
+        <MetricCard label="Set h?m nay" value={`${props.workoutExerciseCount ?? 0} b?i`} accent="training" />
+        <MetricCard label="C?n n?ng" value={props.latestMetric ? `${props.latestMetric.weightKg}kg` : "Ch?a c?"} accent="coach" />
+      </section>
+
+      <section className="card chart-card">
+        <div className="section-heading">
+          <h2>Hoạt động gần đây</h2>
+          <span className="sync-pill">Local-first</span>
+        </div>
+        <div className="timeline">
+          {props.recentLogs.length ? (
+            props.recentLogs.map((log) => (
+              <div key={log.id}>
+                <span>{new Date(log.loggedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</span>
+                <strong>+{log.amountMl}ml</strong>
+              </div>
+            ))
+          ) : (
+            <p>Chưa có log hôm nay.</p>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function TodayView(props: {
   totalWater: number;
   percent: number;
@@ -995,7 +1509,10 @@ function TodayView(props: {
   setCreatineAmount: (value: number) => void;
   logCreatine: (amount: number, pin?: boolean) => void;
   creatineLogged: boolean;
+  creatineActive: boolean;
   creatineReminder: boolean;
+  drinkModules: DrinkModule[];
+  activeOptionalDrinkModules: DrinkModule[];
   workoutName: string;
   setTab: (tab: Tab) => void;
   achievements: { code: string; name: string; progress: number; target: number; status: string; streakMonths: number }[];
@@ -1014,91 +1531,205 @@ function TodayView(props: {
   addSupplement: () => void;
   deleteSupplement: (id: string) => void;
   updateSupplement: (id: string, patch: Partial<Supplement>) => void;
+  waterReminderEnabled?: boolean;
+  updateProfile?: (next: Partial<AppState["profile"]>) => void;
+  updateNotificationSettings?: (next: Partial<AppState["notificationSettings"]>) => void;
 }) {
-  const circumference = 2 * Math.PI * 74;
-  const offset = circumference - (props.percent / 100) * circumference;
-  const paceLabel = props.pace === "behind" ? "Chậm tiến độ" : props.pace === "ahead" ? "Vượt tiến độ" : "Đúng tiến độ";
+  const [showCustom, setShowCustom] = useState(false);
+  const ringPercent = Math.min(props.percent, 100);
+  const quickWater = props.quickWater.slice(0, 3);
+  const drinkOptions = [
+    { id: "water" as const, label: "Nước" },
+    ...props.activeOptionalDrinkModules.map((module) => ({ id: module.id as HydrationLog["drinkType"], label: module.name }))
+  ];
+  const hourly = useMemo(() => {
+    return Array.from({ length: 12 }, (_, index) => {
+      const hour = index + 8;
+      const amount = props.hydrationLogs
+        .filter((log) => new Date(log.loggedAt).getHours() === hour)
+        .reduce((sum, log) => sum + log.amountMl, 0);
+      return { hour, amount };
+    });
+  }, [props.hydrationLogs]);
+  const maxHourAmount = Math.max(250, ...hourly.map((item) => item.amount));
+  const paceCopy =
+    props.pace === "behind"
+      ? "Hãy uống thêm một chút để bắt kịp nhịp."
+      : props.pace === "ahead"
+        ? "Bạn đang vượt nhịp. Giữ đều trong phần còn lại của ngày."
+        : "Bạn đang đúng nhịp. Tiếp tục nhé.";
 
   return (
-    <div className="stack">
-      <section className="hydration-hero card">
-        <div className="ring-wrap">
-          <svg className="progress-ring" viewBox="0 0 180 180" aria-label={`Đã uống ${props.percent}%`}>
-            <circle className="ring-bg" cx="90" cy="90" r="74" />
-            <circle className="ring-value" cx="90" cy="90" r="74" strokeDasharray={circumference} strokeDashoffset={offset} />
+    <div className="stack hydration-detail-screen">
+      <section className="hydration-summary">
+        <div>
+          <p>Tiến độ hôm nay</p>
+          <h1>
+            {props.totalWater.toLocaleString("vi-VN")} <span>/ {props.target.toLocaleString("vi-VN")} ml</span>
+          </h1>
+          <em>{paceCopy}</em>
+        </div>
+        <div className="hydration-ring" aria-label={`Đã uống ${props.percent}% mục tiêu`}>
+          <svg viewBox="0 0 110 110">
+            <circle cx="55" cy="55" r="45" />
+            <circle cx="55" cy="55" r="45" style={{ strokeDashoffset: `${283 * (1 - ringPercent / 100)}` }} />
           </svg>
-          <div className="ring-label">
-            <strong>{props.totalWater.toLocaleString("vi-VN")}ml</strong>
-            <span>/ {props.target.toLocaleString("vi-VN")}ml</span>
-            <em className={props.pace}>{paceLabel}</em>
-          </div>
-        </div>
-        <div className="quick-grid">
-          {props.quickWater.map((amount) => (
-            <button key={amount.id} className="quick-button hydration" onClick={() => props.logWater(amount.amount)}>
-              <Waves size={18} />
-              {amount.label}
-            </button>
-          ))}
-        </div>
-        <div className="slider-panel">
-          <div className="slider-label">
-            <span>Tùy chỉnh</span>
-            <strong>{props.waterAmount}ml</strong>
-          </div>
-          <div className="segmented-control" aria-label="Loại đồ uống">
-            {[
-              ["water", "Nước"],
-              ["coffee", "Cafe"],
-              ["tea", "Trà"],
-              ["other", "Khác"]
-            ].map(([value, label]) => (
-              <button
-                key={value}
-                className={props.drinkType === value ? "active" : ""}
-                onClick={() => props.setDrinkType(value as HydrationLog["drinkType"])}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <input
-            type="range"
-            min="50"
-            max="1500"
-            step="50"
-            value={props.waterAmount}
-            onChange={(event) => props.setWaterAmount(Number(event.target.value))}
-            aria-label="Chọn lượng nước"
-          />
-          <div className="split-actions">
-            <button className="secondary-button" onClick={() => props.logWater(props.waterAmount, false, props.drinkType)}>
-              Log
-            </button>
-            <button className="primary-button hydration-bg" onClick={() => props.logWater(props.waterAmount, true, props.drinkType)}>
-              Pin & log
-            </button>
-          </div>
-          <div className="quick-manager">
-            {props.quickAmounts.map((amount) => (
-              <div key={amount.id}>
-                <span>{amount.label}</span>
-                <button className={amount.pinned ? "tiny-chip logged" : "tiny-chip"} onClick={() => props.updateQuickAmount(amount.id, { pinned: !amount.pinned })}>
-                  {amount.pinned ? "Pinned" : "Pin"}
-                </button>
-                <button className="icon-mini danger" onClick={() => props.deleteQuickAmount(amount.id)} aria-label="Xóa quick amount">
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
+          <div>
+            <strong>{ringPercent}%</strong>
+            <span>mục tiêu</span>
           </div>
         </div>
       </section>
 
-      <section className="card supplement-card">
+      <section className="hydration-block">
+        <div className="section-heading compact">
+          <h2>Log nhanh</h2>
+        </div>
+        <div className="hydration-quick-grid">
+          {quickWater.map((amount) => (
+            <button key={amount.id} onClick={() => props.logWater(amount.amount, false, "water")}>
+              +{amount.amount} <span>ml</span>
+            </button>
+          ))}
+          <button className="custom-water-button" onClick={() => setShowCustom(true)}>
+            Custom
+          </button>
+        </div>
+      </section>
+
+      <section className="hydration-block">
+        <div className="section-heading compact">
+          <h2>Lượng nước theo giờ</h2>
+        </div>
+        <div className="hydration-hour-chart">
+          {hourly.map((item, index) => (
+            <div key={item.hour}>
+              <span className={index === 6 ? "active" : ""} style={{ height: `${Math.max(7, (item.amount / maxHourAmount) * 100)}%` }} />
+              <em>{item.hour}h</em>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="hydration-block">
+        <div className="section-heading compact">
+          <h2>Lịch sử hôm nay</h2>
+          <span className="sync-pill">{props.hydrationLogs.length} logs</span>
+        </div>
+        <div className="hydration-history">
+          {props.hydrationLogs.length ? (
+            props.hydrationLogs
+              .slice()
+              .reverse()
+              .map((log) => (
+                <div key={log.id}>
+                  <span>{new Date(log.loggedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</span>
+                  <strong>+{log.amountMl} ml</strong>
+                  <div className="row-actions">
+                    <button onClick={() => props.editHydrationLog(log.id, -50)} aria-label="Giảm log nước">
+                      <Minus size={14} />
+                    </button>
+                    <button onClick={() => props.editHydrationLog(log.id, 50)} aria-label="Tăng log nước">
+                      <Plus size={14} />
+                    </button>
+                    <button onClick={() => props.deleteHydrationLog(log.id)} aria-label="Xóa log nước">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))
+          ) : (
+            <p>Chưa có log nước hôm nay.</p>
+          )}
+        </div>
+      </section>
+
+      <section className="hydration-settings-card">
+        <div className="hydration-setting-row">
+          <div>
+            <p>Nhắc uống nước</p>
+            <span>{props.waterReminderEnabled ? "Mỗi 2 giờ - 09:00-21:00" : "Đang tắt"}</span>
+          </div>
+          <button
+            className={props.waterReminderEnabled ? "toggle-switch active" : "toggle-switch"}
+            onClick={() => props.updateNotificationSettings?.({ hydrationEnabled: !props.waterReminderEnabled })}
+            aria-label="Bật tắt nhắc uống nước"
+          >
+            <span />
+          </button>
+        </div>
+        <button className="hydration-goal-row" onClick={() => props.updateProfile?.({ waterTargetMl: props.target === 2500 ? 3000 : 2500 })}>
+          <div>
+            <p>Mục tiêu hằng ngày</p>
+            <span>{props.target.toLocaleString("vi-VN")} ml - Gợi ý theo cân nặng</span>
+          </div>
+          <ChevronRight size={18} />
+        </button>
+      </section>
+
+      {showCustom && (
+        <div className="hydration-modal-backdrop">
+          <div className="hydration-modal">
+            <div className="modal-heading">
+              <h2>Lượng tùy chỉnh</h2>
+              <button onClick={() => setShowCustom(false)} aria-label="Đóng">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="custom-water-value">
+              <strong>{props.waterAmount}</strong>
+              <span>ml</span>
+            </div>
+            <div className="segmented-control" aria-label="Lo?i ?? u?ng">
+              {drinkOptions.map(({ id, label }) => (
+                <button key={id} className={props.drinkType === id ? "active" : ""} onClick={() => props.setDrinkType(id)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <input
+              type="range"
+              min="50"
+              max="1500"
+              step="50"
+              value={props.waterAmount}
+              onChange={(event) => props.setWaterAmount(Number(event.target.value))}
+              aria-label="Lượng nước"
+            />
+            <div className="custom-stepper-row">
+              <button onClick={() => props.setWaterAmount(Math.max(50, props.waterAmount - 50))}>- 50</button>
+              <button onClick={() => props.setWaterAmount(Math.min(1500, props.waterAmount + 50))}>+ 50</button>
+            </div>
+            <button
+              className="primary-button hydration-bg custom-log-button"
+              onClick={() => {
+                props.logWater(props.waterAmount, true, props.drinkType);
+                setShowCustom(false);
+              }}
+            >
+              Log {props.waterAmount} ml
+            </button>
+            <div className="quick-manager compact-manager">
+              {props.quickAmounts.map((amount) => (
+                <div key={amount.id}>
+                  <span>{amount.label}</span>
+                  <button className={amount.pinned ? "tiny-chip logged" : "tiny-chip"} onClick={() => props.updateQuickAmount(amount.id, { pinned: !amount.pinned })}>
+                    {amount.pinned ? "Pinned" : "Pin"}
+                  </button>
+                  <button className="icon-mini danger" onClick={() => props.deleteQuickAmount(amount.id)} aria-label="Xóa quick amount">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <section className="card supplement-card hydration-creatine-card">
         <div>
-          <p className="eyebrow">Supplement</p>
-          <h2>Creatine {props.creatineLogged ? "đã uống" : "chưa ghi nhận"}</h2>
+          <p className="eyebrow">Creatine</p>
+          <h2>{props.creatineLogged ? "Đã log hôm nay" : "Chưa log hôm nay"}</h2>
           <p>{props.creatineReminder ? "Đã tới giờ nhắc hôm nay" : "Nhắc trước giờ uống cố định"}</p>
         </div>
         <div className="supplement-actions">
@@ -1123,181 +1754,6 @@ function TodayView(props: {
           </button>
         </div>
       </section>
-
-      <section className="card">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Supplement custom</p>
-            <h2>Hôm nay</h2>
-          </div>
-          <Plus size={20} />
-        </div>
-        <div className="supplement-list">
-          {props.supplements.map((supplement) => {
-            const todayLog = props.supplementLogs.find(
-              (log) =>
-                (log.supplementId === supplement.id || (!log.supplementId && log.name === supplement.name)) &&
-                log.loggedAt.startsWith(new Date().toISOString().slice(0, 10))
-            );
-            const logged = todayLog && todayLog.status !== "skipped";
-            const skipped = todayLog?.status === "skipped";
-            const scheduleHours = supplement.scheduleHours?.length ? supplement.scheduleHours : supplement.reminderHour !== undefined ? [supplement.reminderHour] : [];
-            return (
-              <div key={supplement.id} className={!supplement.active ? "muted-row" : ""}>
-                <input
-                  value={supplement.name}
-                  onChange={(event) => props.updateSupplement(supplement.id, { name: event.target.value })}
-                  aria-label="Tên supplement"
-                />
-                <strong>
-                  {supplement.defaultAmount}
-                  {supplement.unit}
-                </strong>
-                <label className="mini-field">
-                  <span>Giờ</span>
-                  <input
-                    value={scheduleHours.join(",")}
-                    onChange={(event) => {
-                      const hours = event.target.value
-                        .split(",")
-                        .map((value) => Number(value.trim()))
-                        .filter((value) => Number.isInteger(value) && value >= 0 && value <= 23);
-                      props.updateSupplement(supplement.id, { scheduleHours: [...new Set(hours)].sort((a, b) => a - b), reminderHour: hours[0] });
-                    }}
-                  />
-                </label>
-                <button className={logged ? "tiny-chip logged" : skipped ? "tiny-chip skipped" : "tiny-chip"} onClick={() => props.logSupplement(supplement)} disabled={!supplement.active}>
-                  {logged ? "Đã dùng" : skipped ? "Dùng lại" : "Ghi nhận"}
-                </button>
-                <button className={skipped ? "tiny-chip skipped" : "tiny-chip"} onClick={() => props.skipSupplement(supplement)} disabled={!supplement.active}>
-                  Bỏ qua
-                </button>
-                <button
-                  className="icon-mini"
-                  onClick={() => props.updateSupplement(supplement.id, { active: !supplement.active })}
-                  aria-label="Bật tắt supplement"
-                >
-                  {supplement.active ? "On" : "Off"}
-                </button>
-                <button
-                  className="icon-mini"
-                  onClick={() => props.updateSupplement(supplement.id, { defaultAmount: Math.max(0.5, supplement.defaultAmount - 0.5) })}
-                  aria-label="Giảm liều supplement"
-                >
-                  -g
-                </button>
-                <button
-                  className="icon-mini"
-                  onClick={() => props.updateSupplement(supplement.id, { defaultAmount: supplement.defaultAmount + 0.5 })}
-                  aria-label="Tăng liều supplement"
-                >
-                  +g
-                </button>
-                <button className="icon-mini danger" onClick={() => props.deleteSupplement(supplement.id)} aria-label="Xóa supplement">
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-        <div className="inline-form">
-          <input value={props.newSupplementName} onChange={(event) => props.setNewSupplementName(event.target.value)} aria-label="Tên supplement" />
-          <input
-            type="number"
-            value={props.newSupplementAmount}
-            onChange={(event) => props.setNewSupplementAmount(Number(event.target.value))}
-            aria-label="Liều lượng supplement"
-          />
-          <button className="secondary-button" onClick={props.addSupplement}>
-            Thêm
-          </button>
-        </div>
-      </section>
-
-      <section className="card">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Hydration detail</p>
-            <h2>Timeline hôm nay</h2>
-          </div>
-          <Waves size={22} />
-        </div>
-        <div className="timeline editable">
-          {props.hydrationLogs
-            .slice()
-            .reverse()
-            .map((log) => (
-              <div key={log.id}>
-                <span>{new Date(log.loggedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</span>
-                <strong>{log.amountMl}ml</strong>
-                <div className="row-actions">
-                  <button onClick={() => props.editHydrationLog(log.id, -50)} aria-label="Giảm log nước">
-                    <Minus size={14} />
-                  </button>
-                  <button onClick={() => props.editHydrationLog(log.id, 50)} aria-label="Tăng log nước">
-                    <Plus size={14} />
-                  </button>
-                  <button onClick={() => props.deleteHydrationLog(log.id)} aria-label="Xóa log nước">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-            ))}
-        </div>
-      </section>
-
-      <section className="card workout-today">
-        <div>
-          <p className="eyebrow">Workout hôm nay</p>
-          <h2>{props.workoutName}</h2>
-          <p>6 bài tập • khoảng 45 phút • xem set tuần trước</p>
-        </div>
-        <button className="primary-button training-bg" onClick={() => props.setTab("workout")}>
-          Bắt đầu tập <ChevronRight size={18} />
-        </button>
-      </section>
-
-      <section className="readiness-row" aria-label="Readiness">
-        <span>Năng lượng 4/5</span>
-        <span>Ngủ tốt</span>
-        <span>Mỏi thấp</span>
-      </section>
-
-      <section className="card">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Huy hiệu tháng</p>
-            <h2>Consistency</h2>
-          </div>
-          <Award size={22} />
-        </div>
-        <div className="badge-grid">
-          {props.achievements.map((badge) => (
-            <div className="badge-card-mini" key={badge.code}>
-              <Trophy size={18} />
-              <strong>{badge.name}</strong>
-              <span>
-                {badge.progress}/{badge.target} • {badge.streakMonths} tháng
-              </span>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="card">
-        <div className="section-heading">
-          <h2>Gần đây</h2>
-          <span className="sync-pill">Sync pending-ready</span>
-        </div>
-        <div className="timeline">
-          {props.recentLogs.map((log) => (
-            <div key={log.id}>
-              <span>Water</span>
-              <strong>+{log.amountMl}ml</strong>
-            </div>
-          ))}
-        </div>
-      </section>
     </div>
   );
 }
@@ -1312,18 +1768,189 @@ function WorkoutView(props: {
   setSetReps: (value: number) => void;
   setRpe: number;
   setSetRpe: (value: number) => void;
+  mode: "plan" | "live" | "finished";
+  startWorkout: () => void;
+  finishWorkout: () => void;
+  backToPlan: () => void;
   completeSet: () => void;
+  selectExercise: (id: string) => void;
+  skipExercise: () => void;
   restSeconds: number;
+  restPaused: boolean;
+  pauseRestTimer: () => void;
+  resumeRestTimer: () => void;
+  adjustRestTimer: (deltaSeconds: number) => void;
+  resetRestTimer: () => void;
+  skipCurrentSet: () => void;
+  updateWorkoutSet: (id: string, patch: Partial<WorkoutSet>) => void;
+  deleteWorkoutSet: (id: string) => void;
   newExerciseName: string;
   setNewExerciseName: (value: string) => void;
   addExercise: () => void;
+  routineImportPreview: RoutineImportPreview | null;
+  previewRoutineImport: (file: File) => void;
+  confirmRoutineImport: (mode: "replace" | "append") => void;
+  clearRoutineImport: () => void;
   deleteExercise: (id: string) => void;
   moveExercise: (id: string, direction: -1 | 1) => void;
   applyTemplate: (template: AppState["activeTemplate"]) => void;
   updateExerciseTarget: (id: string, patch: Partial<WorkoutExercise>) => void;
 }) {
+  const totalVolume = props.state.workoutSets.reduce((sum, set) => sum + set.actualWeightKg * set.actualReps, 0);
+  const completedExerciseCount = new Set(props.state.workoutSets.map((set) => set.exerciseId)).size;
+
+  if (props.mode === "finished") {
+    return (
+      <div className="finish-workout">
+        <div className="finish-icon">
+          <Check size={38} />
+        </div>
+        <h1>Workout complete</h1>
+        <p>{props.state.workoutSets.length} sets - {Math.round(totalVolume)}kg volume - {completedExerciseCount} exercises</p>
+        <div className="finish-actions">
+          <button className="primary-button training-bg" onClick={props.backToPlan}>Back to workout</button>
+          <button className="secondary-button" onClick={props.startWorkout}>Start again</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (props.mode === "plan") {
+    return (
+      <div className="stack workout-plan">
+        <section className="workout-hero">
+          <div>
+            <p className="eyebrow">Today workout</p>
+            <h1>Push Day</h1>
+            <p>{props.state.workoutExercises.length} exercises - about 45 minutes</p>
+          </div>
+          <div className="action-icon workout-icon">
+            <Dumbbell size={24} />
+          </div>
+          <button className="primary-button training-bg" onClick={props.startWorkout}>
+            <Check size={18} /> Start workout
+          </button>
+        </section>
+
+        <section className="card">
+          <div className="section-heading">
+            <h2>Weekly schedule</h2>
+            <span className="sync-pill">{props.state.activeTemplate}</span>
+          </div>
+          <div className="week-strip">
+            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, index) => (
+              <span key={day} className={index === 0 ? "active" : index < 3 ? "done" : ""}>
+                <strong>{day.slice(0, 1)}</strong>
+                <em>{index === 0 ? "Train" : index < 3 ? "Done" : "-"}</em>
+              </span>
+            ))}
+          </div>
+        </section>
+
+        <section className="card">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Active routine</p>
+              <h2>Routine editor</h2>
+            </div>
+            <Dumbbell size={22} />
+          </div>
+          <div className="template-row" aria-label="Routine templates">
+            {[
+              ["ppl", "PPL"],
+              ["upper-lower", "Upper/Lower"],
+              ["full-body", "Full Body"],
+              ["custom", "Custom"]
+            ].map(([id, label]) => (
+              <button key={id} className={props.state.activeTemplate === id ? "active" : ""} onClick={() => props.applyTemplate(id as AppState["activeTemplate"])}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="exercise-library plan-list">
+            {props.state.workoutExercises.map((exercise, index) => (
+              <div key={exercise.id} className={index === props.state.activeExerciseIndex ? "active" : ""}>
+                <span>{index + 1}</span>
+                <button className="exercise-select" onClick={() => props.selectExercise(exercise.id)}>
+                  <strong>{exercise.name}</strong>
+                  <em>{exercise.muscleGroup} - {exercise.targetSets} x {exercise.targetRepsMin}-{exercise.targetRepsMax}</em>
+                </button>
+                <div className="row-actions">
+                  <button onClick={() => props.moveExercise(exercise.id, -1)} aria-label="Move exercise up">↑</button>
+                  <button onClick={() => props.moveExercise(exercise.id, 1)} aria-label="Move exercise down">↓</button>
+                  <button onClick={() => props.deleteExercise(exercise.id)} aria-label="Delete exercise"><Trash2 size={14} /></button>
+                </div>
+                <div className="exercise-edit-grid">
+                  <label><span>Name</span><input value={exercise.name} onChange={(event) => props.updateExerciseTarget(exercise.id, { name: event.target.value })} /></label>
+                  <label><span>Muscle</span><input value={exercise.muscleGroup} onChange={(event) => props.updateExerciseTarget(exercise.id, { muscleGroup: event.target.value })} /></label>
+                  <label><span>Sets</span><input type="number" min="1" max="10" value={exercise.targetSets} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetSets: Number(event.target.value) })} /></label>
+                  <label><span>Reps min</span><input type="number" min="1" max="50" value={exercise.targetRepsMin} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetRepsMin: Number(event.target.value) })} /></label>
+                  <label><span>Reps max</span><input type="number" min="1" max="50" value={exercise.targetRepsMax} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetRepsMax: Number(event.target.value) })} /></label>
+                  <label><span>Kg</span><input type="number" min="0" step="0.5" value={exercise.targetWeightKg} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetWeightKg: Number(event.target.value) })} /></label>
+                  <label><span>Rest</span><input type="number" min="15" step="15" value={exercise.restSeconds} onChange={(event) => props.updateExerciseTarget(exercise.id, { restSeconds: Number(event.target.value) })} /></label>
+                  <label className="wide-field"><span>Last session</span><input value={exercise.lastSession} onChange={(event) => props.updateExerciseTarget(exercise.id, { lastSession: event.target.value })} /></label>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="inline-form">
+            <input value={props.newExerciseName} onChange={(event) => props.setNewExerciseName(event.target.value)} aria-label="New exercise name" />
+            <button className="secondary-button" onClick={props.addExercise}>Add exercise</button>
+          </div>
+        </section>
+
+        <section className="card import-card">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Import routine</p>
+              <h2>CSV preview</h2>
+            </div>
+            <Plus size={20} />
+          </div>
+          <p>CSV/XLSX columns: exercise, muscle group, sets, reps min, reps max, weight, rest seconds, note.</p>
+          <label className="secondary-button import-button">
+            Choose CSV/XLSX
+            <input type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={(event) => event.target.files?.[0] && props.previewRoutineImport(event.target.files[0])} />
+          </label>
+          {props.routineImportPreview && (
+            <div className="import-preview">
+              <div className="section-heading">
+                <strong>{props.routineImportPreview.fileName}</strong>
+                <span className="sync-pill">{props.routineImportPreview.rows.length} rows</span>
+              </div>
+              {props.routineImportPreview.errors.length ? (
+                <div className="import-errors">
+                  {props.routineImportPreview.errors.map((error) => (
+                    <span key={error}>{error}</span>
+                  ))}
+                </div>
+              ) : (
+                <>
+                  <div className="import-table">
+                    {props.routineImportPreview.rows.slice(0, 6).map((row) => (
+                      <div key={row.id}>
+                        <span>Line {row.sourceLine}</span>
+                        <strong>{row.name}</strong>
+                        <em>{row.muscleGroup} - {row.targetSets} x {row.targetRepsMin}-{row.targetRepsMax} - {row.targetWeightKg}kg</em>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="split-actions">
+                    <button className="secondary-button" onClick={() => props.confirmRoutineImport("append")}>Append</button>
+                    <button className="primary-button training-bg" onClick={() => props.confirmRoutineImport("replace")}>Replace routine</button>
+                  </div>
+                </>
+              )}
+              <button className="secondary-button" onClick={props.clearRoutineImport}>Clear preview</button>
+            </div>
+          )}
+        </section>
+      </div>
+    );
+  }
+
   return (
-    <div className="stack workout-focus">
+    <div className="stack workout-focus live-workout">
       <section className="card">
         <div className="section-heading">
           <div>
@@ -1451,8 +2078,8 @@ function WorkoutView(props: {
             return (
               <div key={index} className={isCurrent ? "current" : ""}>
                 <span>Set {index + 1}</span>
-                <strong>{done ? `${done.actualWeightKg}kg x ${done.actualReps}` : `${props.activeExercise.targetWeightKg}kg x ${props.activeExercise.targetRepsMin}`}</strong>
-                <em>{done ? `RPE ${done.rpe}` : isCurrent ? "Current" : "Pending"}</em>
+                <strong>{done ? (done.actualReps === 0 ? "Skipped" : `${done.actualWeightKg}kg x ${done.actualReps}`) : `${props.activeExercise.targetWeightKg}kg x ${props.activeExercise.targetRepsMin}`}</strong>
+                <em>{done ? (done.actualReps === 0 ? "Skipped" : `RPE ${done.rpe ?? "-"}`) : isCurrent ? "Current" : "Pending"}</em>
               </div>
             );
           })}
@@ -1466,9 +2093,53 @@ function WorkoutView(props: {
       </section>
 
       <section className="rest-card card">
-        <p className="eyebrow">Rest timer</p>
-        <strong>{props.restSeconds > 0 ? `${props.restSeconds}s` : "Sẵn sàng"}</strong>
-        <p>Tự động chạy sau mỗi set, phù hợp Focus Mode.</p>
+        <div>
+          <p className="eyebrow">Rest timer</p>
+          <strong>{props.restSeconds > 0 ? `${Math.floor(props.restSeconds / 60)}:${String(props.restSeconds % 60).padStart(2, "0")}` : "Sẵn sàng"}</strong>
+          <p>{props.restPaused ? "Tạm dừng" : props.restSeconds > 0 ? "Đang đếm ngược" : "Sẵn sàng set tiếp theo"}</p>
+        </div>
+        <div className="rest-controls">
+          <button onClick={props.resetRestTimer} aria-label="Đặt lại timer">
+            <RotateCcw size={16} />
+          </button>
+          <button onClick={() => props.adjustRestTimer(-15)} aria-label="Giảm 15 giây">
+            -15
+          </button>
+          <button
+            className="primary"
+            onClick={props.restPaused ? props.resumeRestTimer : props.pauseRestTimer}
+            aria-label={props.restPaused ? "Tiếp tục timer" : "Tạm dừng timer"}
+          >
+            {props.restPaused ? "Resume" : "Pause"}
+          </button>
+          <button onClick={() => props.adjustRestTimer(15)} aria-label="Thêm 15 giây">
+            +15
+          </button>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="split-actions">
+          <button className="secondary-button" onClick={props.skipCurrentSet}>Skip set</button>
+          <button className="secondary-button" onClick={props.skipExercise}>Skip exercise</button>
+          <button className="secondary-button" onClick={props.finishWorkout}>Finish</button>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="section-heading">
+          <h2>Workout queue</h2>
+          <span className="sync-pill">Session only</span>
+        </div>
+        <div className="queue-list">
+          {props.state.workoutExercises.map((exercise, index) => (
+            <button key={exercise.id} className={index === props.state.activeExerciseIndex ? "active" : ""} onClick={() => props.selectExercise(exercise.id)}>
+              <span>{index + 1}</span>
+              <strong>{exercise.name}</strong>
+              <em>{exercise.muscleGroup}</em>
+            </button>
+          ))}
+        </div>
       </section>
 
       <section className="card">
@@ -1488,9 +2159,26 @@ function WorkoutView(props: {
                 <div key={set.id}>
                   <span>{set.exerciseName}</span>
                   <strong>
-                    {set.actualWeightKg}kg x {set.actualReps}
+                    {set.actualReps === 0 ? "Skipped" : `${set.actualWeightKg}kg x ${set.actualReps}`}
                   </strong>
                   <em>RPE {set.rpe ?? "-"}</em>
+                  <div className="row-actions">
+                    <button onClick={() => props.updateWorkoutSet(set.id, { actualWeightKg: Math.max(0, set.actualWeightKg - 2.5) })} aria-label="Giảm kg set">
+                      -kg
+                    </button>
+                    <button onClick={() => props.updateWorkoutSet(set.id, { actualWeightKg: set.actualWeightKg + 2.5 })} aria-label="Tăng kg set">
+                      +kg
+                    </button>
+                    <button onClick={() => props.updateWorkoutSet(set.id, { actualReps: Math.max(0, set.actualReps - 1) })} aria-label="Giảm reps set">
+                      -rep
+                    </button>
+                    <button onClick={() => props.updateWorkoutSet(set.id, { actualReps: set.actualReps + 1 })} aria-label="Tăng reps set">
+                      +rep
+                    </button>
+                    <button onClick={() => props.deleteWorkoutSet(set.id)} aria-label="Xóa set">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
               ))
           ) : (
@@ -1567,12 +2255,13 @@ function ProgressView(props: {
 }) {
   const volume = props.sets.reduce((sum, set) => sum + set.actualWeightKg * set.actualReps, 0);
   const oneRm = props.bestSet ? estimatedOneRepMax(props.bestSet.actualWeightKg, props.bestSet.actualReps) : 0;
+  const completedExercises = new Set(props.sets.map((set) => set.exerciseId)).size;
 
   return (
-    <div className="stack">
-      <section className="stats-grid">
+    <div className="stack progress-screen">
+      <section className="stats-grid progress-summary">
         <MetricCard label="Nước hôm nay" value={`${props.totalWater}/${props.target}ml`} accent="hydration" />
-        <MetricCard label="Volume" value={`${Math.round(volume)}kg`} accent="training" />
+        <MetricCard icon={<Dumbbell size={19} />} label="Volume" value={`${Math.round(volume)}kg`} accent="training" />
         <MetricCard label="e1RM tốt nhất" value={oneRm ? `${oneRm}kg` : "Chưa có"} accent="coach" />
         <MetricCard label="Cân nặng" value={props.latestMetric ? `${props.latestMetric.weightKg}kg` : "Chưa có"} accent="neutral" />
       </section>
@@ -1584,6 +2273,19 @@ function ProgressView(props: {
           ))}
         </div>
       </section>
+      <section className="card chart-card">
+        <div className="section-heading">
+          <h2>Training trend</h2>
+          <span className="sync-pill">{completedExercises} exercises</span>
+        </div>
+        <div className="bar-chart training-chart" aria-label="Training volume chart">
+          {[42, 58, 46, 72, 63, 82, Math.min(100, Math.max(12, volume / 80))].map((height, index) => (
+            <span key={index} style={{ height: `${height}%` }} />
+          ))}
+        </div>
+        <p className="chart-note">{props.sets.length ? "Recent sets are feeding volume and e1RM metrics." : "Log sets in Live Workout to build a meaningful trend."}</p>
+      </section>
+
       <section className="card">
         <div className="section-heading">
           <h2>Body metrics</h2>
@@ -1660,6 +2362,13 @@ function ProgressView(props: {
             </div>
           ))}
         </div>
+        <div className="insight-card">
+          <Award size={18} />
+          <div>
+            <strong>Progress insight</strong>
+            <p>Consistent hydration and logged sets will unlock stronger weekly trend data.</p>
+          </div>
+        </div>
         <button className="secondary-button export-button" onClick={props.downloadExport}>
           Export JSON
         </button>
@@ -1668,15 +2377,17 @@ function ProgressView(props: {
   );
 }
 
-function MetricCard(props: { label: string; value: string; accent: "hydration" | "training" | "coach" | "neutral" }) {
+function MetricCard(props: { label: string; value: string; accent: "hydration" | "training" | "coach" | "neutral"; icon?: React.ReactNode }) {
   return (
     <div className={`metric-card ${props.accent}`}>
+      {props.icon && <span className="metric-icon">{props.icon}</span>}
       <span>{props.label}</span>
       <strong>{props.value}</strong>
     </div>
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function CoachView(props: {
   recommendation: { title: string; reason: string; source: string; action: string; nextWeightKg: number };
   achievements: { name: string; streakMonths: number }[];
@@ -1768,18 +2479,41 @@ function SettingsView(props: {
   markQueue: (status: "synced" | "failed") => void;
   clearQueue: (status?: "synced" | "failed") => void;
   downloadExport: () => void;
-  downloadCsvExport: () => void;
+  downloadCsvExport: (dataset?: CsvDataset) => void;
   importJsonExport: (file: File) => void;
   updateNotificationSettings: (next: Partial<AppState["notificationSettings"]>) => void;
+  drinkModules: DrinkModule[];
+  updateDrinkModule: (id: DrinkModule["id"], patch: Partial<DrinkModule>) => void;
   reopenOnboarding: () => void;
 }) {
   const pendingQueue = props.state.syncQueue.filter((item) => item.status === "pending").length;
   const syncedQueue = props.state.syncQueue.filter((item) => item.status === "synced").length;
   const failedQueue = props.state.syncQueue.filter((item) => item.status === "failed").length;
+  const creatineActive = isDrinkModuleActive(props.drinkModules, "creatine");
+
+  function updateModuleGoal(module: DrinkModule, goal: number) {
+    if (module.id === "water") {
+      props.updateProfile({ waterTargetMl: goal });
+      return;
+    }
+    if (module.id === "creatine") {
+      props.updateProfile({ creatineAmountG: goal });
+      return;
+    }
+    props.updateDrinkModule(module.id, { goal });
+  }
 
   return (
-    <div className="stack">
-      <section className="card">
+    <div className="stack settings-screen">
+      <section className="card settings-profile-card">
+        <div className="settings-profile-head">
+          <div className="settings-avatar">{(props.state.profile.name || "A").slice(0, 1).toUpperCase()}</div>
+          <div>
+            <strong>{props.state.profile.name || "Athlete"}</strong>
+            <p>{props.state.profile.email || "Local profile"} - goal: stronger every day</p>
+          </div>
+          <ChevronRight size={18} />
+        </div>
         <h2>Profile</h2>
         <div className="setting-row">
           <span>Session</span>
@@ -1834,6 +2568,57 @@ function SettingsView(props: {
         </label>
       </section>
       <section className="card">
+        <h2>Thức uống & supplement</h2>
+        <div className="readiness-list drink-module-list">
+          {props.drinkModules.map((module) => (
+            <div key={module.id} className="drink-module-row">
+              <label className="toggle-row">
+                <span>
+                  {module.name}
+                  <em>{module.id === "water" ? "Primary" : module.category}</em>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={module.id === "water" ? true : module.active}
+                  disabled={module.id === "water"}
+                  onChange={(event) => props.updateDrinkModule(module.id, { active: event.target.checked })}
+                />
+              </label>
+              <div className="settings-inline-grid">
+                <label>
+                  <span>{module.unit === "ml" ? "Mục tiêu ml" : "Mục tiêu g"}</span>
+                  <input type="number" min="0" value={module.goal} onChange={(event) => updateModuleGoal(module, Number(event.target.value))} />
+                </label>
+                {module.category === "drink" && (
+                  <label>
+                    <span>Hydration factor</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="1"
+                      step="0.1"
+                      value={module.hydrationFactor ?? 0}
+                      disabled={!module.active}
+                      onChange={(event) => props.updateDrinkModule(module.id, { hydrationFactor: Number(event.target.value) })}
+                    />
+                  </label>
+                )}
+                <label className="toggle-row compact-toggle">
+                  <span>Reminder</span>
+                  <input
+                    type="checkbox"
+                    checked={module.reminderEnabled}
+                    disabled={module.id === "water" || !module.active}
+                    onChange={(event) => props.updateDrinkModule(module.id, { reminderEnabled: event.target.checked })}
+                  />
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="privacy-note">Water luôn là thức uống chính; module tắt sẽ rời khỏi UI hằng ngày nhưng dữ liệu cũ vẫn nằm trong export.</p>
+      </section>
+      <section className="card">
         <h2>Privacy</h2>
         <label className="toggle-row">
           <span>Tham gia leaderboard</span>
@@ -1866,7 +2651,8 @@ function SettingsView(props: {
           <span>Nhắc creatine</span>
           <input
             type="checkbox"
-            checked={props.state.notificationSettings.creatineEnabled}
+            checked={creatineActive && props.state.notificationSettings.creatineEnabled}
+            disabled={!creatineActive}
             onChange={(event) => props.updateNotificationSettings({ creatineEnabled: event.target.checked })}
           />
         </label>
@@ -1924,21 +2710,34 @@ function SettingsView(props: {
         <p className="privacy-note">Queue hiện lưu local-first để chuẩn bị sync backend và xử lý retry/conflict ở bước production.</p>
       </section>
       <section className="card">
-        <h2>Dữ liệu</h2>
+        <h2>D? li?u & quy?n ri?ng t?</h2>
         <div className="settings-actions">
           <button className="secondary-button" onClick={props.downloadExport}>
             Export JSON
           </button>
-          <button className="secondary-button" onClick={props.downloadCsvExport}>
-            Export CSV
+          <button className="secondary-button" onClick={() => props.downloadCsvExport()}>
+            Export all CSV
           </button>
           <label className="secondary-button import-button">
             Import JSON
             <input type="file" accept="application/json" onChange={(event) => event.target.files?.[0] && props.importJsonExport(event.target.files[0])} />
           </label>
-          <button className="secondary-button danger-button" onClick={() => window.confirm("Reset toàn bộ dữ liệu local?") && props.reset()}>
-            Reset dữ liệu mẫu
+          <button className="secondary-button danger-button" onClick={() => window.confirm("Reset to?n b? d? li?u local?") && props.reset()}>
+            Reset d? li?u m?u
           </button>
+        </div>
+        <div className="dataset-export-grid" aria-label="Export CSV theo dataset">
+          {[
+            ["hydration", "Hydration"],
+            ["creatine", "Creatine"],
+            ["workouts", "Workouts"],
+            ["body-metrics", "Body metrics"]
+          ].map(([dataset, label]) => (
+            <button key={dataset} onClick={() => props.downloadCsvExport(dataset as CsvDataset)}>
+              <span>{label}</span>
+              <em>CSV</em>
+            </button>
+          ))}
         </div>
       </section>
     </div>

@@ -1,3 +1,4 @@
+import { normalizeDrinkModules } from "./core";
 import { initialState, type AppState } from "./seed";
 
 const key = "evolvefit-state-v1";
@@ -9,13 +10,15 @@ export function loadState(): AppState {
     const raw = window.localStorage.getItem(key);
     if (!raw) return initialState;
     const parsed = JSON.parse(raw) as Partial<AppState>;
+    const profile = { ...initialState.profile, ...parsed.profile };
     return {
       ...initialState,
       ...parsed,
-      profile: { ...initialState.profile, ...parsed.profile },
+      profile,
       recovery: { ...initialState.recovery, ...parsed.recovery },
       notificationSettings: { ...initialState.notificationSettings, ...parsed.notificationSettings },
       hydrationLogs: parsed.hydrationLogs ?? initialState.hydrationLogs,
+      drinkModules: normalizeDrinkModules(parsed.drinkModules, profile.waterTargetMl, profile.creatineAmountG),
       supplements: parsed.supplements ?? initialState.supplements,
       supplementLogs: parsed.supplementLogs ?? initialState.supplementLogs,
       quickAmounts: parsed.quickAmounts ?? initialState.quickAmounts,

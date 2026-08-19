@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { aiCoachRecommendation, createSupabaseRestRequest, getIntegrationStatus } from "./integrations";
+import {
+  aiCoachRecommendation,
+  createSupabaseRestRequest,
+  createSupabaseServiceRoleRequest,
+  getIntegrationStatus,
+  verifySupabaseProduction
+} from "./integrations";
 
 describe("integration contracts", () => {
   it("reports missing and configured integrations", () => {
@@ -8,6 +14,7 @@ describe("integration contracts", () => {
       getIntegrationStatus({
         NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
         NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon",
+        SUPABASE_SERVICE_ROLE_KEY: "service",
         VAPID_PUBLIC_KEY: "public",
         VAPID_PRIVATE_KEY: "private",
         GEMINI_API_KEY: "gemini",
@@ -15,10 +22,38 @@ describe("integration contracts", () => {
       })
     ).toEqual({
       supabase: "configured",
+      supabaseServiceRole: "configured",
       ai: "gemini",
       webPush: "configured",
       cronSecret: "configured"
     });
+  });
+
+  it("builds Supabase service-role requests", () => {
+    const request = createSupabaseServiceRoleRequest("profiles?select=id", { method: "GET" }, {
+      NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
+      SUPABASE_SERVICE_ROLE_KEY: "service"
+    });
+
+    expect(request.url).toBe("https://project.supabase.co/rest/v1/profiles?select=id");
+    expect(request.headers.get("apikey")).toBe("service");
+    expect(request.headers.get("Authorization")).toBe("Bearer service");
+  });
+
+  it("verifies Supabase production tables with masked status output", async () => {
+    const fetchMock = vi.fn(async () => new Response("[]", { status: 200 }));
+    const result = await verifySupabaseProduction(
+      {
+        NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
+        SUPABASE_SERVICE_ROLE_KEY: "service"
+      },
+      fetchMock as unknown as typeof fetch
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.mode).toBe("service-role");
+    expect(result.checks.map((check) => check.table)).toContain("hydration_logs");
+    expect(fetchMock).toHaveBeenCalled();
   });
 
   it("builds Supabase REST requests with auth headers", () => {

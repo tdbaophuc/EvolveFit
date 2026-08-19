@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  defaultDrinkModules,
   expectedHydrationByNow,
   bodyWeightDelta,
   exportAppData,
   hydrationPaceStatus,
   hydrationPercent,
   hydrationTotal,
+  isDrinkModuleActive,
   monthlyAchievements,
   latestBodyMetric,
+  normalizeDrinkModules,
   readinessScore,
   enqueueSync,
   markSyncQueue,
@@ -18,6 +21,7 @@ import {
   suggestedWaterTargetMl,
   toCsv,
   upsertQuickAmount,
+  visibleHydrationLogs,
   visibleQuickAmounts
 } from "./core";
 
@@ -57,6 +61,48 @@ describe("hydration logic", () => {
         expectedMl: 1000,
         now: new Date(2026, 7, 14, 23, 30),
         quietHours: { start: 23, end: 6 }
+      })
+    ).toBe(false);
+  });
+
+  it("keeps water always active and filters inactive optional drink logs from visible history", () => {
+    const modules = normalizeDrinkModules([
+      { ...defaultDrinkModules[0], active: false },
+      { ...defaultDrinkModules[2], active: false }
+    ]);
+    const logs = [
+      { id: "1", amountMl: 500, drinkType: "water" as const, loggedAt: "2026-08-14T07:00:00.000Z" },
+      { id: "2", amountMl: 300, drinkType: "coffee" as const, loggedAt: "2026-08-14T08:00:00.000Z" }
+    ];
+
+    expect(isDrinkModuleActive(modules, "water")).toBe(true);
+    expect(visibleHydrationLogs(logs, modules).map((log) => log.drinkType)).toEqual(["water"]);
+    expect(visibleHydrationLogs(logs, modules, true)).toHaveLength(2);
+  });
+
+  it("counts active optional drinks by hydration factor and ignores inactive drinks", () => {
+    const date = new Date("2026-08-14T12:00:00.000Z");
+    const logs = [
+      { id: "1", amountMl: 500, drinkType: "water" as const, loggedAt: "2026-08-14T07:00:00.000Z" },
+      { id: "2", amountMl: 500, drinkType: "coffee" as const, loggedAt: "2026-08-14T08:00:00.000Z" },
+      { id: "3", amountMl: 500, drinkType: "tea" as const, loggedAt: "2026-08-14T09:00:00.000Z" }
+    ];
+    const modules = normalizeDrinkModules([
+      { ...defaultDrinkModules[2], active: true, hydrationFactor: 0.8 },
+      { ...defaultDrinkModules[3], active: false, hydrationFactor: 0.9 }
+    ]);
+
+    expect(hydrationTotal(logs, date, modules)).toBe(900);
+  });
+
+  it("does not send hydration reminders when the module reminder is disabled", () => {
+    expect(
+      shouldSendHydrationReminder({
+        totalMl: 100,
+        expectedMl: 1000,
+        now: new Date("2026-08-14T14:00:00.000Z"),
+        quietHours: { start: 23, end: 6 },
+        enabled: false
       })
     ).toBe(false);
   });
@@ -108,6 +154,18 @@ describe("supplement reminders", () => {
         scheduledHour: 17,
         remindBeforeMinutes: 15,
         now: new Date("2026-08-14T16:45:00.000Z")
+      })
+    ).toBe(false);
+  });
+
+  it("does not remind when creatine module reminders are disabled", () => {
+    expect(
+      shouldSendCreatineReminder({
+        logs: [],
+        scheduledHour: 17,
+        remindBeforeMinutes: 15,
+        now: new Date("2026-08-14T16:45:00.000Z"),
+        enabled: false
       })
     ).toBe(false);
   });

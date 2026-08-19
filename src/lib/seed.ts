@@ -1,4 +1,4 @@
-import type { BodyMetric, HydrationLog, QuickAmount, Supplement, SupplementLog, WorkoutExercise, WorkoutSet } from "./core";
+import { defaultDrinkModules, type BodyMetric, type DrinkModule, type HydrationLog, type QuickAmount, type Supplement, type SupplementLog, type WorkoutExercise, type WorkoutSet } from "./core";
 
 export type AppState = {
   profile: {
@@ -34,6 +34,7 @@ export type AppState = {
     snoozeUntil?: string;
   };
   hydrationLogs: HydrationLog[];
+  drinkModules: DrinkModule[];
   supplements: Supplement[];
   supplementLogs: SupplementLog[];
   quickAmounts: QuickAmount[];
@@ -207,6 +208,13 @@ export const initialState: AppState = {
     creatineEnabled: true,
     quietHoursEnabled: true
   },
+  drinkModules: defaultDrinkModules.map((module) =>
+    module.id === "water"
+      ? { ...module, goal: 2500 }
+      : module.id === "creatine"
+        ? { ...module, goal: 5 }
+        : module
+  ),
   supplements: [
     { id: "sup1", name: "Creatine", defaultAmount: 5, unit: "g", reminderHour: 17, scheduleHours: [17], active: true }
   ],

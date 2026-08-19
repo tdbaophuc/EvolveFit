@@ -2,6 +2,7 @@ import { progressiveOverloadRecommendation, type Recommendation, type WorkoutSet
 
 export type IntegrationStatus = {
   supabase: "configured" | "missing-env";
+  supabaseServiceRole: "configured" | "missing-env";
   ai: "gemini" | "openai" | "rule-fallback";
   webPush: "configured" | "missing-env";
   cronSecret: "configured" | "missing-env";
@@ -10,13 +11,19 @@ export type IntegrationStatus = {
 export function getIntegrationStatus(env: NodeJS.ProcessEnv = process.env): IntegrationStatus {
   return {
     supabase: env.NEXT_PUBLIC_SUPABASE_URL && env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? "configured" : "missing-env",
+    supabaseServiceRole: env.SUPABASE_SERVICE_ROLE_KEY ? "configured" : "missing-env",
     ai: env.GEMINI_API_KEY ? "gemini" : env.OPENAI_API_KEY ? "openai" : "rule-fallback",
     webPush: env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY ? "configured" : "missing-env",
     cronSecret: env.CRON_SECRET ? "configured" : "missing-env"
   };
 }
 
-export function createSupabaseRestRequest(path: string, init: RequestInit = {}, env: NodeJS.ProcessEnv = process.env): Request {
+export function createSupabaseRestRequest(
+  path: string,
+  init: RequestInit = {},
+  env: NodeJS.ProcessEnv = process.env,
+  accessToken?: string
+): Request {
   const url = env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anonKey) throw new Error("Supabase env is missing");
@@ -25,12 +32,52 @@ export function createSupabaseRestRequest(path: string, init: RequestInit = {}, 
     ...init,
     headers: {
       apikey: anonKey,
-      Authorization: `Bearer ${anonKey}`,
+      Authorization: `Bearer ${accessToken ?? anonKey}`,
       "Content-Type": "application/json",
       Prefer: "return=representation",
       ...(init.headers ?? {})
     }
   });
+}
+
+export function createSupabaseServiceRoleRequest(path: string, init: RequestInit = {}, env: NodeJS.ProcessEnv = process.env): Request {
+  const url = env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceRoleKey) throw new Error("Supabase service-role env is missing");
+
+  return new Request(`${url.replace(/\/$/, "")}/rest/v1/${path.replace(/^\//, "")}`, {
+    ...init,
+    headers: {
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+      ...(init.headers ?? {})
+    }
+  });
+}
+
+export async function verifySupabaseProduction(
+  env: NodeJS.ProcessEnv = process.env,
+  fetchImpl: typeof fetch = fetch
+): Promise<{
+  ok: boolean;
+  mode: "service-role" | "missing-env";
+  checks: { table: string; ok: boolean; status?: number }[];
+}> {
+  const tables = ["profiles", "hydration_logs", "supplements", "supplement_logs", "workout_sets", "user_body_metrics"];
+  if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+    return { ok: false, mode: "missing-env", checks: tables.map((table) => ({ table, ok: false })) };
+  }
+
+  const checks = await Promise.all(
+    tables.map(async (table) => {
+      const response = await fetchImpl(createSupabaseServiceRoleRequest(`${table}?select=id&limit=1`, { method: "GET" }, env));
+      return { table, ok: response.ok, status: response.status };
+    })
+  );
+
+  return { ok: checks.every((check) => check.ok), mode: "service-role", checks };
 }
 
 export async function aiCoachRecommendation(input: {

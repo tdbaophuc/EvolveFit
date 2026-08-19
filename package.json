@@ -10,6 +10,7 @@
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run",
+    "smoke": "node scripts/smoke.mjs",
     "check": "npm run lint && npm test && npm run build"
   },
   "dependencies": {
@@ -17,7 +18,8 @@
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.3",
@@ -26,6 +28,7 @@
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
+    "@types/web-push": "^3.6.4",
     "eslint": "^9.17.0",
     "eslint-config-next": "^15.1.0",
     "jsdom": "^25.0.1",

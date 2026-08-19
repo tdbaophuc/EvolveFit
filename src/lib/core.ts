@@ -1,8 +1,21 @@
 export type HydrationLog = {
   id: string;
   amountMl: number;
-  drinkType: "water" | "coffee" | "tea" | "other";
+  drinkType: "water" | "coffee" | "tea" | "electrolyte" | "protein" | "other";
   loggedAt: string;
+};
+
+export type DrinkModule = {
+  id: HydrationLog["drinkType"] | "creatine";
+  name: string;
+  category: "water" | "drink" | "supplement";
+  unit: "ml" | "g";
+  active: boolean;
+  goal: number;
+  color: "hydration" | "supplement" | "neutral";
+  icon: "water" | "coffee" | "tea" | "electrolyte" | "protein" | "creatine" | "other";
+  hydrationFactor?: number;
+  reminderEnabled: boolean;
 };
 
 export type SupplementLog = {
@@ -92,11 +105,121 @@ export type AchievementStatus = {
 
 export const todayKey = (date = new Date()) => date.toISOString().slice(0, 10);
 
-export function hydrationTotal(logs: HydrationLog[], date = new Date()): number {
+export const defaultDrinkModules: DrinkModule[] = [
+  {
+    id: "water",
+    name: "Water",
+    category: "water",
+    unit: "ml",
+    active: true,
+    goal: 2500,
+    color: "hydration",
+    icon: "water",
+    hydrationFactor: 1,
+    reminderEnabled: true
+  },
+  {
+    id: "creatine",
+    name: "Creatine",
+    category: "supplement",
+    unit: "g",
+    active: true,
+    goal: 5,
+    color: "supplement",
+    icon: "creatine",
+    reminderEnabled: true
+  },
+  {
+    id: "coffee",
+    name: "Coffee",
+    category: "drink",
+    unit: "ml",
+    active: false,
+    goal: 0,
+    color: "neutral",
+    icon: "coffee",
+    hydrationFactor: 0.8,
+    reminderEnabled: false
+  },
+  {
+    id: "tea",
+    name: "Tea",
+    category: "drink",
+    unit: "ml",
+    active: false,
+    goal: 0,
+    color: "neutral",
+    icon: "tea",
+    hydrationFactor: 0.9,
+    reminderEnabled: false
+  },
+  {
+    id: "electrolyte",
+    name: "Electrolyte",
+    category: "drink",
+    unit: "ml",
+    active: false,
+    goal: 0,
+    color: "hydration",
+    icon: "electrolyte",
+    hydrationFactor: 1,
+    reminderEnabled: false
+  },
+  {
+    id: "protein",
+    name: "Protein shake",
+    category: "drink",
+    unit: "ml",
+    active: false,
+    goal: 0,
+    color: "neutral",
+    icon: "protein",
+    hydrationFactor: 0.7,
+    reminderEnabled: false
+  }
+];
+
+export function normalizeDrinkModules(modules: DrinkModule[] | undefined, waterTargetMl = 2500, creatineGoalG = 5): DrinkModule[] {
+  const existing = modules ?? [];
+  return defaultDrinkModules.map((fallback) => {
+    const current = existing.find((module) => module.id === fallback.id);
+    const goal = fallback.id === "water" ? waterTargetMl : fallback.id === "creatine" ? creatineGoalG : fallback.goal;
+    return {
+      ...fallback,
+      ...current,
+      active: fallback.id === "water" ? true : (current?.active ?? fallback.active),
+      goal: fallback.id === "water" || fallback.id === "creatine" ? goal : (current?.goal ?? goal),
+      reminderEnabled: current?.reminderEnabled ?? fallback.reminderEnabled
+    };
+  });
+}
+
+export function isDrinkModuleActive(modules: DrinkModule[], id: DrinkModule["id"]): boolean {
+  if (id === "water") return true;
+  return modules.find((module) => module.id === id)?.active ?? false;
+}
+
+export function activeDrinkModules(modules: DrinkModule[]): DrinkModule[] {
+  return normalizeDrinkModules(modules).filter((module) => module.active);
+}
+
+export function hydrationContribution(log: HydrationLog, modules: DrinkModule[]): number {
+  const drinkModule = normalizeDrinkModules(modules).find((item) => item.id === log.drinkType);
+  if (!drinkModule || !drinkModule.active) return 0;
+  return Math.round(log.amountMl * (drinkModule.hydrationFactor ?? 0));
+}
+
+export function visibleHydrationLogs(logs: HydrationLog[], modules: DrinkModule[], includeInactiveHistory = false): HydrationLog[] {
+  if (includeInactiveHistory) return logs;
+  const normalized = normalizeDrinkModules(modules);
+  return logs.filter((log) => isDrinkModuleActive(normalized, log.drinkType));
+}
+
+export function hydrationTotal(logs: HydrationLog[], date = new Date(), modules: DrinkModule[] = defaultDrinkModules): number {
   const key = todayKey(date);
   return logs
     .filter((log) => log.loggedAt.slice(0, 10) === key)
-    .reduce((sum, log) => sum + log.amountMl, 0);
+    .reduce((sum, log) => sum + hydrationContribution(log, modules), 0);
 }
 
 export function hydrationPercent(totalMl: number, targetMl: number): number {
@@ -142,7 +265,9 @@ export function shouldSendHydrationReminder(params: {
   lastLogAt?: string;
   now?: Date;
   quietHours: { start: number; end: number };
+  enabled?: boolean;
 }): boolean {
+  if (params.enabled === false) return false;
   const now = params.now ?? new Date();
   const hour = now.getHours();
   const inQuietHours =
@@ -327,7 +452,9 @@ export function shouldSendCreatineReminder(params: {
   scheduledHour: number;
   remindBeforeMinutes: number;
   now?: Date;
+  enabled?: boolean;
 }): boolean {
+  if (params.enabled === false) return false;
   const now = params.now ?? new Date();
   const today = todayKey(now);
   const loggedToday = params.logs.some((log) => log.name.toLowerCase() === "creatine" && log.loggedAt.startsWith(today));

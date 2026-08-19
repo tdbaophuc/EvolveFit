@@ -39,4 +39,26 @@ describe("EvolveFitApiClient", () => {
     );
     vi.unstubAllGlobals();
   });
+
+  it("supports health, Supabase verify, and supplement status contracts", async () => {
+    const fetchMock = vi.fn(async () => Response.json({ ok: true, data: {} }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new EvolveFitApiClient();
+
+    await client.health();
+    await client.verifySupabase();
+    await client.logSupplement({ supplementId: "sup1", name: "Creatine", amount: 0, status: "skipped", skippedReason: "late" });
+    await client.updateSupplement("sup1", { scheduleHours: [8, 17], active: true });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/health", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/supabase/verify", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/supplements/log",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ supplementId: "sup1", name: "Creatine", amount: 0, status: "skipped", skippedReason: "late" })
+      })
+    );
+    vi.unstubAllGlobals();
+  });
 });

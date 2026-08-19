@@ -43,12 +43,26 @@ export class EvolveFitApiClient {
     return this.post("/api/supplements", input);
   }
 
-  async logSupplement(input: { name: string; amount: number; unit?: SupplementLog["unit"] }): Promise<ApiResult<SupplementLog>> {
+  async logSupplement(input: {
+    supplementId?: string;
+    name: string;
+    amount: number;
+    unit?: SupplementLog["unit"];
+    status?: SupplementLog["status"];
+    skippedReason?: string;
+  }): Promise<ApiResult<SupplementLog>> {
     return this.post("/api/supplements/log", input);
   }
 
   async updateSupplementReminder(id: string, reminderHour: number): Promise<ApiResult<Supplement>> {
     return this.patch(`/api/supplements/${id}/reminder`, { reminderHour });
+  }
+
+  async updateSupplement(
+    id: string,
+    input: Partial<Pick<Supplement, "name" | "defaultAmount" | "reminderHour" | "scheduleHours" | "active">>
+  ): Promise<ApiResult<Supplement>> {
+    return this.patch(`/api/supplements/${id}/reminder`, input);
   }
 
   async workoutToday(): Promise<ApiResult<{ routineName: string; exercises: unknown[]; sets: WorkoutSet[] }>> {
@@ -77,6 +91,14 @@ export class EvolveFitApiClient {
 
   async integrationStatus(): Promise<ApiResult<IntegrationStatus>> {
     return this.get("/api/integrations/status");
+  }
+
+  async health(): Promise<ApiResult<unknown>> {
+    return this.get("/api/health");
+  }
+
+  async verifySupabase(): Promise<ApiResult<unknown>> {
+    return this.get("/api/supabase/verify");
   }
 
   private async get<T>(path: string): Promise<T> {
