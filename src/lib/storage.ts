@@ -3,6 +3,7 @@ import {
   migrateLegacyWorkoutSession,
   migrateWorkoutExercisesToRoutine,
   normalizeDrinkModules,
+  normalizeWorkoutSessionQueue,
   routineExercisesToWorkoutExercises,
   selectedWorkoutDay
 } from "./core";
@@ -35,6 +36,7 @@ export function loadState(): AppState {
     const migratedSessions = legacySessionMigration.sessions.length
       ? [...(parsed.workoutSessions ?? []), ...legacySessionMigration.sessions]
       : (parsed.workoutSessions ?? initialState.workoutSessions);
+    const workoutSessions = migratedSessions.map(normalizeWorkoutSessionQueue);
     return {
       ...initialState,
       ...parsed,
@@ -54,7 +56,7 @@ export function loadState(): AppState {
         ...((parsed.exerciseLibrary ?? initialState.exerciseLibrary).filter((exercise) => !exercise.builtIn))
       ],
       workoutExercises,
-      workoutSessions: migratedSessions,
+      workoutSessions,
       activeWorkoutSessionId: parsed.activeWorkoutSessionId,
       workoutSets: legacySessionMigration.sets,
       bodyMetrics: parsed.bodyMetrics ?? initialState.bodyMetrics,

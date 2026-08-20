@@ -19,11 +19,12 @@ import {
   Waves,
   X
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   createCustomExerciseDefinition,
   createWorkoutSession,
   cryptoSafeId,
+  completeSessionExercise,
   estimatedOneRepMax,
   exportAppData,
   expectedHydrationByNow,
@@ -35,14 +36,18 @@ import {
   isDrinkModuleActive,
   monthlyAchievements,
   normalizeDrinkModules,
+  normalizeWorkoutSessionQueue,
   parseRoutineCsv,
+  parkSessionExercise,
   readinessScore,
   filterExerciseLibrary,
   finishWorkoutSession,
   migrateWorkoutExercisesToRoutine,
   pauseWorkoutSession,
   resumeWorkoutSession,
+  reorderSessionExerciseQueue,
   routineExercisesToWorkoutExercises,
+  saveSessionExerciseOrderToRoutine,
   selectedWorkoutDay,
   rowsToRoutineCsv,
   enqueueSync,
@@ -63,7 +68,9 @@ import {
   type MovementPattern,
   type RoutineImportPreview,
   type RoutineExercise,
+  type SessionExerciseQueueItem,
   type Supplement,
+  type WorkoutSession,
   type WorkoutExercise,
   type WorkoutSet
 } from "@/lib/core";
@@ -300,12 +307,21 @@ export default function AppPage() {
   const currentSessionSets = activeWorkoutSession
     ? state.workoutSets.filter((set) => set.sessionId === activeWorkoutSession.id)
     : [];
+  const activeSessionQueue = activeWorkoutSession
+    ? normalizeWorkoutSessionQueue(activeWorkoutSession).exerciseQueue
+    : state.workoutExercises.map((exercise) => ({ exerciseId: exercise.id, status: "queued" as const }));
   const filteredExerciseLibrary = filterExerciseLibrary(state.exerciseLibrary, {
     query: librarySearch,
     muscleGroup: libraryMuscleFilter,
     equipment: libraryEquipmentFilter
   });
-  const activeExercise = state.workoutExercises[state.activeExerciseIndex] ?? state.workoutExercises[0] ?? emptyExercise;
+  const activeQueueItem = activeSessionQueue[state.activeExerciseIndex] ?? activeSessionQueue.find((item) => item.status !== "completed") ?? activeSessionQueue[0];
+  const activeExercise =
+    (activeWorkoutSession && activeQueueItem
+      ? state.workoutExercises.find((exercise) => exercise.id === activeQueueItem.exerciseId)
+      : state.workoutExercises[state.activeExerciseIndex]) ??
+    state.workoutExercises[0] ??
+    emptyExercise;
   const completedSetsForActive = currentSessionSets.filter((set) => set.exerciseId === activeExercise.id);
   const achievements = monthlyAchievements({
     hydrationGoalDays: 18,
@@ -996,29 +1012,44 @@ export default function AppPage() {
     commit(state.undo.state, `Đã hoàn tác ${state.undo.label}`);
   }
 
+  function nextOpenQueueIndex(queue: SessionExerciseQueueItem[], currentIndex: number): number {
+    const afterCurrent = queue.findIndex((item, index) => index > currentIndex && item.status !== "completed");
+    if (afterCurrent >= 0) return afterCurrent;
+    return queue.findIndex((item) => item.status !== "completed");
+  }
+
+  function replaceWorkoutSession(session: WorkoutSession): WorkoutSession[] {
+    return state.workoutSessions.map((item) => (item.id === session.id ? session : item));
+  }
+
   function commitWorkoutSet(completed: WorkoutSet, label: string, message: string) {
     const finishedExercise = completedSetsForActive.length + 1 >= activeExercise.targetSets;
-    const nextExerciseIndex = finishedExercise
-      ? Math.min(state.activeExerciseIndex + 1, state.workoutExercises.length - 1)
-      : state.activeExerciseIndex;
+    const completedSession =
+      activeWorkoutSession && finishedExercise ? completeSessionExercise(activeWorkoutSession, activeExercise.id) : activeWorkoutSession;
+    const nextExerciseIndex =
+      completedSession && finishedExercise
+        ? nextOpenQueueIndex(completedSession.exerciseQueue, state.activeExerciseIndex)
+        : state.activeExerciseIndex;
+    const shouldFinishSession = Boolean(completedSession && finishedExercise && nextExerciseIndex < 0);
     const restEndsAt = new Date(Date.now() + activeExercise.restSeconds * 1000).toISOString();
-    if (workoutWouldFinishOnNextSet) {
+    if (shouldFinishSession) {
       setWorkoutMode("finished");
     }
     setRestPausedSeconds(null);
     setRestNotifiedFor(null);
     setNowMs(Date.now());
-    const finishedSession =
-      workoutWouldFinishOnNextSet && activeWorkoutSession ? finishWorkoutSession(activeWorkoutSession) : undefined;
+    const finishedSession = shouldFinishSession && completedSession ? finishWorkoutSession(completedSession) : undefined;
     withUndo(
       {
         ...state,
         workoutSets: [...state.workoutSets, completed],
         workoutSessions: finishedSession
-          ? state.workoutSessions.map((session) => (session.id === finishedSession.id ? finishedSession : session))
-          : state.workoutSessions,
+          ? replaceWorkoutSession(finishedSession)
+          : completedSession
+            ? replaceWorkoutSession(completedSession)
+            : state.workoutSessions,
         activeWorkoutSessionId: finishedSession ? undefined : state.activeWorkoutSessionId,
-        activeExerciseIndex: nextExerciseIndex,
+        activeExerciseIndex: Math.max(0, nextExerciseIndex),
         restEndsAt: finishedSession ? undefined : restEndsAt,
         syncQueue: enqueueSync(state.syncQueue, { type: label === "skip set" ? "workout.set.skip" : "workout.set.create", payload: completed })
       },
@@ -1088,10 +1119,6 @@ export default function AppPage() {
     );
   }
 
-  const workoutWouldFinishOnNextSet =
-    completedSetsForActive.length + 1 >= activeExercise.targetSets &&
-    state.activeExerciseIndex >= state.workoutExercises.length - 1;
-
   function startWorkout() {
     if (!state.workoutExercises.length) {
       setToast("Add or import an exercise before starting a workout.");
@@ -1139,14 +1166,57 @@ export default function AppPage() {
   }
 
   function selectWorkoutExercise(id: string) {
-    const index = state.workoutExercises.findIndex((exercise) => exercise.id === id);
+    const index = activeWorkoutSession
+      ? activeSessionQueue.findIndex((item) => item.exerciseId === id)
+      : state.workoutExercises.findIndex((exercise) => exercise.id === id);
     if (index < 0) return;
     commitSynced({ ...state, activeExerciseIndex: index }, "workout.session.selectExercise", { id }, "Selected exercise");
   }
 
   function skipActiveExercise() {
-    const nextIndex = Math.min(state.activeExerciseIndex + 1, state.workoutExercises.length - 1);
-    commitSynced({ ...state, activeExerciseIndex: nextIndex }, "workout.session.skipExercise", { from: activeExercise.id }, "Skipped exercise");
+    if (!activeWorkoutSession) {
+      const nextIndex = Math.min(state.activeExerciseIndex + 1, state.workoutExercises.length - 1);
+      commitSynced({ ...state, activeExerciseIndex: nextIndex }, "workout.session.skipExercise", { from: activeExercise.id }, "Skipped exercise");
+      return;
+    }
+    const parked = parkSessionExercise(activeWorkoutSession, activeExercise.id);
+    const nextIndex = Math.min(state.activeExerciseIndex, Math.max(0, parked.exerciseQueue.length - 1));
+    commitSynced(
+      { ...state, workoutSessions: replaceWorkoutSession(parked), activeExerciseIndex: nextIndex },
+      "workout.session.skipExercise",
+      { sessionId: activeWorkoutSession.id, from: activeExercise.id, queue: parked.exerciseQueue },
+      "Skipped exercise"
+    );
+  }
+
+  function reorderSessionExercise(id: string, direction: -1 | 1) {
+    if (!activeWorkoutSession) return;
+    const reordered = reorderSessionExerciseQueue(activeWorkoutSession, id, direction);
+    const activeIndex = reordered.exerciseQueue.findIndex((item) => item.exerciseId === activeExercise.id);
+    commitSynced(
+      { ...state, workoutSessions: replaceWorkoutSession(reordered), activeExerciseIndex: Math.max(0, activeIndex) },
+      "workout.session.reorder",
+      { sessionId: activeWorkoutSession.id, queue: reordered.exerciseQueue },
+      "Updated session queue"
+    );
+  }
+
+  function saveWorkoutOrderToRoutine() {
+    if (!activeRoutine || !activeWorkoutSession) return;
+    const normalizedSession = normalizeWorkoutSessionQueue(activeWorkoutSession);
+    const updatedRoutine = saveSessionExerciseOrderToRoutine(activeRoutine, activeWorkoutSession.workoutDayId, normalizedSession.exerciseQueue);
+    const updatedDay = updatedRoutine.days.find((day) => day.id === activeWorkoutSession.workoutDayId);
+    commitSynced(
+      {
+        ...state,
+        activeTemplate: "custom",
+        routines: state.routines.map((routine) => (routine.id === updatedRoutine.id ? updatedRoutine : routine)),
+        workoutExercises: updatedDay ? routineExercisesToWorkoutExercises(updatedDay.exercises) : state.workoutExercises
+      },
+      "routine.saveSessionOrder",
+      { routineId: updatedRoutine.id, workoutDayId: activeWorkoutSession.workoutDayId, queue: normalizedSession.exerciseQueue },
+      "Saved session order to routine"
+    );
   }
 
   function pauseRestTimer() {
@@ -1396,6 +1466,7 @@ export default function AppPage() {
             activeRoutine={activeRoutine}
             activeWorkoutDay={activeWorkoutDay}
             activeWorkoutSession={activeWorkoutSession}
+            sessionQueue={activeSessionQueue}
             currentSessionSets={currentSessionSets}
             filteredExerciseLibrary={filteredExerciseLibrary}
             activeExercise={activeExercise}
@@ -1446,6 +1517,8 @@ export default function AppPage() {
             clearRoutineImport={() => setRoutineImportPreview(null)}
             deleteExercise={deleteExercise}
             moveExercise={moveExercise}
+            reorderSessionExercise={reorderSessionExercise}
+            saveWorkoutOrderToRoutine={saveWorkoutOrderToRoutine}
             applyTemplate={applyTemplate}
             updateExerciseTarget={updateExerciseTarget}
             updateRoutineName={updateRoutineName}
@@ -2068,6 +2141,7 @@ function WorkoutView(props: {
   activeRoutine?: AppState["routines"][number];
   activeWorkoutDay?: AppState["routines"][number]["days"][number];
   activeWorkoutSession?: AppState["workoutSessions"][number];
+  sessionQueue: SessionExerciseQueueItem[];
   currentSessionSets: WorkoutSet[];
   filteredExerciseLibrary: ExerciseDefinition[];
   activeExercise: AppState["workoutExercises"][number];
@@ -2118,6 +2192,8 @@ function WorkoutView(props: {
   clearRoutineImport: () => void;
   deleteExercise: (id: string) => void;
   moveExercise: (id: string, direction: -1 | 1) => void;
+  reorderSessionExercise: (id: string, direction: -1 | 1) => void;
+  saveWorkoutOrderToRoutine: () => void;
   applyTemplate: (template: AppState["activeTemplate"]) => void;
   updateExerciseTarget: (id: string, patch: Partial<WorkoutExercise>) => void;
   updateRoutineName: (name: string) => void;
@@ -2132,6 +2208,13 @@ function WorkoutView(props: {
 }) {
   const totalVolume = props.currentSessionSets.reduce((sum, set) => sum + set.actualWeightKg * set.actualReps, 0);
   const completedExerciseCount = new Set(props.currentSessionSets.map((set) => set.exerciseId)).size;
+  const queueExercises = props.sessionQueue.flatMap((item) => {
+    const exercise = props.state.workoutExercises.find((entry) => entry.id === item.exerciseId);
+    return exercise ? [{ item, exercise }] : [];
+  });
+  const queuedCount = props.sessionQueue.filter((item) => item.status === "queued").length;
+  const completedCount = props.sessionQueue.filter((item) => item.status === "completed").length;
+  const parkedCount = props.sessionQueue.filter((item) => item.status === "parked").length;
 
   if (props.mode === "finished") {
     return (
@@ -2501,7 +2584,7 @@ function WorkoutView(props: {
       <section className="card workout-overview">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">{props.activeWorkoutDay?.name ?? "Session"} ? Exercise {props.state.activeExerciseIndex + 1}/{props.state.workoutExercises.length}</p>
+            <p className="eyebrow">{props.activeWorkoutDay?.name ?? "Session"} ? Exercise {props.state.activeExerciseIndex + 1}/{props.sessionQueue.length}</p>
             <h1>{props.activeExercise.name}</h1>
             <p>{props.activeExercise.muscleGroup} • Target {props.activeExercise.targetSets} x {props.activeExercise.targetRepsMin}-{props.activeExercise.targetRepsMax}</p>
           </div>
@@ -2570,17 +2653,39 @@ function WorkoutView(props: {
       <section className="card">
         <div className="section-heading">
           <h2>Workout queue</h2>
-            <span className="sync-pill">{props.activeWorkoutSession?.status ?? "no session"}</span>
+          <span className="sync-pill">{props.activeWorkoutSession?.status ?? "no session"}</span>
+        </div>
+        <div className="queue-summary" aria-label="Session queue status">
+          <span>{queuedCount} remaining</span>
+          <span>{completedCount} completed</span>
+          <span>{parkedCount} parked</span>
         </div>
         <div className="queue-list">
-          {props.state.workoutExercises.map((exercise, index) => (
-            <button key={exercise.id} className={index === props.state.activeExerciseIndex ? "active" : ""} onClick={() => props.selectExercise(exercise.id)}>
-              <span>{index + 1}</span>
-              <strong>{exercise.name}</strong>
-              <em>{exercise.muscleGroup}</em>
-            </button>
-          ))}
+          {queueExercises.map(({ item, exercise }, index) => {
+            const isActive = item.exerciseId === props.activeExercise.id;
+            const statusLabel = item.status === "parked" ? "Parked" : item.status === "completed" ? "Completed" : "Remaining";
+            return (
+              <div key={item.exerciseId} className={`queue-row ${isActive ? "active" : ""} ${item.status}`}>
+                <button className="queue-select" onClick={() => props.selectExercise(item.exerciseId)}>
+                  <span>{index + 1}</span>
+                  <strong>{exercise.name}</strong>
+                  <em>{exercise.muscleGroup} - {statusLabel}</em>
+                </button>
+                <div className="row-actions">
+                  <button onClick={() => props.reorderSessionExercise(item.exerciseId, -1)} aria-label="Move session exercise up">
+                    ↑
+                  </button>
+                  <button onClick={() => props.reorderSessionExercise(item.exerciseId, 1)} aria-label="Move session exercise down">
+                    ↓
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
+        <button className="secondary-button" onClick={props.saveWorkoutOrderToRoutine} disabled={!props.activeWorkoutSession}>
+          Save order to routine
+        </button>
       </section>
 
       <section className="card">

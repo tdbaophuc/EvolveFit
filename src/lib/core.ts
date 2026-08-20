@@ -78,6 +78,12 @@ export type WorkoutSet = {
 };
 
 export type WorkoutSessionStatus = "active" | "paused" | "finished" | "cancelled";
+export type SessionExerciseQueueStatus = "queued" | "completed" | "parked";
+
+export type SessionExerciseQueueItem = {
+  exerciseId: string;
+  status: SessionExerciseQueueStatus;
+};
 
 export type WorkoutSession = {
   id: string;
@@ -89,6 +95,7 @@ export type WorkoutSession = {
   durationSeconds: number;
   status: WorkoutSessionStatus;
   sessionExerciseOrder: string[];
+  exerciseQueue: SessionExerciseQueueItem[];
 };
 
 export type WorkoutExercise = {
@@ -556,7 +563,70 @@ export function createWorkoutSession(input: {
     startedAt,
     durationSeconds: 0,
     status: "active",
-    sessionExerciseOrder: input.sessionExerciseOrder
+    sessionExerciseOrder: input.sessionExerciseOrder,
+    exerciseQueue: input.sessionExerciseOrder.map((exerciseId) => ({ exerciseId, status: "queued" }))
+  };
+}
+
+function sessionOrderFromQueue(queue: SessionExerciseQueueItem[]): string[] {
+  return queue.map((item) => item.exerciseId);
+}
+
+export function normalizeWorkoutSessionQueue(session: WorkoutSession): WorkoutSession {
+  if (session.exerciseQueue?.length) {
+    return { ...session, sessionExerciseOrder: sessionOrderFromQueue(session.exerciseQueue) };
+  }
+  const exerciseQueue = session.sessionExerciseOrder.map((exerciseId) => ({ exerciseId, status: "queued" as const }));
+  return { ...session, exerciseQueue };
+}
+
+export function reorderSessionExerciseQueue(session: WorkoutSession, exerciseId: string, direction: -1 | 1): WorkoutSession {
+  const normalized = normalizeWorkoutSessionQueue(session);
+  const index = normalized.exerciseQueue.findIndex((item) => item.exerciseId === exerciseId);
+  const nextIndex = index + direction;
+  if (index < 0 || nextIndex < 0 || nextIndex >= normalized.exerciseQueue.length) return normalized;
+  const exerciseQueue = [...normalized.exerciseQueue];
+  [exerciseQueue[index], exerciseQueue[nextIndex]] = [exerciseQueue[nextIndex], exerciseQueue[index]];
+  return { ...normalized, exerciseQueue, sessionExerciseOrder: sessionOrderFromQueue(exerciseQueue) };
+}
+
+export function parkSessionExercise(session: WorkoutSession, exerciseId: string): WorkoutSession {
+  const normalized = normalizeWorkoutSessionQueue(session);
+  const item = normalized.exerciseQueue.find((entry) => entry.exerciseId === exerciseId);
+  if (!item || item.status === "completed") return normalized;
+  const exerciseQueue = [
+    ...normalized.exerciseQueue.filter((entry) => entry.exerciseId !== exerciseId),
+    { ...item, status: "parked" as const }
+  ];
+  return { ...normalized, exerciseQueue, sessionExerciseOrder: sessionOrderFromQueue(exerciseQueue) };
+}
+
+export function completeSessionExercise(session: WorkoutSession, exerciseId: string): WorkoutSession {
+  const normalized = normalizeWorkoutSessionQueue(session);
+  const exerciseQueue = normalized.exerciseQueue.map((item) =>
+    item.exerciseId === exerciseId ? { ...item, status: "completed" as const } : item
+  );
+  return { ...normalized, exerciseQueue, sessionExerciseOrder: sessionOrderFromQueue(exerciseQueue) };
+}
+
+export function saveSessionExerciseOrderToRoutine(routine: Routine, workoutDayId: string, queue: SessionExerciseQueueItem[]): Routine {
+  const order = queue.map((item) => item.exerciseId);
+  return {
+    ...routine,
+    updatedAt: new Date().toISOString(),
+    days: routine.days.map((day) => {
+      if (day.id !== workoutDayId) return day;
+      const byId = new Map(day.exercises.map((exercise) => [exercise.id, exercise]));
+      const ordered = order.flatMap((exerciseId) => {
+        const exercise = byId.get(exerciseId);
+        return exercise ? [exercise] : [];
+      });
+      const missing = day.exercises.filter((exercise) => !order.includes(exercise.id));
+      return {
+        ...day,
+        exercises: [...ordered, ...missing].map((exercise, index) => ({ ...exercise, order: index }))
+      };
+    })
   };
 }
 
@@ -605,7 +675,11 @@ export function migrateLegacyWorkoutSession(params: {
     endedAt,
     durationSeconds: workoutSessionDurationSeconds({ startedAt, endedAt }),
     status: "finished",
-    sessionExerciseOrder: Array.from(new Set(params.sets.map((set) => set.exerciseId)))
+    sessionExerciseOrder: Array.from(new Set(params.sets.map((set) => set.exerciseId))),
+    exerciseQueue: Array.from(new Set(params.sets.map((set) => set.exerciseId))).map((exerciseId) => ({
+      exerciseId,
+      status: "completed"
+    }))
   };
   return {
     sessions: [session],

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   defaultDrinkModules,
   builtInExerciseDefinitions,
+  completeSessionExercise,
   createCustomExerciseDefinition,
   createWorkoutSession,
   expectedHydrationByNow,
@@ -18,11 +19,14 @@ import {
   latestBodyMetric,
   normalizeDrinkModules,
   parseRoutineCsv,
+  parkSessionExercise,
   filterExerciseLibrary,
   migrateWorkoutExercisesToRoutine,
   migrateLegacyWorkoutSession,
+  reorderSessionExerciseQueue,
   readinessScore,
   enqueueSync,
+  saveSessionExerciseOrderToRoutine,
   markSyncQueue,
   progressiveOverloadRecommendation,
   shouldSendCreatineReminder,
@@ -343,6 +347,119 @@ describe("workout session model", () => {
       sessionExerciseOrder: ["bench", "press"]
     });
     expect(finished).toMatchObject({ status: "finished", durationSeconds: 4500, endedAt: "2026-08-20T09:15:00.000Z" });
+  });
+
+  it("reorders the session queue without mutating the source routine", () => {
+    const routine = migrateWorkoutExercisesToRoutine(
+      [
+        {
+          id: "bench",
+          name: "Bench Press",
+          muscleGroup: "Chest",
+          targetSets: 3,
+          targetRepsMin: 6,
+          targetRepsMax: 8,
+          targetWeightKg: 60,
+          restSeconds: 120,
+          lastSession: "60kg x 8"
+        },
+        {
+          id: "row",
+          name: "Row",
+          muscleGroup: "Back",
+          targetSets: 3,
+          targetRepsMin: 8,
+          targetRepsMax: 10,
+          targetWeightKg: 42.5,
+          restSeconds: 90,
+          lastSession: "42.5kg x 10"
+        }
+      ],
+      { routineId: "routine-queue", dayName: "Upper" }
+    );
+    const session = createWorkoutSession({
+      routineId: routine.id,
+      workoutDayId: routine.days[0].id,
+      sessionName: routine.days[0].name,
+      sessionExerciseOrder: routine.days[0].exercises.map((exercise) => exercise.id)
+    });
+
+    const reordered = reorderSessionExerciseQueue(session, "row", -1);
+
+    expect(reordered.exerciseQueue.map((item) => item.exerciseId)).toEqual(["row", "bench"]);
+    expect(routine.days[0].exercises.map((exercise) => exercise.id)).toEqual(["bench", "row"]);
+  });
+
+  it("parks skipped exercise and allows returning before it is completed", () => {
+    const session = createWorkoutSession({
+      routineId: "routine-1",
+      workoutDayId: "day-1",
+      sessionName: "Push Day",
+      sessionExerciseOrder: ["bench", "press", "triceps"]
+    });
+
+    const parked = parkSessionExercise(session, "bench");
+    const returned = completeSessionExercise(parked, "bench");
+
+    expect(parked.exerciseQueue.map((item) => `${item.exerciseId}:${item.status}`)).toEqual([
+      "press:queued",
+      "triceps:queued",
+      "bench:parked"
+    ]);
+    expect(returned.exerciseQueue.find((item) => item.exerciseId === "bench")?.status).toBe("completed");
+  });
+
+  it("saves session queue order to the routine only when requested", () => {
+    const routine = migrateWorkoutExercisesToRoutine(
+      [
+        {
+          id: "bench",
+          name: "Bench Press",
+          muscleGroup: "Chest",
+          targetSets: 3,
+          targetRepsMin: 6,
+          targetRepsMax: 8,
+          targetWeightKg: 60,
+          restSeconds: 120,
+          lastSession: "60kg x 8"
+        },
+        {
+          id: "press",
+          name: "Shoulder Press",
+          muscleGroup: "Shoulders",
+          targetSets: 3,
+          targetRepsMin: 8,
+          targetRepsMax: 10,
+          targetWeightKg: 24,
+          restSeconds: 90,
+          lastSession: "24kg x 8"
+        },
+        {
+          id: "triceps",
+          name: "Triceps Pushdown",
+          muscleGroup: "Arms",
+          targetSets: 3,
+          targetRepsMin: 10,
+          targetRepsMax: 12,
+          targetWeightKg: 31,
+          restSeconds: 60,
+          lastSession: "31kg x 12"
+        }
+      ],
+      { routineId: "routine-save", dayName: "Push" }
+    );
+    const session = createWorkoutSession({
+      routineId: routine.id,
+      workoutDayId: routine.days[0].id,
+      sessionName: "Push",
+      sessionExerciseOrder: ["bench", "press", "triceps"]
+    });
+    const sessionOnly = reorderSessionExerciseQueue(session, "triceps", -1);
+    const saved = saveSessionExerciseOrderToRoutine(routine, routine.days[0].id, sessionOnly.exerciseQueue);
+
+    expect(routine.days[0].exercises.map((exercise) => exercise.id)).toEqual(["bench", "press", "triceps"]);
+    expect(saved.days[0].exercises.map((exercise) => exercise.id)).toEqual(["bench", "triceps", "press"]);
+    expect(saved.days[0].exercises.map((exercise) => exercise.order)).toEqual([0, 1, 2]);
   });
 
   it("migrates legacy workout sets into a finished legacy session", () => {
