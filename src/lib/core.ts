@@ -228,6 +228,36 @@ export type ProgressDashboard = {
   prs: ExercisePr[];
 };
 
+export type WeightUnit = "kg" | "lb";
+export type BodyMetricRangeDays = 7 | 30 | 90;
+
+export type BodyMetricValidationInput = {
+  weightKg: number;
+  bodyFatPercent?: number;
+  waistCm?: number;
+  chestCm?: number;
+  armCm?: number;
+  thighCm?: number;
+};
+
+export type BodyMetricChartPoint = {
+  date: string;
+  weight: number;
+  smoothedWeight: number;
+  bodyFatPercent?: number;
+  smoothedBodyFatPercent?: number;
+};
+
+export type BodyMetricChartDataset = {
+  rangeDays: BodyMetricRangeDays;
+  unit: WeightUnit;
+  weightGoal?: number;
+  bodyFatGoal?: number;
+  points: BodyMetricChartPoint[];
+  hasWeightData: boolean;
+  hasBodyFatData: boolean;
+};
+
 export const todayKey = (date = new Date()) => date.toISOString().slice(0, 10);
 
 export const builtInExerciseDefinitions: ExerciseDefinition[] = [
@@ -1136,6 +1166,91 @@ export function bodyWeightDelta(metrics: BodyMetric[]): number {
   const sorted = [...metrics].sort((a, b) => a.measuredAt.localeCompare(b.measuredAt));
   if (sorted.length < 2) return 0;
   return Math.round((sorted[sorted.length - 1].weightKg - sorted[0].weightKg) * 10) / 10;
+}
+
+export function kgToLb(kg: number): number {
+  return round(kg * 2.2046226218, 1);
+}
+
+export function lbToKg(lb: number): number {
+  return round(lb / 2.2046226218, 1);
+}
+
+export function formatWeight(kg: number, unit: WeightUnit): string {
+  return unit === "lb" ? `${kgToLb(kg)}lb` : `${round(kg, 1)}kg`;
+}
+
+export function displayWeight(kg: number, unit: WeightUnit): number {
+  return unit === "lb" ? kgToLb(kg) : round(kg, 1);
+}
+
+export function inputWeightToKg(value: number, unit: WeightUnit): number {
+  return unit === "lb" ? lbToKg(value) : round(value, 1);
+}
+
+export function validateBodyMetric(input: BodyMetricValidationInput): string[] {
+  const errors: string[] = [];
+  if (!Number.isFinite(input.weightKg) || input.weightKg <= 0) errors.push("Weight must be greater than 0.");
+  if (input.bodyFatPercent !== undefined && (!Number.isFinite(input.bodyFatPercent) || input.bodyFatPercent < 0 || input.bodyFatPercent > 70)) {
+    errors.push("Body fat must be between 0 and 70%.");
+  }
+  const circumferenceFields: [keyof BodyMetricValidationInput, string][] = [
+    ["waistCm", "Waist"],
+    ["chestCm", "Chest"],
+    ["armCm", "Arm"],
+    ["thighCm", "Thigh"]
+  ];
+  circumferenceFields.forEach(([key, label]) => {
+    const value = input[key];
+    if (value !== undefined && (!Number.isFinite(value) || value <= 0 || value > 250)) {
+      errors.push(`${label} must be between 1 and 250cm.`);
+    }
+  });
+  return errors;
+}
+
+function movingAverage(values: number[], index: number, windowSize = 3): number {
+  const start = Math.max(0, index - windowSize + 1);
+  const windowValues = values.slice(start, index + 1);
+  return round(windowValues.reduce((sum, value) => sum + value, 0) / windowValues.length, 1);
+}
+
+export function buildBodyMetricChartDataset(params: {
+  metrics: BodyMetric[];
+  rangeDays: BodyMetricRangeDays;
+  unit: WeightUnit;
+  goalWeightKg?: number;
+  goalBodyFatPercent?: number;
+  now?: Date;
+}): BodyMetricChartDataset {
+  const end = new Date(params.now ?? new Date());
+  const start = addDays(new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate())), -params.rangeDays + 1);
+  const filtered = params.metrics
+    .filter((metric) => new Date(metric.measuredAt) >= start && new Date(metric.measuredAt) <= end)
+    .sort((a, b) => a.measuredAt.localeCompare(b.measuredAt));
+  const weights = filtered.map((metric) => displayWeight(metric.weightKg, params.unit));
+  const bodyFatValues = filtered.map((metric) => metric.bodyFatPercent).filter((value): value is number => value !== undefined);
+  const points = filtered.map((metric, index) => {
+    const bodyFatIndex = filtered.slice(0, index + 1).filter((item) => item.bodyFatPercent !== undefined).length - 1;
+    const bodyFatPercent = metric.bodyFatPercent;
+    return {
+      date: metric.measuredAt.slice(0, 10),
+      weight: displayWeight(metric.weightKg, params.unit),
+      smoothedWeight: movingAverage(weights, index),
+      bodyFatPercent,
+      smoothedBodyFatPercent:
+        bodyFatPercent !== undefined && bodyFatIndex >= 0 ? movingAverage(bodyFatValues, bodyFatIndex) : undefined
+    };
+  });
+  return {
+    rangeDays: params.rangeDays,
+    unit: params.unit,
+    weightGoal: params.goalWeightKg !== undefined ? displayWeight(params.goalWeightKg, params.unit) : undefined,
+    bodyFatGoal: params.goalBodyFatPercent,
+    points,
+    hasWeightData: points.length > 0,
+    hasBodyFatData: points.some((point) => point.bodyFatPercent !== undefined)
+  };
 }
 
 export function exportAppData(data: unknown): string {

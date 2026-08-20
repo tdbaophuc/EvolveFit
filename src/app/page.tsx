@@ -25,15 +25,19 @@ import {
   createWorkoutSession,
   cryptoSafeId,
   completeSessionExercise,
+  buildBodyMetricChartDataset,
   buildProgressDashboard,
+  displayWeight,
   estimatedOneRepMax,
   exportAppData,
   expectedHydrationByNow,
   latestBodyMetric,
   bodyWeightDelta,
+  formatWeight,
   hydrationPaceStatus,
   hydrationPercent,
   hydrationTotal,
+  inputWeightToKg,
   isDrinkModuleActive,
   monthlyAchievements,
   normalizeDrinkModules,
@@ -59,9 +63,12 @@ import {
   suggestedWaterTargetMl,
   toCsv,
   upsertQuickAmount,
+  validateBodyMetric,
   visibleHydrationLogs,
   visibleQuickAmounts,
   type BodyMetric,
+  type BodyMetricChartDataset,
+  type BodyMetricRangeDays,
   type DrinkModule,
   type EquipmentType,
   type ExerciseDefinition,
@@ -126,6 +133,7 @@ export default function AppPage() {
   const [newMetricArm, setNewMetricArm] = useState(34);
   const [newMetricThigh, setNewMetricThigh] = useState(56);
   const [newMetricNote, setNewMetricNote] = useState("");
+  const [bodyMetricRange, setBodyMetricRange] = useState<BodyMetricRangeDays>(30);
   const [setWeight, setSetWeight] = useState(42.5);
   const [setReps, setSetReps] = useState(8);
   const [setRpe, setSetRpe] = useState(8);
@@ -154,6 +162,10 @@ export default function AppPage() {
   useEffect(() => {
     if (mounted) saveState(state);
   }, [mounted, state]);
+
+  useEffect(() => {
+    setNewMetricWeight(displayWeight(state.profile.bodyWeightKg, state.profile.unitWeight));
+  }, [state.profile.bodyWeightKg, state.profile.unitWeight]);
 
   useEffect(() => {
     const updateOnline = () => setIsOnline(navigator.onLine);
@@ -348,6 +360,23 @@ export default function AppPage() {
   });
   const latestMetric = latestBodyMetric(state.bodyMetrics);
   const weightDelta = bodyWeightDelta(state.bodyMetrics);
+  const bodyMetricChart = buildBodyMetricChartDataset({
+    metrics: state.bodyMetrics,
+    rangeDays: bodyMetricRange,
+    unit: state.profile.unitWeight,
+    goalWeightKg: state.profile.goalWeightKg,
+    goalBodyFatPercent: state.profile.goalBodyFatPercent,
+    now
+  });
+  const newMetricWeightKg = inputWeightToKg(newMetricWeight, state.profile.unitWeight);
+  const bodyMetricWarnings = validateBodyMetric({
+    weightKg: newMetricWeightKg,
+    bodyFatPercent: newMetricBodyFat,
+    waistCm: newMetricWaist,
+    chestCm: newMetricChest,
+    armCm: newMetricArm,
+    thighCm: newMetricThigh
+  });
   const syncStatus: SyncStatus = !isOnline
     ? "offline"
     : state.syncQueue.some((item) => item.status === "failed")
@@ -901,10 +930,14 @@ export default function AppPage() {
   }
 
   function addBodyMetric() {
+    if (bodyMetricWarnings.length) {
+      setToast(bodyMetricWarnings[0]);
+      return;
+    }
     const metric: BodyMetric = {
       id: cryptoSafeId(),
       measuredAt: new Date().toISOString(),
-      weightKg: newMetricWeight,
+      weightKg: newMetricWeightKg,
       heightCm: latestMetric?.heightCm ?? 174,
       bodyFatPercent: newMetricBodyFat,
       waistCm: newMetricWaist,
@@ -921,6 +954,13 @@ export default function AppPage() {
   }
 
   function updateBodyMetric(id: string, patch: Partial<BodyMetric>) {
+    const current = state.bodyMetrics.find((metric) => metric.id === id);
+    if (!current) return;
+    const warnings = validateBodyMetric({ ...current, ...patch });
+    if (warnings.length) {
+      setToast(warnings[0]);
+      return;
+    }
     commitSynced(
       {
         ...state,
@@ -1554,6 +1594,12 @@ export default function AppPage() {
             progress={progressDashboard}
             achievements={achievements}
             bodyMetrics={state.bodyMetrics}
+            bodyMetricChart={bodyMetricChart}
+            bodyMetricRange={bodyMetricRange}
+            setBodyMetricRange={setBodyMetricRange}
+            bodyMetricWarnings={bodyMetricWarnings}
+            unitWeight={state.profile.unitWeight}
+            updateProfile={updateProfile}
             latestMetric={latestMetric}
             weightDelta={weightDelta}
             newMetricWeight={newMetricWeight}
@@ -2818,6 +2864,12 @@ function ProgressView(props: {
   progress: ProgressDashboard;
   achievements: { code: string; name: string; progress: number; target: number; status: string; streakMonths: number }[];
   bodyMetrics: BodyMetric[];
+  bodyMetricChart: BodyMetricChartDataset;
+  bodyMetricRange: BodyMetricRangeDays;
+  setBodyMetricRange: (range: BodyMetricRangeDays) => void;
+  bodyMetricWarnings: string[];
+  unitWeight: AppState["profile"]["unitWeight"];
+  updateProfile: (next: Partial<AppState["profile"]>) => void;
   latestMetric?: BodyMetric;
   weightDelta: number;
   newMetricWeight: number;
@@ -2969,11 +3021,45 @@ function ProgressView(props: {
       <section className="card">
         <div className="section-heading">
           <h2>Body metrics</h2>
-          <span className="sync-pill">{props.weightDelta >= 0 ? "+" : ""}{props.weightDelta}kg</span>
+          <span className="sync-pill">{props.weightDelta >= 0 ? "+" : ""}{formatWeight(props.weightDelta, props.unitWeight)}</span>
         </div>
+        <BodyMetricCharts
+          dataset={props.bodyMetricChart}
+          range={props.bodyMetricRange}
+          setRange={props.setBodyMetricRange}
+        />
+        <div className="metric-goals">
+          <label>
+            <span>Goal weight ({props.unitWeight})</span>
+            <input
+              type="number"
+              step="0.1"
+              value={props.bodyMetricChart.weightGoal ?? ""}
+              onChange={(event) => props.updateProfile({ goalWeightKg: event.target.value ? inputWeightToKg(Number(event.target.value), props.unitWeight) : undefined })}
+            />
+          </label>
+          <label>
+            <span>Goal body fat (%)</span>
+            <input
+              type="number"
+              min="0"
+              max="70"
+              step="0.1"
+              value={props.bodyMetricChart.bodyFatGoal ?? ""}
+              onChange={(event) => props.updateProfile({ goalBodyFatPercent: event.target.value ? Number(event.target.value) : undefined })}
+            />
+          </label>
+        </div>
+        {props.bodyMetricWarnings.length > 0 && (
+          <div className="warning-list" role="alert">
+            {props.bodyMetricWarnings.map((warning) => (
+              <span key={warning}>{warning}</span>
+            ))}
+          </div>
+        )}
         <div className="metric-form">
           <label>
-            <span>Kg</span>
+            <span>Weight ({props.unitWeight})</span>
             <input type="number" step="0.1" value={props.newMetricWeight} onChange={(event) => props.setNewMetricWeight(Number(event.target.value))} />
           </label>
           <label>
@@ -3011,7 +3097,7 @@ function ProgressView(props: {
             .map((metric) => (
               <div key={metric.id}>
                 <span>{new Date(metric.measuredAt).toLocaleDateString("vi-VN")}</span>
-                <strong>{metric.weightKg}kg</strong>
+                <strong>{formatWeight(metric.weightKg, props.unitWeight)}</strong>
                 <em>{metric.bodyFatPercent ?? "-"}% • W {metric.waistCm ?? "-"}</em>
                 <div className="row-actions">
                   <button onClick={() => props.updateBodyMetric(metric.id, { weightKg: Math.round((metric.weightKg - 0.1) * 10) / 10 })}>
@@ -3072,6 +3158,66 @@ function EmptyState(props: { title: string; text: string }) {
     <div className="empty-state">
       <strong>{props.title}</strong>
       <p>{props.text}</p>
+    </div>
+  );
+}
+
+function BodyMetricCharts(props: {
+  dataset: BodyMetricChartDataset;
+  range: BodyMetricRangeDays;
+  setRange: (range: BodyMetricRangeDays) => void;
+}) {
+  const weightValues = props.dataset.points.flatMap((point) => [point.weight, point.smoothedWeight, props.dataset.weightGoal].filter((value): value is number => value !== undefined));
+  const bodyFatValues = props.dataset.points.flatMap((point) =>
+    [point.bodyFatPercent, point.smoothedBodyFatPercent, props.dataset.bodyFatGoal].filter((value): value is number => value !== undefined)
+  );
+  const weightMin = Math.min(...weightValues, 0);
+  const weightMax = Math.max(...weightValues, 1);
+  const bodyFatMin = Math.min(...bodyFatValues, 0);
+  const bodyFatMax = Math.max(...bodyFatValues, 1);
+  const heightFor = (value: number, min: number, max: number) => `${Math.max(8, ((value - min) / Math.max(1, max - min)) * 100)}%`;
+
+  return (
+    <div className="body-chart-panel">
+      <div className="segmented-control" aria-label="Body metric range">
+        {[7, 30, 90].map((range) => (
+          <button key={range} className={props.range === range ? "active" : ""} onClick={() => props.setRange(range as BodyMetricRangeDays)}>
+            {range}d
+          </button>
+        ))}
+      </div>
+      {props.dataset.hasWeightData ? (
+        <div className="body-chart">
+          <div className="section-heading">
+            <h2>Weight trend</h2>
+            <span className="sync-pill">{props.dataset.weightGoal ? `Goal ${props.dataset.weightGoal}${props.dataset.unit}` : "No goal"}</span>
+          </div>
+          <div className="body-chart-bars" aria-label={`Weight chart ${props.range} days`}>
+            {props.dataset.points.map((point, index) => (
+              <span key={`${point.date}-${index}`} title={`${point.date}: ${point.weight}${props.dataset.unit}`} style={{ height: heightFor(point.smoothedWeight, weightMin, weightMax) }} />
+            ))}
+          </div>
+        </div>
+      ) : (
+        <EmptyState title="No weight chart yet" text="Add body metrics to see weight over 7, 30, or 90 days." />
+      )}
+      {props.dataset.hasBodyFatData ? (
+        <div className="body-chart">
+          <div className="section-heading">
+            <h2>Body fat trend</h2>
+            <span className="sync-pill">{props.dataset.bodyFatGoal ? `Goal ${props.dataset.bodyFatGoal}%` : "No goal"}</span>
+          </div>
+          <div className="body-chart-bars body-fat-chart" aria-label={`Body fat chart ${props.range} days`}>
+            {props.dataset.points
+              .filter((point) => point.smoothedBodyFatPercent !== undefined)
+              .map((point, index) => (
+                <span key={`${point.date}-${index}`} title={`${point.date}: ${point.bodyFatPercent}%`} style={{ height: heightFor(point.smoothedBodyFatPercent ?? 0, bodyFatMin, bodyFatMax) }} />
+              ))}
+          </div>
+        </div>
+      ) : (
+        <EmptyState title="No body fat chart yet" text="Add body fat percentage to at least one metric to show this chart." />
+      )}
     </div>
   );
 }

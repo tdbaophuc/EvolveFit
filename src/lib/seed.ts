@@ -26,6 +26,8 @@ export type AppState = {
     unitWeight: "kg" | "lb";
     unitVolume: "ml" | "oz";
     bodyWeightKg: number;
+    goalWeightKg?: number;
+    goalBodyFatPercent?: number;
     heightCm: number;
     waterTargetMl: number;
     wakeHour: number;
@@ -227,6 +229,8 @@ export const initialState: AppState = {
     unitWeight: "kg",
     unitVolume: "ml",
     bodyWeightKg: 72,
+    goalWeightKg: 70,
+    goalBodyFatPercent: 15,
     heightCm: 174,
     waterTargetMl: 2500,
     wakeHour: 6,

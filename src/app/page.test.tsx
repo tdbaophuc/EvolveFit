@@ -59,4 +59,25 @@ describe("Progress dashboard", () => {
     expect(screen.getByRole("heading", { name: "Hydration trend" })).toBeInTheDocument();
     expect(screen.queryByText("Creatine consistency")).not.toBeInTheDocument();
   });
+
+  it("shows body metric range toggles and warns on invalid metric input", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      "evolvefit-state-v1",
+      JSON.stringify({
+        ...initialState,
+        profile: { ...initialState.profile, onboardingCompleted: true }
+      })
+    );
+
+    render(<AppPage />);
+
+    await user.click(screen.getByRole("button", { name: "Progress" }));
+    await user.click(within(screen.getByLabelText("Body metric range")).getByRole("button", { name: "90d" }));
+    const weightInput = screen.getByLabelText("Weight (kg)");
+    await user.clear(weightInput);
+    await user.type(weightInput, "0");
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Weight must be greater than 0.");
+  });
 });

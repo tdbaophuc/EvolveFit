@@ -1665,9 +1665,71 @@ button:disabled {
   gap: 10px;
 }
 
+.body-chart-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.body-chart {
+  display: grid;
+  gap: 10px;
+}
+
+.body-chart-bars {
+  min-height: 150px;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.body-chart-bars span {
+  flex: 1;
+  min-width: 6px;
+  border-radius: 999px 999px 0 0;
+  background: linear-gradient(180deg, #38bdf8, #0369a1);
+}
+
+.body-fat-chart span {
+  background: linear-gradient(180deg, #f6c66e, #b45309);
+}
+
+.metric-goals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metric-goals label {
+  display: grid;
+  gap: 6px;
+}
+
+.metric-goals span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.warning-list {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid #f6c66e;
+  border-radius: 12px;
+  background: #fff8e6;
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 @media (max-width: 520px) {
   .progress-kpi-grid,
-  .pr-grid {
+  .pr-grid,
+  .metric-goals {
     grid-template-columns: 1fr;
   }
 }

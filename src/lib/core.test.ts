@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   defaultDrinkModules,
   builtInExerciseDefinitions,
+  buildBodyMetricChartDataset,
   buildProgressDashboard,
   completeSessionExercise,
   createCustomExerciseDefinition,
@@ -18,6 +19,8 @@ import {
   isDrinkModuleActive,
   monthlyAchievements,
   latestBodyMetric,
+  kgToLb,
+  lbToKg,
   normalizeDrinkModules,
   parseRoutineCsv,
   parkSessionExercise,
@@ -26,6 +29,7 @@ import {
   migrateLegacyWorkoutSession,
   reorderSessionExerciseQueue,
   readinessScore,
+  validateBodyMetric,
   enqueueSync,
   exercisePersonalRecords,
   saveSessionExerciseOrderToRoutine,
@@ -788,6 +792,44 @@ describe("body metrics and export", () => {
 
     expect(latestBodyMetric(metrics)?.weightKg).toBe(71.8);
     expect(bodyWeightDelta(metrics)).toBe(-1.2);
+  });
+
+  it("converts weight between kg and lb", () => {
+    expect(kgToLb(70)).toBe(154.3);
+    expect(lbToKg(154.3)).toBe(70);
+  });
+
+  it("validates body metric fields", () => {
+    expect(validateBodyMetric({ weightKg: 72, bodyFatPercent: 18, waistCm: 82, chestCm: 96, armCm: 34, thighCm: 56 })).toEqual([]);
+    expect(validateBodyMetric({ weightKg: 0, bodyFatPercent: 80, waistCm: -1, chestCm: 300, armCm: 0, thighCm: Number.NaN })).toEqual([
+      "Weight must be greater than 0.",
+      "Body fat must be between 0 and 70%.",
+      "Waist must be between 1 and 250cm.",
+      "Chest must be between 1 and 250cm.",
+      "Arm must be between 1 and 250cm.",
+      "Thigh must be between 1 and 250cm."
+    ]);
+  });
+
+  it("builds range-limited smoothed chart datasets with unit conversion and body-fat detection", () => {
+    const dataset = buildBodyMetricChartDataset({
+      rangeDays: 7,
+      unit: "lb",
+      goalWeightKg: 70,
+      goalBodyFatPercent: 15,
+      now: new Date("2026-08-20T12:00:00.000Z"),
+      metrics: [
+        { id: "old", measuredAt: "2026-07-01T07:00:00.000Z", weightKg: 80, heightCm: 174, bodyFatPercent: 20 },
+        { id: "m1", measuredAt: "2026-08-18T07:00:00.000Z", weightKg: 72, heightCm: 174, bodyFatPercent: 18 },
+        { id: "m2", measuredAt: "2026-08-19T07:00:00.000Z", weightKg: 71, heightCm: 174 },
+        { id: "m3", measuredAt: "2026-08-20T07:00:00.000Z", weightKg: 70, heightCm: 174, bodyFatPercent: 17 }
+      ]
+    });
+
+    expect(dataset.points.map((point) => point.date)).toEqual(["2026-08-18", "2026-08-19", "2026-08-20"]);
+    expect(dataset.points[0]).toMatchObject({ weight: 158.7, smoothedWeight: 158.7, bodyFatPercent: 18, smoothedBodyFatPercent: 18 });
+    expect(dataset.points[2]).toMatchObject({ weight: 154.3, smoothedWeight: 156.5, bodyFatPercent: 17, smoothedBodyFatPercent: 17.5 });
+    expect(dataset).toMatchObject({ unit: "lb", weightGoal: 154.3, bodyFatGoal: 15, hasWeightData: true, hasBodyFatData: true });
   });
 
   it("exports app data as readable json", () => {
