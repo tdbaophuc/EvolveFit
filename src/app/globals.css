@@ -1604,6 +1604,74 @@ button:disabled {
   gap: 12px;
 }
 
+.progress-detail-card {
+  display: grid;
+  gap: 14px;
+}
+
+.progress-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.progress-kpi-grid div,
+.pr-grid div,
+.empty-state {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.progress-kpi-grid span,
+.progress-kpi-grid em,
+.pr-grid span,
+.empty-state p {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.progress-kpi-grid strong {
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.progress-list {
+  display: grid;
+  gap: 10px;
+}
+
+.progress-list div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 12px;
+  align-items: center;
+}
+
+.progress-list i {
+  grid-column: 1 / -1;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--training);
+}
+
+.pr-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 520px) {
+  .progress-kpi-grid,
+  .pr-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .chart-note {
   margin: 0;
   color: var(--muted);

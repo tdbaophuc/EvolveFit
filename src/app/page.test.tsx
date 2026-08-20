@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import AppPage from "./page";
+import { initialState } from "@/lib/seed";
 
 describe("Live Workout session queue", () => {
   beforeEach(() => {
@@ -28,5 +29,34 @@ describe("Live Workout session queue", () => {
     await user.click(within(queue as HTMLElement).getByRole("button", { name: /Incline Bench Press.*Parked/i }));
 
     expect(screen.getByRole("heading", { name: "Incline Bench Press" })).toBeInTheDocument();
+  });
+});
+
+describe("Progress dashboard", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it("hides creatine consistency when creatine is disabled", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      "evolvefit-state-v1",
+      JSON.stringify({
+        ...initialState,
+        profile: { ...initialState.profile, onboardingCompleted: true },
+        drinkModules: initialState.drinkModules.map((module) => (module.id === "creatine" ? { ...module, active: false } : module)),
+        supplements: initialState.supplements.map((supplement) =>
+          supplement.name.toLowerCase() === "creatine" ? { ...supplement, active: false } : supplement
+        ),
+        notificationSettings: { ...initialState.notificationSettings, creatineEnabled: false }
+      })
+    );
+
+    render(<AppPage />);
+
+    await user.click(screen.getByRole("button", { name: "Progress" }));
+
+    expect(screen.getByRole("heading", { name: "Hydration trend" })).toBeInTheDocument();
+    expect(screen.queryByText("Creatine consistency")).not.toBeInTheDocument();
   });
 });

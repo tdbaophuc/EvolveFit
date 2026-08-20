@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   defaultDrinkModules,
   builtInExerciseDefinitions,
+  buildProgressDashboard,
   completeSessionExercise,
   createCustomExerciseDefinition,
   createWorkoutSession,
@@ -26,6 +27,7 @@ import {
   reorderSessionExerciseQueue,
   readinessScore,
   enqueueSync,
+  exercisePersonalRecords,
   saveSessionExerciseOrderToRoutine,
   markSyncQueue,
   progressiveOverloadRecommendation,
@@ -495,6 +497,181 @@ describe("workout session model", () => {
     expect(migrated.sessions).toHaveLength(1);
     expect(migrated.sessions[0]).toMatchObject({ id: "session-legacy", status: "finished", sessionExerciseOrder: ["bench", "row"] });
     expect(migrated.sets.every((set) => set.sessionId === "session-legacy")).toBe(true);
+  });
+});
+
+describe("progress dashboard aggregation", () => {
+  it("aggregates hydration, creatine, workout count, weekly volume and muscle volume", () => {
+    const now = new Date("2026-08-20T12:00:00.000Z");
+    const dashboard = buildProgressDashboard({
+      hydrationLogs: [
+        { id: "h1", amountMl: 2500, drinkType: "water", loggedAt: "2026-08-20T08:00:00.000Z" },
+        { id: "h2", amountMl: 1500, drinkType: "water", loggedAt: "2026-08-19T08:00:00.000Z" },
+        { id: "h3", amountMl: 2500, drinkType: "water", loggedAt: "2026-08-01T08:00:00.000Z" }
+      ],
+      waterTargetMl: 2500,
+      supplementLogs: [
+        { id: "c1", name: "Creatine", amount: 5, unit: "g", status: "taken", loggedAt: "2026-08-20T08:00:00.000Z" },
+        { id: "c2", name: "Creatine", amount: 5, unit: "g", status: "skipped", loggedAt: "2026-08-19T08:00:00.000Z" }
+      ],
+      creatineEnabled: true,
+      workoutSessions: [
+        {
+          id: "s1",
+          routineId: "r1",
+          workoutDayId: "d1",
+          sessionName: "Upper",
+          startedAt: "2026-08-20T09:00:00.000Z",
+          durationSeconds: 1800,
+          status: "finished",
+          sessionExerciseOrder: ["bench"],
+          exerciseQueue: [{ exerciseId: "bench", status: "completed" }]
+        },
+        {
+          id: "s2",
+          routineId: "r1",
+          workoutDayId: "d1",
+          sessionName: "Upper",
+          startedAt: "2026-08-02T09:00:00.000Z",
+          durationSeconds: 1800,
+          status: "finished",
+          sessionExerciseOrder: ["row"],
+          exerciseQueue: [{ exerciseId: "row", status: "completed" }]
+        }
+      ],
+      workoutSets: [
+        {
+          id: "set-1",
+          sessionId: "s1",
+          exerciseId: "bench",
+          exerciseName: "Bench Press",
+          targetWeightKg: 60,
+          targetReps: 8,
+          actualWeightKg: 60,
+          actualReps: 8,
+          completedAt: "2026-08-20T09:10:00.000Z"
+        },
+        {
+          id: "set-skip",
+          sessionId: "s1",
+          exerciseId: "bench",
+          exerciseName: "Bench Press",
+          targetWeightKg: 60,
+          targetReps: 8,
+          actualWeightKg: 60,
+          actualReps: 0,
+          completedAt: "2026-08-20T09:12:00.000Z"
+        },
+        {
+          id: "set-2",
+          sessionId: "s2",
+          exerciseId: "row",
+          exerciseName: "Row",
+          targetWeightKg: 40,
+          targetReps: 10,
+          actualWeightKg: 40,
+          actualReps: 10,
+          completedAt: "2026-08-02T09:10:00.000Z"
+        }
+      ],
+      workoutExercises: [
+        {
+          id: "bench",
+          name: "Bench Press",
+          muscleGroup: "Chest",
+          targetSets: 3,
+          targetRepsMin: 6,
+          targetRepsMax: 8,
+          targetWeightKg: 60,
+          restSeconds: 120,
+          lastSession: ""
+        },
+        {
+          id: "row",
+          name: "Row",
+          muscleGroup: "Back",
+          targetSets: 3,
+          targetRepsMin: 8,
+          targetRepsMax: 10,
+          targetWeightKg: 40,
+          restSeconds: 90,
+          lastSession: ""
+        }
+      ],
+      now
+    });
+
+    expect(dashboard.hydration7).toMatchObject({ averageMl: 571, hitDays: 1, goalHitRate: 14 });
+    expect(dashboard.hydration30).toMatchObject({ hitDays: 2 });
+    expect(dashboard.creatineConsistency).toMatchObject({ takenDays: 1, consistencyRate: 3 });
+    expect(dashboard.workoutCount7).toBe(1);
+    expect(dashboard.workoutCount30).toBe(2);
+    expect(dashboard.weeklyVolume.reduce((sum, bucket) => sum + bucket.volumeKg, 0)).toBe(880);
+    expect(dashboard.volumeByMuscleGroup).toEqual([
+      { label: "Chest", volumeKg: 480 },
+      { label: "Back", volumeKg: 400 }
+    ]);
+  });
+
+  it("computes PRs and e1RM while excluding skipped sets", () => {
+    const sets = [
+      {
+        id: "set-1",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        targetWeightKg: 60,
+        targetReps: 8,
+        actualWeightKg: 60,
+        actualReps: 8,
+        completedAt: "2026-08-18T09:00:00.000Z"
+      },
+      {
+        id: "set-2",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        targetWeightKg: 62.5,
+        targetReps: 6,
+        actualWeightKg: 62.5,
+        actualReps: 6,
+        completedAt: "2026-08-20T09:00:00.000Z"
+      },
+      {
+        id: "set-skip",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        targetWeightKg: 100,
+        targetReps: 1,
+        actualWeightKg: 100,
+        actualReps: 0,
+        completedAt: "2026-08-20T09:05:00.000Z"
+      }
+    ];
+
+    expect(exercisePersonalRecords(sets)).toEqual([
+      {
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        maxWeightKg: 62.5,
+        maxReps: 8,
+        estimatedOneRepMaxKg: 76,
+        volumePrKg: 480
+      }
+    ]);
+  });
+
+  it("hides creatine consistency data when creatine is disabled", () => {
+    const dashboard = buildProgressDashboard({
+      hydrationLogs: [],
+      waterTargetMl: 2500,
+      supplementLogs: [{ id: "c1", name: "Creatine", amount: 5, unit: "g", status: "taken", loggedAt: "2026-08-20T08:00:00.000Z" }],
+      creatineEnabled: false,
+      workoutSessions: [],
+      workoutSets: [],
+      workoutExercises: [],
+      now: new Date("2026-08-20T12:00:00.000Z")
+    });
+
+    expect(dashboard.creatineConsistency).toBeUndefined();
   });
 });
 

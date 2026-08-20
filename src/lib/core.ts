@@ -184,6 +184,50 @@ export type AchievementStatus = {
   streakMonths: number;
 };
 
+export type PeriodProgress = {
+  days: number;
+  averageMl: number;
+  goalHitRate: number;
+  hitDays: number;
+};
+
+export type VolumeBucket = {
+  label: string;
+  volumeKg: number;
+};
+
+export type ExercisePr = {
+  exerciseId: string;
+  exerciseName: string;
+  maxWeightKg: number;
+  maxReps: number;
+  estimatedOneRepMaxKg: number;
+  volumePrKg: number;
+};
+
+export type E1RmTrendPoint = {
+  date: string;
+  exerciseId: string;
+  exerciseName: string;
+  estimatedOneRepMaxKg: number;
+};
+
+export type ProgressDashboard = {
+  hydration7: PeriodProgress;
+  hydration30: PeriodProgress;
+  creatineConsistency?: {
+    days: number;
+    takenDays: number;
+    consistencyRate: number;
+  };
+  workoutCount7: number;
+  workoutCount30: number;
+  weeklyVolume: VolumeBucket[];
+  volumeByMuscleGroup: VolumeBucket[];
+  e1RmTrend: E1RmTrendPoint[];
+  prs: ExercisePr[];
+};
+
 export const todayKey = (date = new Date()) => date.toISOString().slice(0, 10);
 
 export const builtInExerciseDefinitions: ExerciseDefinition[] = [
@@ -915,6 +959,173 @@ export function progressiveOverloadRecommendation(params: {
 export function estimatedOneRepMax(weightKg: number, reps: number): number {
   if (reps <= 1) return weightKg;
   return Math.round(weightKg * (1 + reps / 30) * 10) / 10;
+}
+
+function round(value: number, digits = 0): number {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function dateOnly(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function rollingDateKeys(days: number, now = new Date()): string[] {
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  return Array.from({ length: days }, (_, index) => dateOnly(addDays(end, index - days + 1)));
+}
+
+function weekLabel(dateKeyValue: string): string {
+  const date = new Date(`${dateKeyValue}T00:00:00.000Z`);
+  const day = date.getUTCDay() || 7;
+  const monday = addDays(date, 1 - day);
+  return dateOnly(monday);
+}
+
+export function hydrationPeriodProgress(logs: HydrationLog[], targetMl: number, days: number, now = new Date()): PeriodProgress {
+  const keys = rollingDateKeys(days, now);
+  const totals = new Map(keys.map((key) => [key, 0]));
+  logs.forEach((log) => {
+    const key = log.loggedAt.slice(0, 10);
+    if (totals.has(key)) totals.set(key, (totals.get(key) ?? 0) + log.amountMl);
+  });
+  const values = [...totals.values()];
+  const hitDays = values.filter((total) => total >= targetMl).length;
+  return {
+    days,
+    averageMl: round(values.reduce((sum, total) => sum + total, 0) / days),
+    goalHitRate: round((hitDays / days) * 100),
+    hitDays
+  };
+}
+
+export function creatineConsistency(
+  logs: SupplementLog[],
+  enabled: boolean,
+  days = 30,
+  now = new Date()
+): ProgressDashboard["creatineConsistency"] {
+  if (!enabled) return undefined;
+  const keys = new Set(rollingDateKeys(days, now));
+  const takenDays = new Set(
+    logs
+      .filter((log) => log.name.toLowerCase() === "creatine" && log.status !== "skipped" && keys.has(log.loggedAt.slice(0, 10)))
+      .map((log) => log.loggedAt.slice(0, 10))
+  );
+  return {
+    days,
+    takenDays: takenDays.size,
+    consistencyRate: round((takenDays.size / days) * 100)
+  };
+}
+
+function workingWorkoutSets(sets: WorkoutSet[]): WorkoutSet[] {
+  return sets.filter((set) => set.actualReps > 0 && set.actualWeightKg >= 0);
+}
+
+export function exercisePersonalRecords(sets: WorkoutSet[]): ExercisePr[] {
+  const byExercise = workingWorkoutSets(sets).reduce<Map<string, WorkoutSet[]>>((map, set) => {
+    map.set(set.exerciseId, [...(map.get(set.exerciseId) ?? []), set]);
+    return map;
+  }, new Map());
+
+  return [...byExercise.entries()]
+    .map(([exerciseId, exerciseSets]) => {
+      const maxWeight = Math.max(...exerciseSets.map((set) => set.actualWeightKg));
+      const maxReps = Math.max(...exerciseSets.map((set) => set.actualReps));
+      const e1rm = Math.max(...exerciseSets.map((set) => estimatedOneRepMax(set.actualWeightKg, set.actualReps)));
+      const volumePr = Math.max(...exerciseSets.map((set) => set.actualWeightKg * set.actualReps));
+      return {
+        exerciseId,
+        exerciseName: exerciseSets[0]?.exerciseName ?? exerciseId,
+        maxWeightKg: round(maxWeight, 1),
+        maxReps,
+        estimatedOneRepMaxKg: round(e1rm, 1),
+        volumePrKg: round(volumePr)
+      };
+    })
+    .sort((a, b) => b.estimatedOneRepMaxKg - a.estimatedOneRepMaxKg || a.exerciseName.localeCompare(b.exerciseName));
+}
+
+export function e1RmTrendByExercise(sets: WorkoutSet[], mainExerciseLimit = 3): E1RmTrendPoint[] {
+  const workingSets = workingWorkoutSets(sets);
+  const volumeByExercise = workingSets.reduce<Map<string, number>>((map, set) => {
+    map.set(set.exerciseId, (map.get(set.exerciseId) ?? 0) + set.actualWeightKg * set.actualReps);
+    return map;
+  }, new Map());
+  const mainExerciseIds = [...volumeByExercise.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, mainExerciseLimit)
+    .map(([exerciseId]) => exerciseId);
+  const bestByExerciseDate = workingSets.reduce<Map<string, E1RmTrendPoint>>((map, set) => {
+    const date = (set.completedAt ?? new Date().toISOString()).slice(0, 10);
+    if (!mainExerciseIds.includes(set.exerciseId)) return map;
+    const key = `${set.exerciseId}:${date}`;
+    const estimated = estimatedOneRepMax(set.actualWeightKg, set.actualReps);
+    const current = map.get(key);
+    if (!current || estimated > current.estimatedOneRepMaxKg) {
+      map.set(key, {
+        date,
+        exerciseId: set.exerciseId,
+        exerciseName: set.exerciseName,
+        estimatedOneRepMaxKg: round(estimated, 1)
+      });
+    }
+    return map;
+  }, new Map());
+  return [...bestByExerciseDate.values()].sort((a, b) => a.date.localeCompare(b.date) || a.exerciseName.localeCompare(b.exerciseName));
+}
+
+export function buildProgressDashboard(params: {
+  hydrationLogs: HydrationLog[];
+  waterTargetMl: number;
+  supplementLogs: SupplementLog[];
+  creatineEnabled: boolean;
+  workoutSessions: WorkoutSession[];
+  workoutSets: WorkoutSet[];
+  workoutExercises: WorkoutExercise[];
+  now?: Date;
+}): ProgressDashboard {
+  const now = params.now ?? new Date();
+  const dayKeys7 = new Set(rollingDateKeys(7, now));
+  const dayKeys30 = new Set(rollingDateKeys(30, now));
+  const activeSessions = params.workoutSessions.filter((session) => session.status !== "cancelled");
+  const workingSets = workingWorkoutSets(params.workoutSets);
+  const exerciseMuscles = new Map(params.workoutExercises.map((exercise) => [exercise.id, exercise.muscleGroup]));
+
+  const weeklyVolume = workingSets.reduce<Map<string, number>>((map, set) => {
+    const key = weekLabel((set.completedAt ?? new Date().toISOString()).slice(0, 10));
+    map.set(key, (map.get(key) ?? 0) + set.actualWeightKg * set.actualReps);
+    return map;
+  }, new Map());
+
+  const volumeByMuscleGroup = workingSets.reduce<Map<string, number>>((map, set) => {
+    const muscle = exerciseMuscles.get(set.exerciseId) ?? set.exerciseName;
+    map.set(muscle, (map.get(muscle) ?? 0) + set.actualWeightKg * set.actualReps);
+    return map;
+  }, new Map());
+
+  return {
+    hydration7: hydrationPeriodProgress(params.hydrationLogs, params.waterTargetMl, 7, now),
+    hydration30: hydrationPeriodProgress(params.hydrationLogs, params.waterTargetMl, 30, now),
+    creatineConsistency: creatineConsistency(params.supplementLogs, params.creatineEnabled, 30, now),
+    workoutCount7: activeSessions.filter((session) => dayKeys7.has(session.startedAt.slice(0, 10))).length,
+    workoutCount30: activeSessions.filter((session) => dayKeys30.has(session.startedAt.slice(0, 10))).length,
+    weeklyVolume: [...weeklyVolume.entries()]
+      .map(([label, volumeKg]) => ({ label, volumeKg: round(volumeKg) }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    volumeByMuscleGroup: [...volumeByMuscleGroup.entries()]
+      .map(([label, volumeKg]) => ({ label, volumeKg: round(volumeKg) }))
+      .sort((a, b) => b.volumeKg - a.volumeKg || a.label.localeCompare(b.label)),
+    e1RmTrend: e1RmTrendByExercise(params.workoutSets),
+    prs: exercisePersonalRecords(params.workoutSets)
+  };
 }
 
 export function latestBodyMetric(metrics: BodyMetric[]): BodyMetric | undefined {

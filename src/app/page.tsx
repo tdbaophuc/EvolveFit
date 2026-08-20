@@ -25,6 +25,7 @@ import {
   createWorkoutSession,
   cryptoSafeId,
   completeSessionExercise,
+  buildProgressDashboard,
   estimatedOneRepMax,
   exportAppData,
   expectedHydrationByNow,
@@ -70,6 +71,7 @@ import {
   type RoutineExercise,
   type SessionExerciseQueueItem,
   type Supplement,
+  type ProgressDashboard,
   type WorkoutSession,
   type WorkoutExercise,
   type WorkoutSet
@@ -330,10 +332,20 @@ export default function AppPage() {
     previousHydrationStreak: 2,
     previousVolumeStreak: 1
   });
-  const bestSet = state.workoutSets.reduce<WorkoutSet | undefined>(
+  const bestSet = state.workoutSets.filter((set) => set.actualReps > 0).reduce<WorkoutSet | undefined>(
     (best, set) => (!best || estimatedOneRepMax(set.actualWeightKg, set.actualReps) > estimatedOneRepMax(best.actualWeightKg, best.actualReps) ? set : best),
     undefined
   );
+  const progressDashboard = buildProgressDashboard({
+    hydrationLogs: state.hydrationLogs,
+    waterTargetMl: state.profile.waterTargetMl,
+    supplementLogs: state.supplementLogs,
+    creatineEnabled: creatineActive,
+    workoutSessions: state.workoutSessions,
+    workoutSets: state.workoutSets,
+    workoutExercises: state.workoutExercises,
+    now
+  });
   const latestMetric = latestBodyMetric(state.bodyMetrics);
   const weightDelta = bodyWeightDelta(state.bodyMetrics);
   const syncStatus: SyncStatus = !isOnline
@@ -1539,6 +1551,7 @@ export default function AppPage() {
             target={state.profile.waterTargetMl}
             sets={state.workoutSets}
             bestSet={bestSet}
+            progress={progressDashboard}
             achievements={achievements}
             bodyMetrics={state.bodyMetrics}
             latestMetric={latestMetric}
@@ -2802,6 +2815,7 @@ function ProgressView(props: {
   target: number;
   sets: WorkoutSet[];
   bestSet?: WorkoutSet;
+  progress: ProgressDashboard;
   achievements: { code: string; name: string; progress: number; target: number; status: string; streakMonths: number }[];
   bodyMetrics: BodyMetric[];
   latestMetric?: BodyMetric;
@@ -2825,37 +2839,131 @@ function ProgressView(props: {
   updateBodyMetric: (id: string, patch: Partial<BodyMetric>) => void;
   downloadExport: () => void;
 }) {
-  const volume = props.sets.reduce((sum, set) => sum + set.actualWeightKg * set.actualReps, 0);
+  const volume = props.sets.filter((set) => set.actualReps > 0).reduce((sum, set) => sum + set.actualWeightKg * set.actualReps, 0);
   const oneRm = props.bestSet ? estimatedOneRepMax(props.bestSet.actualWeightKg, props.bestSet.actualReps) : 0;
-  const completedExercises = new Set(props.sets.map((set) => set.exerciseId)).size;
+  const completedExercises = new Set(props.sets.filter((set) => set.actualReps > 0).map((set) => set.exerciseId)).size;
+  const maxWeeklyVolume = Math.max(1, ...props.progress.weeklyVolume.map((bucket) => bucket.volumeKg));
+  const maxMuscleVolume = Math.max(1, ...props.progress.volumeByMuscleGroup.map((bucket) => bucket.volumeKg));
 
   return (
     <div className="stack progress-screen">
       <section className="stats-grid progress-summary">
         <MetricCard label="Nước hôm nay" value={`${props.totalWater}/${props.target}ml`} accent="hydration" />
-        <MetricCard icon={<Dumbbell size={19} />} label="Volume" value={`${Math.round(volume)}kg`} accent="training" />
+        <MetricCard icon={<Dumbbell size={19} />} label="Workouts 7d/30d" value={`${props.progress.workoutCount7}/${props.progress.workoutCount30}`} accent="training" />
         <MetricCard label="e1RM tốt nhất" value={oneRm ? `${oneRm}kg` : "Chưa có"} accent="coach" />
         <MetricCard label="Cân nặng" value={props.latestMetric ? `${props.latestMetric.weightKg}kg` : "Chưa có"} accent="neutral" />
       </section>
       <section className="card">
         <h2>Xu hướng 7 ngày</h2>
         <div className="bar-chart" aria-label="Biểu đồ tiến độ">
-          {[64, 72, 48, 88, 76, 92, Math.min(100, (props.totalWater / props.target) * 100)].map((height, index) => (
+          {[props.progress.hydration7.goalHitRate, props.progress.hydration30.goalHitRate].map((height, index) => (
             <span key={index} style={{ height: `${height}%` }} />
           ))}
         </div>
       </section>
       <section className="card chart-card">
         <div className="section-heading">
-          <h2>Training trend</h2>
+          <h2>Weekly volume</h2>
           <span className="sync-pill">{completedExercises} exercises</span>
         </div>
-        <div className="bar-chart training-chart" aria-label="Training volume chart">
-          {[42, 58, 46, 72, 63, 82, Math.min(100, Math.max(12, volume / 80))].map((height, index) => (
-            <span key={index} style={{ height: `${height}%` }} />
-          ))}
+        {props.progress.weeklyVolume.length ? (
+          <div className="bar-chart training-chart" aria-label="Weekly training volume chart">
+            {props.progress.weeklyVolume.slice(-6).map((bucket) => (
+              <span key={bucket.label} title={`${bucket.label}: ${bucket.volumeKg}kg`} style={{ height: `${Math.max(8, (bucket.volumeKg / maxWeeklyVolume) * 100)}%` }} />
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="No weekly volume yet" text="Complete working sets to build weekly volume." />
+        )}
+        <p className="chart-note">{volume ? `${Math.round(volume)}kg total working volume logged.` : "Skipped sets are excluded from volume."}</p>
+      </section>
+
+      <section className="card progress-detail-card">
+        <div className="section-heading">
+          <h2>Hydration trend</h2>
+          <span className="sync-pill">{props.totalWater}/{props.target}ml today</span>
         </div>
-        <p className="chart-note">{props.sets.length ? "Recent sets are feeding volume and e1RM metrics." : "Log sets in Live Workout to build a meaningful trend."}</p>
+        <div className="progress-kpi-grid">
+          <div>
+            <span>7-day average</span>
+            <strong>{props.progress.hydration7.averageMl}ml</strong>
+            <em>{props.progress.hydration7.hitDays}/7 goal days</em>
+          </div>
+          <div>
+            <span>30-day average</span>
+            <strong>{props.progress.hydration30.averageMl}ml</strong>
+            <em>{props.progress.hydration30.goalHitRate}% goal hit</em>
+          </div>
+          {props.progress.creatineConsistency && (
+            <div>
+              <span>Creatine consistency</span>
+              <strong>{props.progress.creatineConsistency.consistencyRate}%</strong>
+              <em>{props.progress.creatineConsistency.takenDays}/30 days</em>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="card progress-detail-card">
+        <div className="section-heading">
+          <h2>Muscle group volume</h2>
+          <span className="sync-pill">working sets only</span>
+        </div>
+        {props.progress.volumeByMuscleGroup.length ? (
+          <div className="progress-list">
+            {props.progress.volumeByMuscleGroup.map((bucket) => (
+              <div key={bucket.label}>
+                <span>{bucket.label}</span>
+                <strong>{bucket.volumeKg}kg</strong>
+                <i style={{ width: `${Math.max(8, (bucket.volumeKg / maxMuscleVolume) * 100)}%` }} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="No muscle split yet" text="Log working sets from your routine to see volume by muscle group." />
+        )}
+      </section>
+
+      <section className="card progress-detail-card">
+        <div className="section-heading">
+          <h2>e1RM trend</h2>
+          <span className="sync-pill">main lifts</span>
+        </div>
+        {props.progress.e1RmTrend.length ? (
+          <div className="timeline compact">
+            {props.progress.e1RmTrend.slice(-8).map((point) => (
+              <div key={`${point.exerciseId}-${point.date}`}>
+                <span>{new Date(`${point.date}T00:00:00.000Z`).toLocaleDateString("vi-VN")}</span>
+                <strong>{point.exerciseName}</strong>
+                <em>{point.estimatedOneRepMaxKg}kg e1RM</em>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="No e1RM trend yet" text="Log weighted sets with reps to generate main lift e1RM points." />
+        )}
+      </section>
+
+      <section className="card progress-detail-card">
+        <div className="section-heading">
+          <h2>Exercise PRs</h2>
+          <span className="sync-pill">{props.progress.prs.length} exercises</span>
+        </div>
+        {props.progress.prs.length ? (
+          <div className="pr-grid">
+            {props.progress.prs.map((pr) => (
+              <div key={pr.exerciseId}>
+                <strong>{pr.exerciseName}</strong>
+                <span>Max weight {pr.maxWeightKg}kg</span>
+                <span>Max reps {pr.maxReps}</span>
+                <span>e1RM {pr.estimatedOneRepMaxKg}kg</span>
+                <span>Volume PR {pr.volumePrKg}kg</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="No PRs yet" text="Skipped sets do not count. Complete working sets to create PRs." />
+        )}
       </section>
 
       <section className="card">
@@ -2955,6 +3063,15 @@ function MetricCard(props: { label: string; value: string; accent: "hydration" |
       {props.icon && <span className="metric-icon">{props.icon}</span>}
       <span>{props.label}</span>
       <strong>{props.value}</strong>
+    </div>
+  );
+}
+
+function EmptyState(props: { title: string; text: string }) {
+  return (
+    <div className="empty-state">
+      <strong>{props.title}</strong>
+      <p>{props.text}</p>
     </div>
   );
 }
