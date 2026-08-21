@@ -30,6 +30,21 @@ describe("Live Workout session queue", () => {
 
     expect(screen.getByRole("heading", { name: "Incline Bench Press" })).toBeInTheDocument();
   });
+
+  it("shows plate guidance and a live PR badge after a new record set", async () => {
+    const user = userEvent.setup();
+    render(<AppPage />);
+
+    await user.click(screen.getByRole("button", { name: "Workout" }));
+    await user.click(screen.getByRole("button", { name: /Start workout/i }));
+
+    expect(screen.getByLabelText("Plate calculator")).toHaveTextContent("Bar 20kg");
+
+    await user.click(screen.getByRole("button", { name: /Hoàn thành set/i }));
+
+    expect(await screen.findByRole("status", { name: "Live PR notification" })).toHaveTextContent("New PR");
+    expect(screen.getByText(/New PR:/)).toBeInTheDocument();
+  });
 });
 
 describe("Progress dashboard", () => {

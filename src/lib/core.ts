@@ -77,6 +77,29 @@ export type WorkoutSet = {
   completedAt?: string;
 };
 
+export type PlateSettings = {
+  barbellDefault: "20kg" | "15kg" | "custom";
+  customBarbellKg: number;
+  plateInventoryKg: number[];
+};
+
+export type PlateCalculation = {
+  targetWeightKg: number;
+  barbellKg: number;
+  loadableWeightKg: number;
+  perSideWeightKg: number;
+  platesPerSide: { weightKg: number; count: number }[];
+  matchedWeightKg: number;
+  remainderKg: number;
+};
+
+export type WorkoutSetPr = {
+  type: "maxWeight" | "maxReps" | "estimatedOneRepMax" | "volume";
+  label: string;
+  previous: number;
+  next: number;
+};
+
 export type WorkoutSessionStatus = "active" | "paused" | "finished" | "cancelled";
 export type SessionExerciseQueueStatus = "queued" | "completed" | "parked";
 
@@ -351,6 +374,53 @@ export const defaultDrinkModules: DrinkModule[] = [
     reminderEnabled: false
   }
 ];
+
+export const defaultPlateSettings: PlateSettings = {
+  barbellDefault: "20kg",
+  customBarbellKg: 20,
+  plateInventoryKg: [25, 20, 15, 10, 5, 2.5, 1.25]
+};
+
+export function barbellWeightKg(settings: PlateSettings): number {
+  if (settings.barbellDefault === "15kg") return 15;
+  if (settings.barbellDefault === "custom") return Number.isFinite(settings.customBarbellKg) ? Math.max(0, settings.customBarbellKg) : 0;
+  return 20;
+}
+
+export function normalizePlateInventory(plates: number[] | undefined): number[] {
+  const normalized = (plates?.length ? plates : defaultPlateSettings.plateInventoryKg)
+    .filter((plate) => Number.isFinite(plate) && plate > 0)
+    .map((plate) => round(plate, 2))
+    .filter((plate, index, list) => list.indexOf(plate) === index)
+    .sort((a, b) => b - a);
+  return normalized.length ? normalized : defaultPlateSettings.plateInventoryKg;
+}
+
+export function calculatePlatesPerSide(targetWeightKg: number, settings: PlateSettings): PlateCalculation {
+  const barbellKg = barbellWeightKg(settings);
+  const loadableWeightKg = Math.max(0, targetWeightKg - barbellKg);
+  let remainingPerSide = loadableWeightKg / 2;
+  const platesPerSide: PlateCalculation["platesPerSide"] = [];
+
+  for (const weightKg of normalizePlateInventory(settings.plateInventoryKg)) {
+    const count = Math.floor((remainingPerSide + 0.0001) / weightKg);
+    if (!count) continue;
+    platesPerSide.push({ weightKg, count });
+    remainingPerSide = round(remainingPerSide - weightKg * count, 2);
+  }
+
+  const matchedPerSide = platesPerSide.reduce((sum, plate) => sum + plate.weightKg * plate.count, 0);
+  const matchedWeightKg = round(barbellKg + matchedPerSide * 2, 2);
+  return {
+    targetWeightKg,
+    barbellKg,
+    loadableWeightKg: round(loadableWeightKg, 2),
+    perSideWeightKg: round(loadableWeightKg / 2, 2),
+    platesPerSide,
+    matchedWeightKg,
+    remainderKg: round(Math.max(0, targetWeightKg - matchedWeightKg), 2)
+  };
+}
 
 export function normalizeDrinkModules(modules: DrinkModule[] | undefined, waterTargetMl = 2500, creatineGoalG = 5): DrinkModule[] {
   const existing = modules ?? [];
@@ -1081,6 +1151,25 @@ export function exercisePersonalRecords(sets: WorkoutSet[]): ExercisePr[] {
       };
     })
     .sort((a, b) => b.estimatedOneRepMaxKg - a.estimatedOneRepMaxKg || a.exerciseName.localeCompare(b.exerciseName));
+}
+
+export function detectWorkoutSetPrs(previousSets: WorkoutSet[], nextSet: WorkoutSet): WorkoutSetPr[] {
+  if (nextSet.actualReps <= 0 || nextSet.actualWeightKg < 0) return [];
+  const previous = workingWorkoutSets(previousSets).filter((set) => set.exerciseId === nextSet.exerciseId);
+  const nextE1Rm = round(estimatedOneRepMax(nextSet.actualWeightKg, nextSet.actualReps), 1);
+  const nextVolume = round(nextSet.actualWeightKg * nextSet.actualReps);
+  const previousMaxWeight = previous.length ? Math.max(...previous.map((set) => set.actualWeightKg)) : 0;
+  const previousMaxReps = previous.length ? Math.max(...previous.map((set) => set.actualReps)) : 0;
+  const previousE1Rm = previous.length ? round(Math.max(...previous.map((set) => estimatedOneRepMax(set.actualWeightKg, set.actualReps))), 1) : 0;
+  const previousVolume = previous.length ? round(Math.max(...previous.map((set) => set.actualWeightKg * set.actualReps))) : 0;
+  const prs: WorkoutSetPr[] = [];
+
+  if (nextSet.actualWeightKg > previousMaxWeight) prs.push({ type: "maxWeight", label: "Weight PR", previous: previousMaxWeight, next: nextSet.actualWeightKg });
+  if (nextSet.actualReps > previousMaxReps) prs.push({ type: "maxReps", label: "Rep PR", previous: previousMaxReps, next: nextSet.actualReps });
+  if (nextE1Rm > previousE1Rm) prs.push({ type: "estimatedOneRepMax", label: "e1RM PR", previous: previousE1Rm, next: nextE1Rm });
+  if (nextVolume > previousVolume) prs.push({ type: "volume", label: "Volume PR", previous: previousVolume, next: nextVolume });
+
+  return prs;
 }
 
 export function e1RmTrendByExercise(sets: WorkoutSet[], mainExerciseLimit = 3): E1RmTrendPoint[] {

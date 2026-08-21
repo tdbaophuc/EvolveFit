@@ -3,9 +3,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   defaultDrinkModules,
+  defaultPlateSettings,
   builtInExerciseDefinitions,
   buildBodyMetricChartDataset,
   buildProgressDashboard,
+  calculatePlatesPerSide,
   completeSessionExercise,
   createCustomExerciseDefinition,
   createWorkoutSession,
@@ -32,6 +34,7 @@ import {
   validateBodyMetric,
   enqueueSync,
   exercisePersonalRecords,
+  detectWorkoutSetPrs,
   saveSessionExerciseOrderToRoutine,
   markSyncQueue,
   progressiveOverloadRecommendation,
@@ -660,6 +663,61 @@ describe("progress dashboard aggregation", () => {
         estimatedOneRepMaxKg: 76,
         volumePrKg: 480
       }
+    ]);
+  });
+
+  it("detects live PRs and ignores skipped sets", () => {
+    const previous = [
+      {
+        id: "old",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        targetWeightKg: 60,
+        targetReps: 8,
+        actualWeightKg: 60,
+        actualReps: 8,
+        completedAt: "2026-08-18T09:00:00.000Z"
+      },
+      {
+        id: "old-skip",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        targetWeightKg: 100,
+        targetReps: 1,
+        actualWeightKg: 100,
+        actualReps: 0,
+        completedAt: "2026-08-19T09:00:00.000Z"
+      }
+    ];
+
+    const prs = detectWorkoutSetPrs(previous, {
+      id: "new",
+      exerciseId: "bench",
+      exerciseName: "Bench Press",
+      targetWeightKg: 62.5,
+      targetReps: 8,
+      actualWeightKg: 62.5,
+      actualReps: 8,
+      completedAt: "2026-08-21T09:00:00.000Z"
+    });
+
+    expect(prs.map((pr) => pr.type)).toEqual(["maxWeight", "estimatedOneRepMax", "volume"]);
+    expect(detectWorkoutSetPrs(previous, { ...previous[1], id: "skip-new" })).toEqual([]);
+  });
+
+  it("calculates plates per side from target weight and barbell settings", () => {
+    expect(calculatePlatesPerSide(60, defaultPlateSettings)).toMatchObject({
+      barbellKg: 20,
+      perSideWeightKg: 20,
+      platesPerSide: [{ weightKg: 20, count: 1 }],
+      matchedWeightKg: 60,
+      remainderKg: 0
+    });
+
+    expect(calculatePlatesPerSide(42.5, { barbellDefault: "15kg", customBarbellKg: 20, plateInventoryKg: [10, 5, 2.5, 1.25] }).platesPerSide).toEqual([
+      { weightKg: 10, count: 1 },
+      { weightKg: 2.5, count: 1 },
+      { weightKg: 1.25, count: 1 }
     ]);
   });
 

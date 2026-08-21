@@ -1,12 +1,14 @@
 import {
   builtInExerciseDefinitions,
   defaultDrinkModules,
+  defaultPlateSettings,
   migrateWorkoutExercisesToRoutine,
   type BodyMetric,
   type DrinkModule,
   type ExerciseDefinition,
   type HydrationLog,
   type QuickAmount,
+  type PlateSettings,
   type ReminderMode,
   type Routine,
   type Supplement,
@@ -62,6 +64,7 @@ export type AppState = {
     lastHydrationReminderAt?: string;
     lastCreatineReminderAt?: string;
   };
+  plateSettings: PlateSettings;
   hydrationLogs: HydrationLog[];
   drinkModules: DrinkModule[];
   supplements: Supplement[];
@@ -262,6 +265,7 @@ export const initialState: AppState = {
     quietHoursEnd: 6,
     inAppFallbackEnabled: true
   },
+  plateSettings: defaultPlateSettings,
   drinkModules: defaultDrinkModules.map((module) =>
     module.id === "water"
       ? { ...module, goal: 2500 }
