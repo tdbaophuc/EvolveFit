@@ -29,7 +29,6 @@ import {
   buildProgressDashboard,
   displayWeight,
   estimatedOneRepMax,
-  exportAppData,
   expectedHydrationByNow,
   latestBodyMetric,
   bodyWeightDelta,
@@ -83,6 +82,14 @@ import {
   type WorkoutExercise,
   type WorkoutSet
 } from "@/lib/core";
+import {
+  allRestoreSections,
+  applySelectiveRestore,
+  deletePersonalData,
+  parseImportedAppData,
+  stringifyAppDataExport,
+  type RestoreSection
+} from "@/lib/app-data";
 import { initialState, routineTemplates, type AppState } from "@/lib/seed";
 import { loadState, resetState, saveState } from "@/lib/storage";
 
@@ -143,6 +150,7 @@ export default function AppPage() {
   const [pushSubscriptionStatus, setPushSubscriptionStatus] = useState<PushSubscriptionStatus>("unsupported");
   const [pushConfigured, setPushConfigured] = useState(false);
   const [vapidPublicKey, setVapidPublicKey] = useState<string | null>(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null);
+  const [restoreSections, setRestoreSections] = useState<RestoreSection[]>(allRestoreSections());
   const [mounted, setMounted] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [drinkType, setDrinkType] = useState<HydrationLog["drinkType"]>("water");
@@ -1024,7 +1032,7 @@ export default function AppPage() {
   }
 
   function downloadExport() {
-    const payload = exportAppData({ ...state, exportedAt: new Date().toISOString() });
+    const payload = stringifyAppDataExport(state);
     const blob = new Blob([payload], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -1055,23 +1063,33 @@ export default function AppPage() {
   }
 
   function importJsonExport(file: File) {
-    file
-      .text()
+    readTextFile(file)
       .then((text) => {
-        const imported = JSON.parse(text) as Partial<AppState>;
-        commit(
-          {
-            ...state,
-            ...imported,
-            profile: { ...state.profile, ...imported.profile },
-            recovery: { ...state.recovery, ...imported.recovery },
-            notificationSettings: { ...state.notificationSettings, ...imported.notificationSettings },
-            undo: undefined
-          },
-          "Đã import JSON"
-        );
+        const imported = parseImportedAppData(text);
+        if (!imported.ok) {
+          setToast(`Import JSON không hợp lệ: ${imported.errors[0]}`);
+          return;
+        }
+        if (!restoreSections.length) {
+          setToast("Chọn ít nhất một nhóm dữ liệu để restore");
+          return;
+        }
+        commit(applySelectiveRestore(state, imported.data, restoreSections), "Đã restore JSON theo lựa chọn");
       })
       .catch(() => setToast("Không import được JSON"));
+  }
+
+  function deleteLocalPersonalData() {
+    commit(deletePersonalData(state), "Đã xóa dữ liệu cá nhân local");
+  }
+  function readTextFile(file: File) {
+    if (typeof file.text === "function") return file.text();
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ""));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(file);
+    });
   }
 
   function localProfileId() {
@@ -1769,6 +1787,7 @@ export default function AppPage() {
             updateProfile={updateProfile}
             signInLocal={(mode) => updateProfile({ authMode: mode })}
             reset={() => commit(resetState(), "Đã khôi phục dữ liệu mẫu")}
+            deletePersonalData={deleteLocalPersonalData}
             notificationPermission={notificationPermission}
             pushConfigured={pushConfigured}
             pushSubscriptionStatus={pushSubscriptionStatus}
@@ -1781,6 +1800,8 @@ export default function AppPage() {
             downloadExport={downloadExport}
             downloadCsvExport={downloadCsvExport}
             importJsonExport={importJsonExport}
+            restoreSections={restoreSections}
+            setRestoreSections={setRestoreSections}
             updateNotificationSettings={updateNotificationSettings}
             drinkModules={drinkModules}
             updateDrinkModule={updateDrinkModule}
@@ -3454,6 +3475,7 @@ function SettingsView(props: {
   updateProfile: (next: Partial<AppState["profile"]>) => void;
   signInLocal: (mode: AppState["profile"]["authMode"]) => void;
   reset: () => void;
+  deletePersonalData: () => void;
   notificationPermission: NotificationPermission;
   pushConfigured: boolean;
   pushSubscriptionStatus: PushSubscriptionStatus;
@@ -3466,6 +3488,8 @@ function SettingsView(props: {
   downloadExport: () => void;
   downloadCsvExport: (dataset?: CsvDataset) => void;
   importJsonExport: (file: File) => void;
+  restoreSections: RestoreSection[];
+  setRestoreSections: (sections: RestoreSection[]) => void;
   updateNotificationSettings: (next: Partial<AppState["notificationSettings"]>) => void;
   drinkModules: DrinkModule[];
   updateDrinkModule: (id: DrinkModule["id"], patch: Partial<DrinkModule>) => void;
@@ -3499,6 +3523,14 @@ function SettingsView(props: {
 
   function snooze(minutes: number) {
     props.updateNotificationSettings({ snoozeUntil: new Date(Date.now() + minutes * 60000).toISOString() });
+  }
+
+  function toggleRestoreSection(section: RestoreSection, checked: boolean) {
+    props.setRestoreSections(
+      checked
+        ? [...props.restoreSections, section].filter((item, index, list) => list.indexOf(item) === index)
+        : props.restoreSections.filter((item) => item !== section)
+    );
   }
 
   return (
@@ -3832,7 +3864,26 @@ function SettingsView(props: {
         <p className="privacy-note">Queue hiện lưu local-first để chuẩn bị sync backend và xử lý retry/conflict ở bước production.</p>
       </section>
       <section className="card">
-        <h2>D? li?u & quy?n ri?ng t?</h2>
+        <h2>Dữ liệu & quyền riêng tư</h2>
+        <p className="privacy-note">Export JSON gồm metadata appVersion, exportedAt, schemaVersion và local profile id. Import JSON được kiểm tra schema trước khi restore nên file sai không ghi đè dữ liệu hiện tại.</p>
+        <div className="restore-section-grid" aria-label="Chọn nhóm dữ liệu restore">
+          {[
+            ["profile", "Profile"],
+            ["hydration", "Hydration"],
+            ["workouts", "Workouts"],
+            ["bodyMetrics", "Body metrics"],
+            ["settings", "Settings"]
+          ].map(([section, label]) => (
+            <label key={section} className="toggle-row compact-toggle">
+              <span>{label}</span>
+              <input
+                type="checkbox"
+                checked={props.restoreSections.includes(section as RestoreSection)}
+                onChange={(event) => toggleRestoreSection(section as RestoreSection, event.target.checked)}
+              />
+            </label>
+          ))}
+        </div>
         <div className="settings-actions">
           <button className="secondary-button" onClick={props.downloadExport}>
             Export JSON
@@ -3844,10 +3895,14 @@ function SettingsView(props: {
             Import JSON
             <input type="file" accept="application/json" onChange={(event) => event.target.files?.[0] && props.importJsonExport(event.target.files[0])} />
           </label>
-          <button className="secondary-button danger-button" onClick={() => window.confirm("Reset to?n b? d? li?u local?") && props.reset()}>
-            Reset d? li?u m?u
+          <button className="secondary-button danger-button" onClick={() => window.confirm("Xóa dữ liệu cá nhân local? Leaderboard sẽ tắt và dữ liệu profile, hydration, workout, body metrics, queue local sẽ bị xóa.") && props.deletePersonalData()}>
+            Delete personal data
+          </button>
+          <button className="secondary-button danger-button" onClick={() => window.confirm("Reset demo data? Flow này khôi phục dữ liệu mẫu và tách riêng khỏi xóa dữ liệu cá nhân.") && props.reset()}>
+            Reset demo data
           </button>
         </div>
+        <p className="privacy-note">Leaderboard mặc định tắt; khi bật chỉ gửi trạng thái public cho hồ sơ xếp hạng. Dữ liệu cá nhân như email, số đo cơ thể, lịch sử uống nước và workout chỉ nằm trong local/export JSON cho đến khi bạn restore hoặc xóa.</p>
         <div className="dataset-export-grid" aria-label="Export CSV theo dataset">
           {[
             ["hydration", "Hydration"],

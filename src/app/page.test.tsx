@@ -81,3 +81,38 @@ describe("Progress dashboard", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Weight must be greater than 0.");
   });
 });
+
+describe("Settings import and privacy", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it("rejects invalid JSON import without replacing existing state", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      "evolvefit-state-v1",
+      JSON.stringify({
+        ...initialState,
+        profile: { ...initialState.profile, name: "Current Athlete", onboardingCompleted: true }
+      })
+    );
+
+    render(<AppPage />);
+
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByText("Current Athlete")).toBeInTheDocument();
+
+    const file = new File(
+      [JSON.stringify({ metadata: { schemaVersion: 2 }, data: { hydrationLogs: [{ id: "bad", amountMl: "wrong", loggedAt: "2026-08-21T00:00:00.000Z" }] } })],
+      "bad-export.json",
+      { type: "application/json" }
+    );
+    await user.upload(screen.getByLabelText("Import JSON"), file);
+
+    expect(await screen.findByText(/không hợp lệ/i)).toBeInTheDocument();
+    expect(screen.getByText("Current Athlete")).toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem("evolvefit-state-v1") ?? "{}").profile.name).toBe("Current Athlete");
+    expect(screen.getByRole("button", { name: "Delete personal data" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reset demo data" })).toBeInTheDocument();
+  });
+});

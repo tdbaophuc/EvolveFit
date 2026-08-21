@@ -924,9 +924,9 @@ Dữ liệu cá nhân quản lý rõ, restore an toàn.
 - [ ] Body metrics chart 7/30/90.
 - [ ] Badge active/locked/lost/disabled.
 - [ ] Leaderboard opt-in thật.
-- [ ] Import JSON schema validation.
-- [ ] Selective restore.
-- [ ] Delete personal data.
+- [x] Import JSON schema validation.
+- [x] Selective restore.
+- [x] Delete personal data.
 - [ ] Supabase Auth thật.
 - [ ] PostgreSQL RLS đầy đủ.
 - [ ] Sync retry thật với idempotency.

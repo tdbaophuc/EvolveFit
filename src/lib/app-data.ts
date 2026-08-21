@@ -1,0 +1,226 @@
+import {
+  builtInExerciseDefinitions,
+  migrateLegacyWorkoutSession,
+  migrateWorkoutExercisesToRoutine,
+  normalizeDrinkModules,
+  normalizeWorkoutSessionQueue,
+  routineExercisesToWorkoutExercises,
+  selectedWorkoutDay
+} from "./core";
+import { initialState, type AppState } from "./seed";
+
+export const appDataSchemaVersion = 2;
+export const fallbackAppVersion = "0.1.0";
+
+export type RestoreSection = "profile" | "hydration" | "workouts" | "bodyMetrics" | "settings";
+
+export type AppDataExport = {
+  metadata: {
+    appVersion: string;
+    exportedAt: string;
+    schemaVersion: number;
+    profileId: string;
+    localProfileId: string;
+  };
+  data: AppState;
+};
+
+type ValidationResult<T> = { ok: true; data: T } | { ok: false; errors: string[] };
+
+const restoreSections: RestoreSection[] = ["profile", "hydration", "workouts", "bodyMetrics", "settings"];
+
+export function createAppDataExport(state: AppState, now = new Date(), appVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? fallbackAppVersion): AppDataExport {
+  const localProfileId = state.profile.email || "local-profile";
+  return {
+    metadata: {
+      appVersion,
+      exportedAt: now.toISOString(),
+      schemaVersion: appDataSchemaVersion,
+      profileId: state.profile.email || state.profile.name || "local-profile",
+      localProfileId
+    },
+    data: { ...state, undo: undefined }
+  };
+}
+
+export function stringifyAppDataExport(state: AppState, now = new Date(), appVersion?: string): string {
+  return JSON.stringify(createAppDataExport(state, now, appVersion), null, 2);
+}
+
+export function parseImportedAppData(text: string): ValidationResult<AppState> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { ok: false, errors: ["File is not valid JSON."] };
+  }
+  return migrateImportedAppData(parsed);
+}
+
+export function migrateImportedAppData(input: unknown): ValidationResult<AppState> {
+  if (!isRecord(input)) return { ok: false, errors: ["Import must be a JSON object."] };
+
+  const metadata = input.metadata;
+  const envelope = isRecord(metadata) && "data" in input;
+  if (envelope) {
+    if (typeof metadata.schemaVersion !== "number") return { ok: false, errors: ["metadata.schemaVersion is required."] };
+    if (metadata.schemaVersion > appDataSchemaVersion) return { ok: false, errors: ["Export schema is newer than this app."] };
+  }
+
+  const candidate = envelope ? input.data : input;
+  if (!isRecord(candidate)) return { ok: false, errors: ["Export data must be a JSON object."] };
+
+  const errors = validateImportCandidate(candidate);
+  if (errors.length) return { ok: false, errors };
+
+  try {
+    return { ok: true, data: normalizeImportedState(candidate as Partial<AppState>) };
+  } catch {
+    return { ok: false, errors: ["Export data could not be migrated safely."] };
+  }
+}
+
+export function applySelectiveRestore(current: AppState, imported: AppState, sections: RestoreSection[]): AppState {
+  const selected = new Set(sections);
+  return {
+    ...current,
+    profile: selected.has("profile") ? imported.profile : current.profile,
+    recovery: selected.has("settings") ? imported.recovery : current.recovery,
+    notificationSettings: selected.has("settings") ? imported.notificationSettings : current.notificationSettings,
+    hydrationLogs: selected.has("hydration") ? imported.hydrationLogs : current.hydrationLogs,
+    drinkModules: selected.has("settings") ? imported.drinkModules : current.drinkModules,
+    supplements: selected.has("settings") ? imported.supplements : current.supplements,
+    supplementLogs: selected.has("hydration") ? imported.supplementLogs : current.supplementLogs,
+    quickAmounts: selected.has("settings") ? imported.quickAmounts : current.quickAmounts,
+    routines: selected.has("workouts") ? imported.routines : current.routines,
+    activeRoutineId: selected.has("workouts") ? imported.activeRoutineId : current.activeRoutineId,
+    selectedWorkoutDayId: selected.has("workouts") ? imported.selectedWorkoutDayId : current.selectedWorkoutDayId,
+    exerciseLibrary: selected.has("workouts") ? imported.exerciseLibrary : current.exerciseLibrary,
+    workoutExercises: selected.has("workouts") ? imported.workoutExercises : current.workoutExercises,
+    workoutSessions: selected.has("workouts") ? imported.workoutSessions : current.workoutSessions,
+    activeWorkoutSessionId: selected.has("workouts") ? imported.activeWorkoutSessionId : current.activeWorkoutSessionId,
+    workoutSets: selected.has("workouts") ? imported.workoutSets : current.workoutSets,
+    bodyMetrics: selected.has("bodyMetrics") ? imported.bodyMetrics : current.bodyMetrics,
+    activeTemplate: selected.has("workouts") ? imported.activeTemplate : current.activeTemplate,
+    activeExerciseIndex: selected.has("workouts") ? imported.activeExerciseIndex : current.activeExerciseIndex,
+    recommendationDecisions: selected.has("workouts") ? imported.recommendationDecisions : current.recommendationDecisions,
+    syncQueue: current.syncQueue,
+    restEndsAt: undefined,
+    undo: undefined
+  };
+}
+
+export function deletePersonalData(state: AppState): AppState {
+  return {
+    ...state,
+    profile: {
+      ...initialState.profile,
+      name: "",
+      email: "",
+      onboardingCompleted: false,
+      leaderboardPublic: false
+    },
+    recovery: initialState.recovery,
+    notificationSettings: initialState.notificationSettings,
+    hydrationLogs: [],
+    supplementLogs: [],
+    workoutSets: [],
+    workoutSessions: [],
+    activeWorkoutSessionId: undefined,
+    bodyMetrics: [],
+    recommendationDecisions: [],
+    syncQueue: [],
+    restEndsAt: undefined,
+    undo: undefined
+  };
+}
+
+export function allRestoreSections(): RestoreSection[] {
+  return [...restoreSections];
+}
+
+function normalizeImportedState(parsed: Partial<AppState>): AppState {
+  const profile = { ...initialState.profile, ...parsed.profile };
+  const legacyExercises = parsed.workoutExercises ?? initialState.workoutExercises;
+  const routines = parsed.routines?.length
+    ? parsed.routines
+    : [migrateWorkoutExercisesToRoutine(legacyExercises, { routineId: "routine-migrated", name: "Migrated Routine" })];
+  const activeRoutineId = parsed.activeRoutineId ?? routines[0]?.id ?? initialState.activeRoutineId;
+  const activeRoutine = routines.find((routine) => routine.id === activeRoutineId) ?? routines[0];
+  const selectedDay = activeRoutine?.days.find((day) => day.id === parsed.selectedWorkoutDayId) ?? selectedWorkoutDay(activeRoutine) ?? activeRoutine?.days[0];
+  const workoutExercises = selectedDay ? routineExercisesToWorkoutExercises(selectedDay.exercises) : legacyExercises;
+  const legacySessionMigration = migrateLegacyWorkoutSession({
+    sets: parsed.workoutSets ?? initialState.workoutSets,
+    routineId: activeRoutineId,
+    workoutDayId: selectedDay?.id ?? initialState.selectedWorkoutDayId,
+    sessionName: selectedDay?.name ?? "Legacy Workout"
+  });
+  const migratedSessions = legacySessionMigration.sessions.length
+    ? [...(parsed.workoutSessions ?? []), ...legacySessionMigration.sessions]
+    : (parsed.workoutSessions ?? initialState.workoutSessions);
+
+  return {
+    ...initialState,
+    ...parsed,
+    profile,
+    recovery: { ...initialState.recovery, ...parsed.recovery },
+    notificationSettings: { ...initialState.notificationSettings, ...parsed.notificationSettings },
+    hydrationLogs: parsed.hydrationLogs ?? initialState.hydrationLogs,
+    drinkModules: normalizeDrinkModules(parsed.drinkModules, profile.waterTargetMl, profile.creatineAmountG),
+    supplements: parsed.supplements ?? initialState.supplements,
+    supplementLogs: parsed.supplementLogs ?? initialState.supplementLogs,
+    quickAmounts: parsed.quickAmounts ?? initialState.quickAmounts,
+    routines,
+    activeRoutineId,
+    selectedWorkoutDayId: selectedDay?.id ?? initialState.selectedWorkoutDayId,
+    exerciseLibrary: [
+      ...builtInExerciseDefinitions,
+      ...((parsed.exerciseLibrary ?? initialState.exerciseLibrary).filter((exercise) => !exercise.builtIn))
+    ],
+    workoutExercises,
+    workoutSessions: migratedSessions.map(normalizeWorkoutSessionQueue),
+    activeWorkoutSessionId: parsed.activeWorkoutSessionId,
+    workoutSets: legacySessionMigration.sets,
+    bodyMetrics: parsed.bodyMetrics ?? initialState.bodyMetrics,
+    activeTemplate: parsed.activeTemplate ?? initialState.activeTemplate,
+    recommendationDecisions: parsed.recommendationDecisions ?? initialState.recommendationDecisions,
+    syncQueue: parsed.syncQueue ?? initialState.syncQueue,
+    undo: undefined
+  };
+}
+
+function validateImportCandidate(candidate: Record<string, unknown>) {
+  const errors: string[] = [];
+  if ("profile" in candidate && !isRecord(candidate.profile)) errors.push("profile must be an object.");
+  if ("hydrationLogs" in candidate && !isHydrationLogs(candidate.hydrationLogs)) errors.push("hydrationLogs must be valid hydration log objects.");
+  if ("supplementLogs" in candidate && !Array.isArray(candidate.supplementLogs)) errors.push("supplementLogs must be an array.");
+  if ("workoutSets" in candidate && !isWorkoutSets(candidate.workoutSets)) errors.push("workoutSets must be valid workout set objects.");
+  if ("workoutSessions" in candidate && !Array.isArray(candidate.workoutSessions)) errors.push("workoutSessions must be an array.");
+  if ("routines" in candidate && !isRoutines(candidate.routines)) errors.push("routines must be valid routine objects.");
+  if ("bodyMetrics" in candidate && !isBodyMetrics(candidate.bodyMetrics)) errors.push("bodyMetrics must be valid body metric objects.");
+  if ("notificationSettings" in candidate && !isRecord(candidate.notificationSettings)) errors.push("notificationSettings must be an object.");
+  if ("drinkModules" in candidate && !Array.isArray(candidate.drinkModules)) errors.push("drinkModules must be an array.");
+  if ("supplements" in candidate && !Array.isArray(candidate.supplements)) errors.push("supplements must be an array.");
+  if ("quickAmounts" in candidate && !Array.isArray(candidate.quickAmounts)) errors.push("quickAmounts must be an array.");
+  return errors;
+}
+
+function isHydrationLogs(value: unknown): boolean {
+  return Array.isArray(value) && value.every((item) => isRecord(item) && typeof item.id === "string" && typeof item.amountMl === "number" && typeof item.loggedAt === "string");
+}
+
+function isWorkoutSets(value: unknown): boolean {
+  return Array.isArray(value) && value.every((item) => isRecord(item) && typeof item.id === "string" && typeof item.exerciseName === "string" && typeof item.actualWeightKg === "number" && typeof item.actualReps === "number");
+}
+
+function isRoutines(value: unknown): boolean {
+  return Array.isArray(value) && value.every((routine) => isRecord(routine) && typeof routine.id === "string" && Array.isArray(routine.days));
+}
+
+function isBodyMetrics(value: unknown): boolean {
+  return Array.isArray(value) && value.every((item) => isRecord(item) && typeof item.id === "string" && typeof item.measuredAt === "string" && typeof item.weightKg === "number" && typeof item.heightCm === "number");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
