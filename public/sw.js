@@ -56,14 +56,16 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  if (event.action === "snooze") return;
-
   const actionUrl =
     event.action === "log-water-250"
       ? "/?quickAction=log-water-250"
       : event.action === "log-creatine"
         ? "/?quickAction=log-creatine"
-        : event.notification.data?.url || "/";
+        : event.action === "snooze"
+          ? "/?quickAction=snooze-reminders"
+          : event.action === "open-progress"
+            ? "/?tab=progress"
+            : event.notification.data?.url || "/";
 
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
@@ -73,6 +75,23 @@ self.addEventListener("notificationclick", (event) => {
         return existing.focus();
       }
       return self.clients.openWindow(actionUrl);
+    })
+  );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type !== "EVOLVEFIT_TEST_NOTIFICATION") return;
+  event.waitUntil(
+    self.registration.showNotification(event.data.payload?.title || "EvolveFit test", {
+      body: event.data.payload?.body || "Notifications are ready.",
+      tag: "test-notification",
+      icon: "/icon.svg",
+      badge: "/icon.svg",
+      data: { url: "/" },
+      actions: [
+        { action: "log-water-250", title: "Log 250ml" },
+        { action: "snooze", title: "Snooze" }
+      ]
     })
   );
 });

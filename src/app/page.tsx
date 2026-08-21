@@ -89,6 +89,7 @@ import { loadState, resetState, saveState } from "@/lib/storage";
 type Tab = "today" | "hydration" | "workout" | "progress" | "settings";
 type SyncStatus = "offline" | "pending" | "failed" | "synced";
 type CsvDataset = "hydration" | "creatine" | "workouts" | "body-metrics";
+type PushSubscriptionStatus = "unsupported" | "missing-env" | "unsubscribed" | "subscribed";
 type WakeLockSentinelLike = { release: () => Promise<void> };
 type NavigatorWithWakeLock = Navigator & {
   wakeLock?: { request: (type: "screen") => Promise<WakeLockSentinelLike> };
@@ -139,6 +140,9 @@ export default function AppPage() {
   const [setRpe, setSetRpe] = useState(8);
   const [toast, setToast] = useState<string | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
+  const [pushSubscriptionStatus, setPushSubscriptionStatus] = useState<PushSubscriptionStatus>("unsupported");
+  const [pushConfigured, setPushConfigured] = useState(false);
+  const [vapidPublicKey, setVapidPublicKey] = useState<string | null>(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null);
   const [mounted, setMounted] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [drinkType, setDrinkType] = useState<HydrationLog["drinkType"]>("water");
@@ -158,6 +162,27 @@ export default function AppPage() {
     }
     setIsOnline(navigator.onLine);
   }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    refreshPushStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted, state.profile.email]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tab") === "progress") setTab("progress");
+    const action = params.get("quickAction");
+    if (action === "log-water-250") logWater(250);
+    if (action === "log-creatine") logCreatine(state.profile.creatineAmountG);
+    if (action === "snooze-reminders") updateNotificationSettings({ snoozeUntil: new Date(Date.now() + 30 * 60000).toISOString() });
+    params.delete("quickAction");
+    params.delete("tab");
+    const nextQuery = params.toString();
+    window.history.replaceState({}, "", `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted]);
 
   useEffect(() => {
     if (mounted) saveState(state);
@@ -1049,6 +1074,117 @@ export default function AppPage() {
       .catch(() => setToast("Không import được JSON"));
   }
 
+  function localProfileId() {
+    return state.profile.email || "local-profile";
+  }
+
+  function urlBase64ToArrayBuffer(base64String: string): ArrayBuffer {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = `${base64String}${padding}`.replace(/-/g, "+").replace(/_/g, "/");
+    const rawData = window.atob(base64);
+    const bytes = Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  }
+
+  async function getServiceWorkerRegistration() {
+    if (!("serviceWorker" in navigator)) return undefined;
+    return navigator.serviceWorker.ready;
+  }
+
+  async function refreshPushStatus() {
+    if (!("Notification" in window)) {
+      setNotificationPermission("default");
+      setPushSubscriptionStatus("unsupported");
+      return;
+    }
+    setNotificationPermission(Notification.permission);
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setPushSubscriptionStatus("unsupported");
+      return;
+    }
+    try {
+      const response = await fetch(`/api/notifications/config?localProfileId=${encodeURIComponent(localProfileId())}`);
+      const result = (await response.json()) as { ok?: boolean; data?: { vapidPublicKey?: string; configured?: boolean } };
+      const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || result.data?.vapidPublicKey || null;
+      setVapidPublicKey(key);
+      setPushConfigured(Boolean(result.data?.configured && key));
+      const registration = await getServiceWorkerRegistration();
+      const subscription = await registration?.pushManager.getSubscription();
+      setPushSubscriptionStatus(!key || !result.data?.configured ? "missing-env" : subscription ? "subscribed" : "unsubscribed");
+    } catch {
+      setPushSubscriptionStatus("missing-env");
+    }
+  }
+
+  async function subscribeWebPush() {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setPushSubscriptionStatus("unsupported");
+      setToast("TrÃ¬nh duyá»‡t khÃ´ng há»— trá»£ Web Push, sáº½ dÃ¹ng in-app fallback");
+      return;
+    }
+    const key = vapidPublicKey || process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    if (!key || !pushConfigured) {
+      setPushSubscriptionStatus("missing-env");
+      setToast("Thiáº¿u VAPID public key hoáº·c server env, sáº½ dÃ¹ng in-app fallback");
+      return;
+    }
+    const registration = await getServiceWorkerRegistration();
+    if (!registration) return;
+    const subscription =
+      (await registration.pushManager.getSubscription()) ??
+      (await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToArrayBuffer(key)
+      }));
+    await fetch("/api/notifications/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...subscription.toJSON(), localProfileId: localProfileId(), platform: navigator.userAgent })
+    });
+    setPushSubscriptionStatus("subscribed");
+    setToast("ÄÃ£ subscribe Web Push");
+  }
+
+  async function unsubscribeWebPush() {
+    const registration = await getServiceWorkerRegistration();
+    const subscription = await registration?.pushManager.getSubscription();
+    const endpoint = subscription?.endpoint;
+    await subscription?.unsubscribe();
+    if (endpoint) {
+      await fetch("/api/notifications/unsubscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint })
+      });
+    }
+    setPushSubscriptionStatus(pushConfigured ? "unsubscribed" : "missing-env");
+    setToast("ÄÃ£ unsubscribe Web Push");
+  }
+
+  async function sendTestPushNotification() {
+    if (pushSubscriptionStatus !== "subscribed") {
+      if (notificationPermission !== "granted") await requestNotifications();
+      else await subscribeWebPush();
+    }
+    const registration = await getServiceWorkerRegistration();
+    const subscription = await registration?.pushManager.getSubscription();
+    const response = await fetch("/api/notifications/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint: subscription?.endpoint, localProfileId: localProfileId() })
+    });
+    const result = (await response.json()) as { ok?: boolean; data?: { sent?: number } };
+    if (result.ok && result.data?.sent) {
+      setToast("ÄÃ£ gá»­i test Web Push");
+      return;
+    }
+    registration?.active?.postMessage({
+      type: "EVOLVEFIT_TEST_NOTIFICATION",
+      payload: { title: "EvolveFit test", body: "In-app/service worker fallback notification." }
+    });
+    setToast("ÄÃ£ dÃ¹ng fallback test notification");
+  }
+
   async function requestNotifications() {
     if (!("Notification" in window)) {
       setToast("Trình duyệt chưa hỗ trợ Notification API");
@@ -1056,7 +1192,11 @@ export default function AppPage() {
     }
     const permission = await Notification.requestPermission();
     setNotificationPermission(permission);
-    setToast(permission === "granted" ? "Đã bật quyền thông báo" : "Chưa bật quyền thông báo");
+    if (permission === "granted") {
+      await subscribeWebPush();
+      return;
+    }
+    setToast("Chưa bật quyền thông báo");
   }
 
   function undo() {
@@ -1630,7 +1770,12 @@ export default function AppPage() {
             signInLocal={(mode) => updateProfile({ authMode: mode })}
             reset={() => commit(resetState(), "Đã khôi phục dữ liệu mẫu")}
             notificationPermission={notificationPermission}
+            pushConfigured={pushConfigured}
+            pushSubscriptionStatus={pushSubscriptionStatus}
             requestNotifications={requestNotifications}
+            subscribeWebPush={subscribeWebPush}
+            unsubscribeWebPush={unsubscribeWebPush}
+            sendTestPushNotification={sendTestPushNotification}
             markQueue={markQueue}
             clearQueue={clearQueue}
             downloadExport={downloadExport}
@@ -3310,7 +3455,12 @@ function SettingsView(props: {
   signInLocal: (mode: AppState["profile"]["authMode"]) => void;
   reset: () => void;
   notificationPermission: NotificationPermission;
+  pushConfigured: boolean;
+  pushSubscriptionStatus: PushSubscriptionStatus;
   requestNotifications: () => void;
+  subscribeWebPush: () => void;
+  unsubscribeWebPush: () => void;
+  sendTestPushNotification: () => void;
   markQueue: (status: "synced" | "failed") => void;
   clearQueue: (status?: "synced" | "failed") => void;
   downloadExport: () => void;
@@ -3486,6 +3636,25 @@ function SettingsView(props: {
         </div>
         <button className="secondary-button export-button" onClick={props.requestNotifications}>
           Bật thông báo
+        </button>
+        <div className="setting-row">
+          <span>Web Push env</span>
+          <strong>{props.pushConfigured ? "configured" : "fallback"}</strong>
+        </div>
+        <div className="setting-row">
+          <span>Subscription</span>
+          <strong>{props.pushSubscriptionStatus}</strong>
+        </div>
+        <div className="split-actions">
+          <button className="secondary-button" onClick={props.subscribeWebPush} disabled={props.notificationPermission !== "granted" || props.pushSubscriptionStatus === "subscribed"}>
+            Subscribe push
+          </button>
+          <button className="secondary-button" onClick={props.unsubscribeWebPush} disabled={props.pushSubscriptionStatus !== "subscribed"}>
+            Unsubscribe push
+          </button>
+        </div>
+        <button className="secondary-button export-button" onClick={props.sendTestPushNotification}>
+          Send test notification
         </button>
         <label className="toggle-row">
           <span>Nh?c u?ng n??c</span>

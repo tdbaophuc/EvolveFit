@@ -4,6 +4,10 @@ import {
   deleteHydrationLog,
   getHydrationToday,
   hydrationReminderEvents,
+  notificationConfig,
+  notificationStatus,
+  sendMonthlyAchievementEvents,
+  sendTestNotification,
   sendHydrationReminderEvents,
   coachRecommend,
   logHydration,
@@ -49,9 +53,31 @@ describe("api service layer", () => {
   });
 
   it("stores and removes notification subscriptions", () => {
-    const subscription = subscribeNotifications({ endpoint: "https://push.test/1", p256dh: "key", auth: "auth" });
+    const subscription = subscribeNotifications({ endpoint: "https://push.test/1", keys: { p256dh: "key", auth: "auth" }, localProfileId: "local-1" });
     expect(subscription.ok).toBe(true);
+    expect(subscription.ok && subscription.data.localProfileId).toBe("local-1");
+    const status = notificationStatus("local-1");
+    expect(status.ok && status.data.subscriptionCount).toBe(1);
     expect(unsubscribeNotifications("https://push.test/1").ok).toBe(true);
+  });
+
+  it("reports notification config and test notification fallback", async () => {
+    const config = notificationConfig({
+      NEXT_PUBLIC_VAPID_PUBLIC_KEY: "public",
+      VAPID_PRIVATE_KEY: "private",
+      VAPID_SUBJECT: "mailto:test@example.com"
+    });
+    expect(config.ok && config.data).toMatchObject({ configured: true, fallbackMode: "web-push" });
+
+    const result = await sendTestNotification({ localProfileId: "no-subscriptions" });
+    expect(result.ok && result.data).toMatchObject({ sent: 0, fallback: "in-app", reason: "no-subscriptions" });
+  });
+
+  it("monthly achievement cron returns push fallback metadata without subscriptions", async () => {
+    const result = await sendMonthlyAchievementEvents();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data).toHaveProperty("sent");
   });
 
   it("returns cron reminder event shape", () => {

@@ -912,7 +912,7 @@ Dữ liệu cá nhân quản lý rõ, restore an toàn.
 - [ ] Creatine disabled ẩn mọi UI/reminder/progress liên quan.
 - [ ] Optional drinks có hydration factor.
 - [ ] Reminder schedule fixed/interval/snooze/quiet hours.
-- [ ] Web Push subscribe/unsubscribe thật.
+- [x] Web Push subscribe/unsubscribe thật.
 - [ ] Routine sample CSV/XLSX.
 - [ ] Routine model tách day/session.
 - [ ] Exercise library built-in/custom.

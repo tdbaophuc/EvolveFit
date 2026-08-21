@@ -1,4 +1,5 @@
 import { progressiveOverloadRecommendation, type Recommendation, type WorkoutSet } from "./core";
+import { isWebPushConfigured } from "./push";
 
 export type IntegrationStatus = {
   supabase: "configured" | "missing-env";
@@ -13,7 +14,7 @@ export function getIntegrationStatus(env: NodeJS.ProcessEnv = process.env): Inte
     supabase: env.NEXT_PUBLIC_SUPABASE_URL && env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? "configured" : "missing-env",
     supabaseServiceRole: env.SUPABASE_SERVICE_ROLE_KEY ? "configured" : "missing-env",
     ai: env.GEMINI_API_KEY ? "gemini" : env.OPENAI_API_KEY ? "openai" : "rule-fallback",
-    webPush: env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY ? "configured" : "missing-env",
+    webPush: isWebPushConfigured(env) ? "configured" : "missing-env",
     cronSecret: env.CRON_SECRET ? "configured" : "missing-env"
   };
 }

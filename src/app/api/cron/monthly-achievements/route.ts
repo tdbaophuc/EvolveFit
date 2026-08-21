@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { recalculateAchievements } from "@/lib/api";
+import { sendMonthlyAchievementEvents } from "@/lib/api";
 
-export function POST() {
-  return NextResponse.json(recalculateAchievements());
+export async function POST() {
+  return NextResponse.json(await sendMonthlyAchievementEvents());
 }

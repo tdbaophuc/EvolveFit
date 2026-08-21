@@ -9,8 +9,12 @@ export type PushPayload = {
   actions?: { action: string; title: string }[];
 };
 
+export function getVapidPublicKey(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || env.VAPID_PUBLIC_KEY;
+}
+
 export function isWebPushConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
-  return Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY);
+  return Boolean(getVapidPublicKey(env) && env.VAPID_PRIVATE_KEY && env.VAPID_SUBJECT);
 }
 
 export async function sendWebPush(
@@ -21,8 +25,8 @@ export async function sendWebPush(
   if (!isWebPushConfigured(env)) return "missing-env";
 
   webpush.setVapidDetails(
-    env.VAPID_SUBJECT ?? "mailto:admin@evolvefit.local",
-    env.VAPID_PUBLIC_KEY as string,
+    env.VAPID_SUBJECT as string,
+    getVapidPublicKey(env) as string,
     env.VAPID_PRIVATE_KEY as string
   );
 

@@ -7,6 +7,7 @@ const routes = [
   "/hydration",
   "/api/health",
   "/api/integrations/status",
+  "/api/notifications/config",
   "/api/auth/session",
   "/api/hydration/today"
 ];

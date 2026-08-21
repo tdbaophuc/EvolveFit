@@ -15,8 +15,9 @@ describe("integration contracts", () => {
         NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
         NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon",
         SUPABASE_SERVICE_ROLE_KEY: "service",
-        VAPID_PUBLIC_KEY: "public",
+        NEXT_PUBLIC_VAPID_PUBLIC_KEY: "public",
         VAPID_PRIVATE_KEY: "private",
+        VAPID_SUBJECT: "mailto:test@example.com",
         GEMINI_API_KEY: "gemini",
         CRON_SECRET: "secret"
       })

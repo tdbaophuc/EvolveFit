@@ -12,13 +12,23 @@ import {
   type WorkoutSet
 } from "./core";
 import { aiCoachRecommendation } from "./integrations";
-import { sendWebPush, type PushPayload } from "./push";
+import { getVapidPublicKey, isWebPushConfigured, sendWebPush, type PushPayload } from "./push";
 import { initialState } from "./seed";
 
 type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
 const serverState = structuredClone(initialState);
-const notificationSubscriptions: { endpoint: string; p256dh: string; auth: string; platform?: string; createdAt: string }[] = [];
+type StoredNotificationSubscription = {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  userId?: string;
+  localProfileId: string;
+  platform?: string;
+  createdAt: string;
+};
+
+const notificationSubscriptions: StoredNotificationSubscription[] = [];
 let leaderboardVisible = serverState.profile.leaderboardPublic;
 
 export function ok<T>(data: T): ApiResult<T> {
@@ -290,14 +300,52 @@ export async function sendCreatineReminderEvents(date = new Date()) {
   return sendToSubscriptions(payload);
 }
 
-export function subscribeNotifications(input: { endpoint?: string; p256dh?: string; auth?: string; platform?: string }) {
-  if (!input.endpoint || !input.p256dh || !input.auth) return fail("endpoint, p256dh, and auth are required");
+export function notificationConfig(env: NodeJS.ProcessEnv = process.env) {
+  return ok({
+    vapidPublicKey: getVapidPublicKey(env),
+    configured: isWebPushConfigured(env),
+    browserEnv: Boolean(env.NEXT_PUBLIC_VAPID_PUBLIC_KEY),
+    fallbackMode: isWebPushConfigured(env) ? "web-push" : "in-app"
+  });
+}
+
+export function notificationStatus(localProfileId = serverState.profile.email || "local-profile", env: NodeJS.ProcessEnv = process.env) {
+  return ok({
+    configured: isWebPushConfigured(env),
+    fallbackMode: isWebPushConfigured(env) ? "web-push" : "in-app",
+    subscriptionCount: notificationSubscriptions.filter((subscription) => subscription.localProfileId === localProfileId).length
+  });
+}
+
+export function subscribeNotifications(input: {
+  endpoint?: string;
+  p256dh?: string;
+  auth?: string;
+  keys?: { p256dh?: string; auth?: string };
+  userId?: string;
+  localProfileId?: string;
+  platform?: string;
+}) {
+  const p256dh = input.p256dh ?? input.keys?.p256dh;
+  const auth = input.auth ?? input.keys?.auth;
+  if (!input.endpoint || !p256dh || !auth) return fail("endpoint, p256dh, and auth are required");
   const existing = notificationSubscriptions.find((subscription) => subscription.endpoint === input.endpoint);
-  if (existing) return ok(existing);
+  if (existing) {
+    Object.assign(existing, {
+      p256dh,
+      auth,
+      userId: input.userId ?? existing.userId,
+      localProfileId: input.localProfileId ?? existing.localProfileId,
+      platform: input.platform ?? existing.platform
+    });
+    return ok(existing);
+  }
   const subscription = {
     endpoint: input.endpoint,
-    p256dh: input.p256dh,
-    auth: input.auth,
+    p256dh,
+    auth,
+    userId: input.userId,
+    localProfileId: input.localProfileId ?? serverState.profile.email ?? "local-profile",
     platform: input.platform,
     createdAt: new Date().toISOString()
   };
@@ -312,12 +360,27 @@ export function unsubscribeNotifications(endpoint: string) {
   return ok({ endpoint });
 }
 
-async function sendToSubscriptions(payload: PushPayload) {
+export async function sendTestNotification(input: { endpoint?: string; localProfileId?: string }) {
+  const payload = notificationPayload("EvolveFit test", "Web Push is ready for this profile.", "test-notification", [
+    { action: "log-water-250", title: "Log 250ml" },
+    { action: "snooze", title: "Snooze" }
+  ]);
+  return sendToSubscriptions(payload, input);
+}
+
+async function sendToSubscriptions(payload: PushPayload, filter: { endpoint?: string; localProfileId?: string } = {}) {
   let sent = 0;
   let missingEnv = 0;
   const failed: string[] = [];
+  const targets = notificationSubscriptions.filter((subscription) => {
+    if (filter.endpoint && subscription.endpoint !== filter.endpoint) return false;
+    if (filter.localProfileId && subscription.localProfileId !== filter.localProfileId) return false;
+    return true;
+  });
 
-  for (const subscription of notificationSubscriptions) {
+  if (!targets.length) return ok({ sent, missingEnv, failed, fallback: "in-app", reason: "no-subscriptions" });
+
+  for (const subscription of targets) {
     try {
       const result = await sendWebPush(
         {
@@ -333,7 +396,7 @@ async function sendToSubscriptions(payload: PushPayload) {
     }
   }
 
-  return ok({ sent, missingEnv, failed });
+  return ok({ sent, missingEnv, failed, fallback: sent > 0 ? null : "in-app" });
 }
 
 function notificationPayload(
@@ -367,6 +430,20 @@ export function getAchievementsAndLeaderboard() {
 
 export function recalculateAchievements() {
   return getAchievementsAndLeaderboard();
+}
+
+export async function sendMonthlyAchievementEvents() {
+  const result = recalculateAchievements();
+  if (!result.ok) return result;
+  const activeAchievements = result.data.achievements.filter((achievement) => achievement.status === "active");
+  if (!activeAchievements.length) return ok({ sent: 0, skipped: true, reason: "no-achievements" });
+  const payload = notificationPayload(
+    "Monthly achievements ready",
+    `${activeAchievements.length} achievement${activeAchievements.length === 1 ? "" : "s"} active this month.`,
+    "monthly-achievements",
+    [{ action: "open-progress", title: "View progress" }]
+  );
+  return sendToSubscriptions(payload);
 }
 
 export function updateLeaderboardVisibility(isPublic: boolean) {
