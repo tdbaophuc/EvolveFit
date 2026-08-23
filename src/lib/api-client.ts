@@ -15,6 +15,10 @@ export class EvolveFitApiClient {
     return this.post("/api/auth/sign-in", input);
   }
 
+  async signUp(input: { email: string; password: string }): Promise<ApiResult<AuthSession>> {
+    return this.post("/api/auth/sign-up", input);
+  }
+
   async signOut(): Promise<ApiResult<AuthSession>> {
     return this.post("/api/auth/sign-out", {});
   }

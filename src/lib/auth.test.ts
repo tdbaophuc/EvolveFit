@@ -1,5 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
-import { createSessionCookieValue, createSupabaseOAuthUrl, getAuthSession, parseSessionCookieValue, sessionFromSupabaseTokens, signIn, signOut } from "./auth";
+import {
+  createCodeChallenge,
+  createCodeVerifier,
+  createSessionCookieValue,
+  createSupabaseOAuthUrl,
+  exchangeSupabaseOAuthCode,
+  getAuthSession,
+  parseSessionCookieValue,
+  sessionFromSupabaseTokens,
+  signIn,
+  signOut,
+  signUp
+} from "./auth";
 
 describe("auth adapter", () => {
   it("uses local fallback without Supabase env", async () => {
@@ -41,6 +53,60 @@ describe("auth adapter", () => {
       })
     ).toContain("provider=google");
     expect(signOut().mode).toBe("local");
+  });
+
+  it("signs up through Supabase Auth when configured", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        access_token: "access",
+        refresh_token: "refresh",
+        expires_in: 3600,
+        user: { email: "new@example.com" }
+      })
+    );
+
+    const session = await signUp({
+      email: "new@example.com",
+      password: "secret123",
+      fetchImpl: fetchMock as typeof fetch,
+      env: {
+        NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon"
+      }
+    });
+
+    expect(session).toMatchObject({ mode: "email", email: "new@example.com", accessToken: "access" });
+    expect(fetchMock).toHaveBeenCalledWith("https://project.supabase.co/auth/v1/signup", expect.objectContaining({ method: "POST" }));
+  });
+
+  it("creates PKCE OAuth challenge and exchanges callback code", async () => {
+    const verifier = createCodeVerifier();
+    await expect(createCodeChallenge(verifier)).resolves.toMatch(/^[A-Za-z0-9_-]+$/);
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        access_token: "oauth-access",
+        refresh_token: "oauth-refresh",
+        expires_at: 123,
+        user: { email: "google@example.com" }
+      })
+    );
+
+    const session = await exchangeSupabaseOAuthCode({
+      code: "auth-code",
+      codeVerifier: verifier,
+      redirectTo: "https://app.test/api/auth/callback",
+      fetchImpl: fetchMock as typeof fetch,
+      env: {
+        NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon"
+      }
+    });
+
+    expect(session).toMatchObject({ mode: "google", email: "google@example.com", accessToken: "oauth-access" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://project.supabase.co/auth/v1/token?grant_type=pkce",
+      expect.objectContaining({ method: "POST" })
+    );
   });
 
   it("serializes production sessions for httpOnly cookies", () => {

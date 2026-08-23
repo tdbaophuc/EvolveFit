@@ -66,7 +66,24 @@ export async function verifySupabaseProduction(
   mode: "service-role" | "missing-env";
   checks: { table: string; ok: boolean; status?: number }[];
 }> {
-  const tables = ["profiles", "hydration_logs", "supplements", "supplement_logs", "workout_sets", "user_body_metrics"];
+  const tables = [
+    "profiles",
+    "drink_modules",
+    "hydration_logs",
+    "supplements",
+    "supplement_logs",
+    "routines",
+    "workout_days",
+    "routine_exercises",
+    "exercise_library",
+    "workout_sessions",
+    "workout_sets",
+    "body_metrics",
+    "achievements",
+    "leaderboard_profiles",
+    "push_subscriptions",
+    "sync_events"
+  ];
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
     return { ok: false, mode: "missing-env", checks: tables.map((table) => ({ table, ok: false })) };
   }

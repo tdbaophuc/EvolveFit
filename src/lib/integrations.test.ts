@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   aiCoachRecommendation,
   createSupabaseRestRequest,
@@ -54,7 +56,34 @@ describe("integration contracts", () => {
     expect(result.ok).toBe(true);
     expect(result.mode).toBe("service-role");
     expect(result.checks.map((check) => check.table)).toContain("hydration_logs");
+    expect(result.checks.map((check) => check.table)).toContain("sync_events");
     expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it("ships Epic 20 migration tables and owner RLS policies", () => {
+    const sql = readFileSync(join(process.cwd(), "supabase/migrations/0002_epic_19_20_auth_schema_rls.sql"), "utf-8");
+    [
+      "profiles",
+      "drink_modules",
+      "hydration_logs",
+      "supplements",
+      "supplement_logs",
+      "routines",
+      "workout_days",
+      "routine_exercises",
+      "exercise_library",
+      "workout_sessions",
+      "workout_sets",
+      "body_metrics",
+      "achievements",
+      "leaderboard_profiles",
+      "push_subscriptions",
+      "sync_events"
+    ].forEach((table) => {
+      expect(`${sql}\n${readFileSync(join(process.cwd(), "supabase/migrations/0001_initial_schema.sql"), "utf-8")}`).toContain(`public.${table}`);
+    });
+    expect(sql).toContain("enable row level security");
+    expect(sql).toContain("auth.uid() = user_id");
   });
 
   it("builds Supabase REST requests with auth headers", () => {

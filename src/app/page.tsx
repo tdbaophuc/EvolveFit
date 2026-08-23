@@ -153,6 +153,7 @@ export default function AppPage() {
   const [newMetricArm, setNewMetricArm] = useState(34);
   const [newMetricThigh, setNewMetricThigh] = useState(56);
   const [newMetricNote, setNewMetricNote] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
   const [bodyMetricRange, setBodyMetricRange] = useState<BodyMetricRangeDays>(30);
   const [setWeight, setSetWeight] = useState(42.5);
   const [setReps, setSetReps] = useState(8);
@@ -1146,6 +1147,33 @@ export default function AppPage() {
     });
   }
 
+  async function authenticateEmail(mode: "sign-in" | "sign-up") {
+    if (!state.profile.email.trim() || authPassword.length < 6) {
+      setToast("Email/password chÆ°a há»£p lá»‡");
+      return;
+    }
+    const response = await fetch(mode === "sign-up" ? "/api/auth/sign-up" : "/api/auth/sign-in", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: state.profile.email.trim(), password: authPassword, mode: "email" })
+    });
+    const payload = (await response.json()) as { ok: boolean; data?: { email: string; mode: AppState["profile"]["authMode"] }; error?: string };
+    if (!payload.ok || !payload.data) {
+      setToast(payload.error ?? "Auth failed");
+      return;
+    }
+    commitSynced(
+      { ...state, profile: { ...state.profile, email: payload.data.email, authMode: payload.data.mode } },
+      `auth.${mode}`,
+      { email: payload.data.email, mergeMode: "keep-local" },
+      "ÄÃ£ liÃªn káº¿t account; dá»¯ liá»‡u local Ä‘Æ°á»£c giá»¯ Ä‘á»ƒ sync"
+    );
+  }
+
+  function startGoogleOAuth() {
+    window.location.href = "/api/auth/oauth/google";
+  }
+
   function importJsonExport(file: File) {
     readTextFile(file)
       .then((text) => {
@@ -1902,6 +1930,10 @@ export default function AppPage() {
             state={state}
             updateProfile={updateProfile}
             signInLocal={(mode) => updateProfile({ authMode: mode })}
+            authPassword={authPassword}
+            setAuthPassword={setAuthPassword}
+            authenticateEmail={authenticateEmail}
+            startGoogleOAuth={startGoogleOAuth}
             reset={() => commit(resetState(), "Đã khôi phục dữ liệu mẫu")}
             deletePersonalData={deleteLocalPersonalData}
             notificationPermission={notificationPermission}
@@ -3730,6 +3762,10 @@ function SettingsView(props: {
   state: AppState;
   updateProfile: (next: Partial<AppState["profile"]>) => void;
   signInLocal: (mode: AppState["profile"]["authMode"]) => void;
+  authPassword: string;
+  setAuthPassword: (value: string) => void;
+  authenticateEmail: (mode: "sign-in" | "sign-up") => void;
+  startGoogleOAuth: () => void;
   reset: () => void;
   deletePersonalData: () => void;
   notificationPermission: NotificationPermission;
@@ -3823,12 +3859,27 @@ function SettingsView(props: {
             onChange={(event) => props.updateProfile({ email: event.target.value })}
           />
         </label>
+        <label className="setting-row">
+          <span>Password</span>
+          <input
+            type="password"
+            value={props.authPassword}
+            onChange={(event) => props.setAuthPassword(event.target.value)}
+            autoComplete="current-password"
+          />
+        </label>
         <div className="split-actions">
-          <button className="secondary-button" onClick={() => props.signInLocal("email")}>
-            Email mode
+          <button className="secondary-button" onClick={() => props.authenticateEmail("sign-up")}>
+            Sign up email
           </button>
-          <button className="secondary-button" onClick={() => props.signInLocal("google")}>
-            Google mode
+          <button className="secondary-button" onClick={() => props.authenticateEmail("sign-in")}>
+            Sign in email
+          </button>
+          <button className="secondary-button" onClick={props.startGoogleOAuth}>
+            Google OAuth
+          </button>
+          <button className="secondary-button" onClick={() => props.signInLocal("local")}>
+            Local mode
           </button>
         </div>
         <button className="secondary-button export-button" onClick={props.reopenOnboarding}>

@@ -37,6 +37,11 @@ describe("EvolveFitApiClient", () => {
       "/api/auth/sign-in",
       expect.objectContaining({ method: "POST", body: JSON.stringify({ email: "a@b.com", mode: "email" }) })
     );
+    await new EvolveFitApiClient().signUp({ email: "a@b.com", password: "secret123" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/auth/sign-up",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ email: "a@b.com", password: "secret123" }) })
+    );
     vi.unstubAllGlobals();
   });
 
