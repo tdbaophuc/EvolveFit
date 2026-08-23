@@ -1,34 +1,38 @@
-# Health Platform Integration Plan
+# EvolveFit - Kế hoạch Health Platform
 
-## Scope
+Cập nhật: 2026-08-23
 
-Epic 26 is implemented at the webapp-ready contract level. The PWA stores the user's intended provider, selected data categories, unit mapping, privacy acknowledgement, and permission request status. It does not read from or write to Health Connect or Apple Health.
+## Phạm vi hiện tại
 
-## Platform Findings
+Epic Health Connect / Apple Health đã hoàn tất ở mức webapp-ready contract. PWA lưu lựa chọn nền tảng, nhóm dữ liệu, mapping đơn vị, xác nhận quyền riêng tư và trạng thái yêu cầu quyền. Web app hiện không đọc hoặc ghi trực tiếp vào Health Connect hay Apple Health.
 
-- Android Health Connect is exposed through the Android Health Connect SDK. Apps declare record permissions and launch the Health Connect permission contract for selected data types.
-- Apple Health is exposed through HealthKit in native Apple apps. Apps enable the HealthKit capability, provide usage descriptions, and request read/share permission for each data type.
-- Browser PWAs do not have direct standard access to Health Connect or HealthKit stores. A future native shell, Capacitor/Cordova plugin, React Native/Expo module, or server-side partner integration must provide the bridge before sync is enabled.
+## Ràng buộc nền tảng
 
-Official references:
+- Health Connect cần Android Health Connect SDK trong app Android/native shell.
+- Apple Health cần HealthKit trong app iOS, capability HealthKit và usage description tương ứng.
+- Browser PWA không có chuẩn truy cập trực tiếp vào Health Connect hoặc HealthKit.
+- Sync thật cần native bridge, Capacitor/Cordova plugin, React Native/Expo module hoặc một provider integration khác.
+
+## Contract đang có
+
+`HealthIntegrationSettings` lưu:
+
+- `provider`: `health-connect` hoặc `apple-health`
+- `selectedDataTypes`: `weight`, `workout`, `hydration`
+- `unitMapping`: cân nặng `kg/lb`, nước `ml/oz`, quãng đường `km/mi`
+- `privacyAccepted`: người dùng xác nhận trước khi sync
+- `nativeBridgeAvailable`: hiện là `false` trong web app
+- `permissionStatus`: `not_requested`, `requested`, `granted`, `denied`, `revoked`
+
+`canSyncHealthData` chỉ trả về true khi native bridge khả dụng, người dùng đã đồng ý quyền riêng tư, nền tảng đã cấp quyền và loại dữ liệu đó được chọn.
+
+## UX rule
+
+Màn Cài đặt được phép lưu yêu cầu quyền và nhóm dữ liệu, nhưng phải hiển thị từng nhóm là chưa đồng bộ cho đến khi native bridge xác nhận quyền thật. Không có sync nền ngầm từ web-only implementation.
+
+## Tài liệu tham chiếu
 
 - https://developer.android.com/health-and-fitness/health-connect/get-started
 - https://developer.apple.com/documentation/healthkit
 - https://developer.apple.com/documentation/healthkit/authorizing-access-to-health-data
 
-## Contract
-
-Stored settings live in `HealthIntegrationSettings`:
-
-- `provider`: `health-connect` or `apple-health`
-- `selectedDataTypes`: `weight`, `workout`, `hydration`
-- `unitMapping`: weight `kg/lb`, hydration `ml/oz`, workout distance `km/mi`
-- `privacyAccepted`: explicit acknowledgement before sync can be considered
-- `nativeBridgeAvailable`: false in the web app
-- `permissionStatus`: `not_requested`, `requested`, `granted`, `denied`, or `revoked`
-
-`canSyncHealthData` returns true only when a native bridge is available, privacy has been accepted, platform permission is granted, and the specific data type was selected.
-
-## UX Rule
-
-The Settings screen can save a permission request mock and category choices, but it must show each category as `Not syncing` until native permission is confirmed. No implicit or background sync is started from this web-only implementation.

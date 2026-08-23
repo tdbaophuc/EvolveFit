@@ -1,39 +1,26 @@
-# EvolveFit Final Gap Report
+# EvolveFit - Gap còn lại
 
-Audit date: 2026-08-23
+Cập nhật: 2026-08-23
 
-The final audit found that EvolveFit is buildable, testable, and has a broad implemented product surface, but the whole roadmap is not fully complete. The remaining gaps are large enough that they should remain documented rather than be patched opportunistically during the audit.
+Các gap dưới đây là phần còn lại để đưa dự án tiến xa hơn sau trạng thái hiện tại. Không nên xử lý opportunistic nếu chưa có quyết định sản phẩm hoặc môi trường production tương ứng.
 
-## Large Gaps
+## Gap lớn
 
-| Gap | Status | Why it remains open | Recommended next artifact |
-|---|---|---|---|
-| Native mobile/watch decision | missing | The plan still calls for a PWA sufficiency decision, React Native/Expo option, shared domain logic plan, and watch quick actions. No `docs/native-watch-decision.md` or native scaffold exists. | Create `docs/native-watch-decision.md` and decide whether to scaffold Expo after reviewing PWA constraints. |
-| Progress photos | missing | No schema, local/private storage abstraction, compare view, export/delete flow, or storage-provider decision exists in code. | Implement a local-only photo metadata/storage contract first, then decide whether Supabase Storage/R2 is needed. |
-| Nutrition tracking decision | missing | The product docs say nutrition should not dilute hydration/workout core, but there is no final decision doc or lightweight diary/macro contract. | Create a nutrition decision doc and optionally add a non-nav lightweight model if needed. |
-| Expanded exercise library richness | partial | Exercise library supports built-in/custom, equipment, movement pattern, search/filter, and CRUD; it does not yet include richer instructions, primary/secondary muscles, cues, or custom library import/export. | Add richer exercise definition fields and focused tests if this becomes part of V1.1. |
-| Supabase auth local-data merge | partial | Supabase Auth routes and tests exist, but the UI does not yet provide a fully proven local/demo data merge-or-replace flow after login. | Add merge/replace UX and tests before treating auth as production-complete. |
-| Production sync proof | partial | Sync queue, idempotency, retry, and conflict contracts exist, but the audit did not prove deployed Supabase-backed retry behavior end-to-end. | Add integration tests against a provisioned Supabase test project or a contract test harness. |
-| Production push/cron proof | partial | Web Push contract, service worker, subscribe/unsubscribe APIs, and UI exist; local runtime reports `cronSecret: missing-env`, and real push delivery is environment/device dependent. | Verify VAPID/cron in staging with real browser subscription and cron secret. |
-| Dedicated Coach tab | product divergence | The UI/UX spec mentions a separate Coach tab, but the current app uses five tabs requested by this audit: Today, Water, Workout, Progress, Settings. Coach is embedded in Progress. | Decide whether Coach remains embedded or becomes a sixth/alternate tab. |
+| Gap | Trạng thái | Việc cần làm tiếp |
+|---|---|---|
+| Native mobile/watch | Chưa có | Quyết định PWA có đủ không; nếu cần thì tạo kế hoạch Expo/React Native và watch quick actions. |
+| Progress photos | Chưa có | Thiết kế model metadata, storage private, compare view, export/delete flow. |
+| Nutrition tracking | Chưa quyết định | Làm decision doc trước để tránh làm loãng core hydration/workout. |
+| Exercise library nâng cao | Một phần | Thêm primary/secondary muscles, cues, hướng dẫn, import/export custom library nếu cần V1.1. |
+| Supabase auth merge data | Một phần | Làm UX merge/replace dữ liệu local sau login và test tương ứng. |
+| Production sync proof | Một phần | Chạy contract/integration test với Supabase staging hoặc test project thật. |
+| Web Push/cron production proof | Một phần | Xác minh VAPID, cron secret, real browser subscription và delivery. |
+| Dedicated Coach tab | Quyết định sản phẩm | Hiện coach nằm trong Tiến độ; cần quyết định có tách thành tab riêng không. |
 
-## Small Fix Applied During Audit
+## Lưu ý phát triển tiếp
 
-- Fixed obvious mojibake in user-visible labels/toasts in `src/app/page.tsx` for Today, Water, Workout, and Settings strings such as creatine status, water labels, workout set toasts, and reminder toggles.
-
-## Current Verification Summary
-
-Final command verification is recorded in the commit that adds this report:
-
-- `npm run build`
-- `npm test`
-- `npm run smoke`
-
-Runtime UI/API checks performed before final command verification:
-
-- `/` returned `200`.
-- `/hydration` returned `200`.
-- `/api/health` returned `200`.
-- `/api/integrations/status` returned `200`.
-- Headless Chrome DOM confirmed the current five-tab shell: Today, Water, Workout, Progress, Settings.
+- Giữ local-first làm mặc định cho mọi workflow hằng ngày.
+- Không bật sync sức khỏe thật nếu `nativeBridgeAvailable` chưa được xác nhận.
+- Mọi copy UI mới cần là tiếng Việt, trừ tên bài tập.
+- Với tính năng production backend, cần test không chỉ mock/local contract.
 
