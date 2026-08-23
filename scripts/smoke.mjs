@@ -46,6 +46,13 @@ try {
   });
   if (!errorResponse.ok) throw new Error(`/api/client-errors returned ${errorResponse.status}`);
   console.log(`/api/client-errors => ${errorResponse.status}`);
+  const coachResponse = await fetch(`${baseUrl}/api/coach/recommend`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({})
+  });
+  if (!coachResponse.ok) throw new Error(`/api/coach/recommend returned ${coachResponse.status}`);
+  console.log(`/api/coach/recommend => ${coachResponse.status}`);
 } catch (error) {
   exitCode = 1;
   console.error(error);

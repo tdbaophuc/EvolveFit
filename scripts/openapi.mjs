@@ -8,6 +8,8 @@ const requiredPaths = [
   "/api/integrations/status",
   "/api/docs/openapi",
   "/api/auth/sign-in",
+  "/api/coach/recommend",
+  "/api/coach/recommendations/{id}/feedback",
   "/api/routines",
   "/api/exercises",
   "/api/workouts/sessions",

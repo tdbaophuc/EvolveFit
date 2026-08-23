@@ -105,6 +105,7 @@ export function applySelectiveRestore(current: AppState, imported: AppState, sec
     bodyMetrics: selected.has("bodyMetrics") ? imported.bodyMetrics : current.bodyMetrics,
     activeTemplate: selected.has("workouts") ? imported.activeTemplate : current.activeTemplate,
     activeExerciseIndex: selected.has("workouts") ? imported.activeExerciseIndex : current.activeExerciseIndex,
+    recommendationHistory: selected.has("workouts") ? imported.recommendationHistory : current.recommendationHistory,
     recommendationDecisions: selected.has("workouts") ? imported.recommendationDecisions : current.recommendationDecisions,
     syncQueue: current.syncQueue,
     restEndsAt: undefined,
@@ -131,6 +132,7 @@ export function deletePersonalData(state: AppState): AppState {
     workoutSessions: [],
     activeWorkoutSessionId: undefined,
     bodyMetrics: [],
+    recommendationHistory: [],
     recommendationDecisions: [],
     syncQueue: [],
     restEndsAt: undefined,
@@ -191,6 +193,7 @@ function normalizeImportedState(parsed: Partial<AppState>): AppState {
     workoutSets: legacySessionMigration.sets,
     bodyMetrics: parsed.bodyMetrics ?? initialState.bodyMetrics,
     activeTemplate: parsed.activeTemplate ?? initialState.activeTemplate,
+    recommendationHistory: parsed.recommendationHistory ?? initialState.recommendationHistory,
     recommendationDecisions: parsed.recommendationDecisions ?? initialState.recommendationDecisions,
     syncQueue: parsed.syncQueue ?? initialState.syncQueue,
     undo: undefined

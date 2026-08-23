@@ -108,6 +108,8 @@ describe("integration contracts", () => {
 
     expect(recommendation.mode).toBe("rule-fallback");
     expect(recommendation.action).toBe("increase");
+    expect(recommendation.aiEligible).toBe(false);
+    expect(recommendation.guardrail).toContain("Training guidance only");
   });
 
   it("uses OpenAI mode and parses provider JSON", async () => {
@@ -117,10 +119,34 @@ describe("integration contracts", () => {
           title: "Hold bench",
           reason: "Recovery is average.",
           action: "hold",
-          nextWeightKg: 50
+          nextWeightKg: 50,
+          dataBasis: ["Bench recent sets", "RPE trend"],
+          suggestedAction: "Repeat 50kg and keep one rep in reserve."
         })
       })
     );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const recommendation = await aiCoachRecommendation({
+      exerciseName: "Bench",
+      targetWeightKg: 50,
+      targetRepsMax: 10,
+      recentSets: [
+        { actualWeightKg: 50, actualReps: 8, rpe: 9 },
+        { actualWeightKg: 50, actualReps: 9, rpe: 8 },
+        { actualWeightKg: 50, actualReps: 9, rpe: 8 }
+      ],
+      env: { OPENAI_API_KEY: "test" }
+    });
+
+    expect(recommendation.mode).toBe("openai");
+    expect(recommendation.title).toBe("Hold bench");
+    expect(recommendation.dataBasis).toContain("Bench recent sets");
+    vi.unstubAllGlobals();
+  });
+
+  it("does not call AI provider when coach data is insufficient", async () => {
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
     const recommendation = await aiCoachRecommendation({
@@ -131,8 +157,42 @@ describe("integration contracts", () => {
       env: { OPENAI_API_KEY: "test" }
     });
 
-    expect(recommendation.mode).toBe("openai");
-    expect(recommendation.title).toBe("Hold bench");
+    expect(recommendation.mode).toBe("rule-fallback");
+    expect(recommendation.aiEligible).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("falls back to guarded rule insight when AI suggests unsafe medical advice", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          output_text: JSON.stringify({
+            title: "Ignore pain and continue",
+            reason: "You can push through pain.",
+            action: "increase",
+            nextWeightKg: 55,
+            suggestedAction: "Ignore pain."
+          })
+        })
+      )
+    );
+
+    const recommendation = await aiCoachRecommendation({
+      exerciseName: "Bench",
+      targetWeightKg: 50,
+      targetRepsMax: 10,
+      recentSets: [
+        { actualWeightKg: 50, actualReps: 8, rpe: 9 },
+        { actualWeightKg: 50, actualReps: 9, rpe: 8 },
+        { actualWeightKg: 50, actualReps: 9, rpe: 8 }
+      ],
+      env: { OPENAI_API_KEY: "test" }
+    });
+
+    expect(recommendation.mode).toBe("rule-fallback");
+    expect(recommendation.guardrail).toContain("medical concerns");
     vi.unstubAllGlobals();
   });
 });

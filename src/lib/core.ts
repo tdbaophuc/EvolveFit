@@ -207,6 +207,33 @@ export type Recommendation = {
   source: "rule" | "ai-assisted";
   action: "increase" | "hold" | "deload";
   nextWeightKg: number;
+  dataBasis: string[];
+  suggestedAction: string;
+  guardrail: string;
+  aiEligible: boolean;
+  mode: "rule-fallback" | "gemini" | "openai";
+};
+
+export type RecommendationDecision = {
+  id: string;
+  recommendationId: string;
+  title: string;
+  source: Recommendation["source"];
+  action: Recommendation["action"];
+  nextWeightKg: number;
+  decision: "accepted" | "rejected";
+  reason?: string;
+  feedback?: string;
+  decidedAt: string;
+};
+
+export type RecommendationHistoryItem = Recommendation & {
+  id: string;
+  generatedAt: string;
+  exerciseId?: string;
+  exerciseName: string;
+  status: "pending" | "accepted" | "rejected";
+  feedback?: string;
 };
 
 export type AchievementStatus = {
@@ -1135,6 +1162,9 @@ export function progressiveOverloadRecommendation(params: {
   incrementKg?: number;
 }): Recommendation {
   const increment = params.incrementKg ?? 2.5;
+  const dataBasis = coachDataBasis(params);
+  const guardrail = coachGuardrailCopy();
+  const aiEligible = hasEnoughCoachData(params.recentSets);
   const allHitTopReps =
     params.recentSets.length > 0 &&
     params.recentSets.every((set) => set.actualReps >= params.targetRepsMax && set.actualWeightKg >= params.targetWeightKg);
@@ -1147,7 +1177,12 @@ export function progressiveOverloadRecommendation(params: {
       reason: "Bạn đã đạt top reps ở toàn bộ set gần nhất, phù hợp double progression.",
       source: "rule",
       action: "increase",
-      nextWeightKg: params.targetWeightKg + increment
+      nextWeightKg: params.targetWeightKg + increment,
+      dataBasis,
+      suggestedAction: `Try ${params.targetWeightKg + increment}kg next time and stop the increase if form breaks down.`,
+      guardrail,
+      aiEligible,
+      mode: "rule-fallback"
     };
   }
 
@@ -1158,7 +1193,12 @@ export function progressiveOverloadRecommendation(params: {
       reason: "Set gần nhất quá nặng hoặc hụt reps sâu; nên deload để giữ kỹ thuật.",
       source: "rule",
       action: "deload",
-      nextWeightKg: Math.round(nextWeight * 2) / 2
+      nextWeightKg: Math.round(nextWeight * 2) / 2,
+      dataBasis,
+      suggestedAction: `Use about ${Math.round(nextWeight * 2) / 2}kg next time and rebuild reps with controlled technique.`,
+      guardrail,
+      aiEligible,
+      mode: "rule-fallback"
     };
   }
 
@@ -1167,8 +1207,38 @@ export function progressiveOverloadRecommendation(params: {
     reason: "Bạn đang trong vùng tiến bộ, tiếp tục gom thêm reps trước khi tăng tải.",
     source: "rule",
     action: "hold",
-    nextWeightKg: params.targetWeightKg
+    nextWeightKg: params.targetWeightKg,
+    dataBasis,
+    suggestedAction: `Repeat ${params.targetWeightKg}kg and aim to add clean reps before loading more weight.`,
+    guardrail,
+    aiEligible,
+    mode: "rule-fallback"
   };
+}
+
+export function coachGuardrailCopy(): string {
+  return "Training guidance only. Stop for sharp pain, dizziness, chest pain, or unusual symptoms, and consult a qualified professional for medical concerns.";
+}
+
+export function hasEnoughCoachData(recentSets: Pick<WorkoutSet, "actualWeightKg" | "actualReps" | "rpe">[]): boolean {
+  const usefulSets = recentSets.filter((set) => Number.isFinite(set.actualWeightKg) && set.actualWeightKg >= 0 && Number.isFinite(set.actualReps) && set.actualReps > 0);
+  return usefulSets.length >= 3;
+}
+
+export function coachDataBasis(params: {
+  exerciseName: string;
+  targetWeightKg: number;
+  targetRepsMax: number;
+  recentSets: Pick<WorkoutSet, "actualWeightKg" | "actualReps" | "rpe">[];
+}): string[] {
+  const recentSetText = params.recentSets.length
+    ? params.recentSets.map((set) => `${set.actualWeightKg}kg x ${set.actualReps}${set.rpe ? ` @RPE ${set.rpe}` : ""}`).join(", ")
+    : "no completed working sets yet";
+  return [
+    `Exercise: ${params.exerciseName}`,
+    `Target: ${params.targetWeightKg}kg x ${params.targetRepsMax} reps`,
+    `Recent sets: ${recentSetText}`
+  ];
 }
 
 export function estimatedOneRepMax(weightKg: number, reps: number): number {

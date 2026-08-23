@@ -14,6 +14,8 @@ import {
   isWorkingVolumeSet,
   type HydrationLog,
   type ExerciseDefinition,
+  type RecommendationDecision,
+  type RecommendationHistoryItem,
   type Routine,
   type SessionExerciseQueueItem,
   type SupplementLog,
@@ -501,17 +503,48 @@ export function recalculateProgression(exerciseId: string) {
 export async function coachRecommend() {
   const exercise = serverState.workoutExercises[serverState.activeExerciseIndex] ?? serverState.workoutExercises[0];
   const recentSets = serverState.workoutSets.filter((set) => set.exerciseId === exercise.id && isWorkingVolumeSet(set)).slice(-exercise.targetSets);
-  return ok(
-    await aiCoachRecommendation({
-      exerciseName: exercise.name,
-      targetWeightKg: exercise.targetWeightKg,
-      targetRepsMax: exercise.targetRepsMax,
-      recentSets: recentSets.length
-        ? recentSets
-        : [{ actualWeightKg: exercise.targetWeightKg, actualReps: exercise.targetRepsMin, rpe: 8 }],
-      recoveryNote: "Local readiness score and soreness can be injected here."
-    })
-  );
+  const recommendation = await aiCoachRecommendation({
+    exerciseName: exercise.name,
+    targetWeightKg: exercise.targetWeightKg,
+    targetRepsMax: exercise.targetRepsMax,
+    recentSets,
+    recoveryNote: "Local readiness score and soreness can be injected here."
+  });
+  const historyItem: RecommendationHistoryItem = {
+    ...recommendation,
+    id: cryptoSafeId(),
+    generatedAt: new Date().toISOString(),
+    exerciseId: exercise.id,
+    exerciseName: exercise.name,
+    status: "pending"
+  };
+  serverState.recommendationHistory = [historyItem, ...serverState.recommendationHistory].slice(0, 50);
+  return ok({ recommendation: historyItem, history: serverState.recommendationHistory });
+}
+
+export function coachRecommendationFeedback(input: {
+  recommendationId: string;
+  decision: RecommendationDecision["decision"];
+  feedback?: string;
+}) {
+  const item = serverState.recommendationHistory.find((recommendation) => recommendation.id === input.recommendationId);
+  if (!item) return fail("recommendation not found");
+  item.status = input.decision;
+  item.feedback = input.feedback;
+  const decision: RecommendationDecision = {
+    id: cryptoSafeId(),
+    recommendationId: item.id,
+    title: item.title,
+    source: item.source,
+    action: item.action,
+    nextWeightKg: item.nextWeightKg,
+    decision: input.decision,
+    reason: item.reason,
+    feedback: input.feedback,
+    decidedAt: new Date().toISOString()
+  };
+  serverState.recommendationDecisions = [decision, ...serverState.recommendationDecisions].slice(0, 100);
+  return ok({ recommendation: item, decision, history: serverState.recommendationHistory });
 }
 
 export function hydrationReminderEvents(date = new Date()) {

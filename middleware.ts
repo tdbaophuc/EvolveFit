@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkRateLimit } from "./src/lib/rate-limit";
 
 const publicRateLimitedPrefixes = ["/api/auth", "/api/leaderboards", "/api/notifications/subscribe", "/api/notifications/test"];
-const authRateLimitedPrefixes = ["/api/sync", "/api/workouts", "/api/routines", "/api/exercises"];
+const authRateLimitedPrefixes = ["/api/sync", "/api/workouts", "/api/routines", "/api/exercises", "/api/coach"];
 const requestIdHeader = "x-request-id";
 
 export function middleware(request: NextRequest) {

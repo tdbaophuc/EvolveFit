@@ -10,6 +10,7 @@ import {
   sendTestNotification,
   sendHydrationReminderEvents,
   coachRecommend,
+  coachRecommendationFeedback,
   createExercise,
   createRoutine,
   createWorkoutSet,
@@ -116,8 +117,11 @@ describe("api service layer", () => {
     const result = await coachRecommend();
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.data).toHaveProperty("mode");
-    expect(["rule-fallback", "gemini", "openai"]).toContain(result.data.mode);
+    expect(result.data.recommendation).toHaveProperty("mode");
+    expect(["rule-fallback", "gemini", "openai"]).toContain(result.data.recommendation.mode);
+    expect(result.data.recommendation.guardrail).toContain("Training guidance only");
+    const feedback = coachRecommendationFeedback({ recommendationId: result.data.recommendation.id, decision: "accepted", feedback: "reasonable" });
+    expect(feedback.ok && feedback.data.decision.feedback).toBe("reasonable");
   });
 
   it("supports routine and exercise CRUD contracts", () => {

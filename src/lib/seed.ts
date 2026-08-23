@@ -11,6 +11,8 @@ import {
   type PlateSettings,
   type ReminderMode,
   type Routine,
+  type RecommendationDecision,
+  type RecommendationHistoryItem,
   type Supplement,
   type SupplementLog,
   type SyncQueueItem,
@@ -82,13 +84,8 @@ export type AppState = {
   bodyMetrics: BodyMetric[];
   activeTemplate: "ppl" | "upper-lower" | "full-body" | "custom";
   activeExerciseIndex: number;
-  recommendationDecisions: {
-    id: string;
-    title: string;
-    decision: "accepted" | "rejected";
-    reason?: string;
-    decidedAt: string;
-  }[];
+  recommendationHistory: RecommendationHistoryItem[];
+  recommendationDecisions: RecommendationDecision[];
   syncQueue: SyncQueueItem[];
   restEndsAt?: string;
   undo?: {
@@ -297,6 +294,7 @@ export const initialState: AppState = {
   ],
   activeTemplate: "ppl",
   activeExerciseIndex: 0,
+  recommendationHistory: [],
   recommendationDecisions: [],
   syncQueue: []
 };

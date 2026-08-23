@@ -1016,6 +1016,11 @@ describe("progressive overload", () => {
 
     expect(rec.action).toBe("increase");
     expect(rec.nextWeightKg).toBe(52.5);
+    expect(rec.source).toBe("rule");
+    expect(rec.aiEligible).toBe(false);
+    expect(rec.dataBasis.join(" ")).toContain("Bench");
+    expect(rec.suggestedAction).toContain("52.5kg");
+    expect(rec.guardrail).toContain("Training guidance only");
   });
 
   it("deloads after very hard failed work", () => {

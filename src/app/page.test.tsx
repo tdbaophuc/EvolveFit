@@ -95,6 +95,34 @@ describe("Progress dashboard", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent("Weight must be greater than 0.");
   });
+
+  it("shows guarded coach insight and stores accept feedback history", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      "evolvefit-state-v1",
+      JSON.stringify({
+        ...initialState,
+        profile: { ...initialState.profile, onboardingCompleted: true },
+        workoutSets: []
+      })
+    );
+
+    render(<AppPage />);
+
+    await user.click(screen.getByRole("button", { name: "Progress" }));
+
+    expect(screen.getByText("Guarded coach")).toBeInTheDocument();
+    expect(screen.getByText(/AI insight is hidden until at least 3 useful working sets/i)).toBeInTheDocument();
+    expect(screen.getByText(/Training guidance only/i)).toBeInTheDocument();
+    expect(screen.getByText(/Recent sets: no completed working sets yet/i)).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText(/Too heavy/i), "looks good");
+    await user.click(screen.getByRole("button", { name: "Accept" }));
+
+    expect(screen.getByRole("heading", { name: "Recommendation history" })).toBeInTheDocument();
+    expect(screen.getByText("accepted")).toBeInTheDocument();
+    expect(screen.getByText(/looks good/)).toBeInTheDocument();
+  });
 });
 
 describe("Settings import and privacy", () => {

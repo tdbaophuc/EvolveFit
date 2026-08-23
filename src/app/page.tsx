@@ -48,6 +48,7 @@ import {
   nextSupersetExerciseIndex,
   parseRoutineCsv,
   parkSessionExercise,
+  progressiveOverloadRecommendation,
   readinessScore,
   filterExerciseLibrary,
   finishWorkoutSession,
@@ -92,6 +93,8 @@ import {
   type Supplement,
   type ProgressDashboard,
   type ProgressReports,
+  type RecommendationDecision,
+  type RecommendationHistoryItem,
   type SyncQueueItem,
   type WorkoutSession,
   type WorkoutSetPr,
@@ -187,6 +190,7 @@ export default function AppPage() {
   const [restPausedSeconds, setRestPausedSeconds] = useState<number | null>(null);
   const [restNotifiedFor, setRestNotifiedFor] = useState<string | null>(null);
   const [healthDashboard, setHealthDashboard] = useState<HealthDashboard | null>(null);
+  const [coachFeedback, setCoachFeedback] = useState("");
 
   useEffect(() => {
     setState(loadState());
@@ -473,6 +477,20 @@ export default function AppPage() {
     emptyExercise;
   const completedSetsForActive = currentSessionSets.filter((set) => set.exerciseId === activeExercise.id && (set.setType ?? "working") !== "warmup");
   const allSetsForActive = currentSessionSets.filter((set) => set.exerciseId === activeExercise.id);
+  const recentCoachSets = state.workoutSets.filter((set) => set.exerciseId === activeExercise.id && isWorkingVolumeSet(set)).slice(-activeExercise.targetSets);
+  const activeRecommendation: RecommendationHistoryItem = {
+    ...progressiveOverloadRecommendation({
+      exerciseName: activeExercise.name,
+      targetWeightKg: activeExercise.targetWeightKg,
+      targetRepsMax: activeExercise.targetRepsMax,
+      recentSets: recentCoachSets
+    }),
+    id: `local-${activeExercise.id}`,
+    generatedAt: new Date().toISOString(),
+    exerciseId: activeExercise.id,
+    exerciseName: activeExercise.name,
+    status: state.recommendationHistory.find((item) => item.exerciseId === activeExercise.id)?.status ?? "pending"
+  };
   const bestSet = state.workoutSets.filter(isWorkingVolumeSet).reduce<WorkoutSet | undefined>(
     (best, set) => (!best || estimatedOneRepMax(set.actualWeightKg, set.actualReps) > estimatedOneRepMax(best.actualWeightKg, best.actualReps) ? set : best),
     undefined
@@ -1764,26 +1782,40 @@ export default function AppPage() {
     );
   }
 
-  const activeRecommendation = {
+  const legacyRecommendationPlaceholder = {
     title: "V1 insight moved to Progress",
     reason: "Coach không nằm trong navigation chính của V1."
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  void legacyRecommendationPlaceholder;
+
   function decideRecommendation(decision: "accepted" | "rejected") {
+    const decidedAt = new Date().toISOString();
+    const recommendationId = activeRecommendation.id;
+    const feedback = coachFeedback.trim() || undefined;
+    const decisionRecord: RecommendationDecision = {
+      id: cryptoSafeId(),
+      recommendationId,
+      title: activeRecommendation.title,
+      source: activeRecommendation.source,
+      action: activeRecommendation.action,
+      nextWeightKg: activeRecommendation.nextWeightKg,
+      decision,
+      reason: activeRecommendation.reason,
+      feedback,
+      decidedAt
+    };
+    const historyItem: RecommendationHistoryItem = {
+      ...activeRecommendation,
+      id: recommendationId,
+      status: decision,
+      feedback
+    };
     commit(
       {
         ...state,
-        recommendationDecisions: [
-          {
-            id: cryptoSafeId(),
-            title: activeRecommendation.title,
-            decision,
-            reason: activeRecommendation.reason,
-            decidedAt: new Date().toISOString()
-          },
-          ...state.recommendationDecisions
-        ]
+        recommendationHistory: [historyItem, ...state.recommendationHistory.filter((item) => item.id !== recommendationId)].slice(0, 50),
+        recommendationDecisions: [decisionRecord, ...state.recommendationDecisions]
       },
       decision === "accepted" ? "Đã áp dụng recommendation" : "Đã từ chối recommendation"
     );
@@ -2046,6 +2078,12 @@ export default function AppPage() {
             addBodyMetric={addBodyMetric}
             deleteBodyMetric={deleteBodyMetric}
             updateBodyMetric={updateBodyMetric}
+            coachRecommendation={activeRecommendation}
+            coachFeedback={coachFeedback}
+            setCoachFeedback={setCoachFeedback}
+            recommendationHistory={state.recommendationHistory}
+            recommendationDecisions={state.recommendationDecisions}
+            decideRecommendation={decideRecommendation}
             downloadExport={downloadExport}
             downloadReportPdf={downloadReportPdf}
           />
@@ -3416,6 +3454,12 @@ function ProgressView(props: {
   addBodyMetric: () => void;
   deleteBodyMetric: (id: string) => void;
   updateBodyMetric: (id: string, patch: Partial<BodyMetric>) => void;
+  coachRecommendation: RecommendationHistoryItem;
+  coachFeedback: string;
+  setCoachFeedback: (value: string) => void;
+  recommendationHistory: RecommendationHistoryItem[];
+  recommendationDecisions: RecommendationDecision[];
+  decideRecommendation: (decision: "accepted" | "rejected") => void;
   downloadExport: () => void;
   downloadReportPdf: (period: keyof ProgressReports) => void;
 }) {
@@ -3427,6 +3471,59 @@ function ProgressView(props: {
 
   return (
     <div className="stack progress-screen">
+      <section className="card coach-card">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Guarded coach</p>
+            <h2>{props.coachRecommendation.title}</h2>
+          </div>
+          <span className="sync-pill">{props.coachRecommendation.aiEligible ? props.coachRecommendation.mode : "rule-first"}</span>
+        </div>
+        <p>{props.coachRecommendation.reason}</p>
+        <div className="readiness-list">
+          {props.coachRecommendation.dataBasis.map((basis) => (
+            <span key={basis}>{basis}</span>
+          ))}
+        </div>
+        <div className="setting-row">
+          <span>Suggested action</span>
+          <strong>{props.coachRecommendation.suggestedAction}</strong>
+        </div>
+        <p className="privacy-note">{props.coachRecommendation.guardrail}</p>
+        {!props.coachRecommendation.aiEligible && (
+          <p className="privacy-note">AI insight is hidden until at least 3 useful working sets exist for this exercise. The rule-based coach remains available first.</p>
+        )}
+        <label className="setting-row">
+          <span>Feedback</span>
+          <input value={props.coachFeedback} onChange={(event) => props.setCoachFeedback(event.target.value)} placeholder="Too heavy, accepted, not relevant..." />
+        </label>
+        <div className="coach-actions">
+          <button className="primary-button coach-bg" onClick={() => props.decideRecommendation("accepted")}>
+            Accept
+          </button>
+          <button className="secondary-button" onClick={() => props.decideRecommendation("rejected")}>
+            Reject
+          </button>
+        </div>
+      </section>
+      <section className="card">
+        <h2>Recommendation history</h2>
+        <div className="timeline compact">
+          {props.recommendationDecisions.length ? (
+            props.recommendationDecisions.slice(0, 6).map((decision) => (
+              <div key={decision.id}>
+                <span>{new Date(decision.decidedAt).toLocaleDateString("vi-VN")}</span>
+                <strong>{decision.decision}</strong>
+                <em>
+                  {decision.title} - {decision.action} to {decision.nextWeightKg}kg{decision.feedback ? ` - ${decision.feedback}` : ""}
+                </em>
+              </div>
+            ))
+          ) : (
+            <p>No recommendation feedback yet.</p>
+          )}
+        </div>
+      </section>
       <section className="stats-grid progress-summary">
         <MetricCard label="Nước hôm nay" value={`${props.totalWater}/${props.target}ml`} accent="hydration" />
         <MetricCard icon={<Dumbbell size={19} />} label="Workouts 7d/30d" value={`${props.progress.workoutCount7}/${props.progress.workoutCount30}`} accent="training" />

@@ -1,4 +1,15 @@
-import type { ExerciseDefinition, HydrationLog, Routine, SessionExerciseQueueItem, Supplement, SupplementLog, WorkoutSession, WorkoutSet } from "./core";
+import type {
+  ExerciseDefinition,
+  HydrationLog,
+  RecommendationDecision,
+  RecommendationHistoryItem,
+  Routine,
+  SessionExerciseQueueItem,
+  Supplement,
+  SupplementLog,
+  WorkoutSession,
+  WorkoutSet
+} from "./core";
 import type { AuthMode, AuthSession } from "./auth";
 import type { IntegrationStatus } from "./integrations";
 import type { SyncBatchItem, SyncBatchResult } from "./api";
@@ -150,8 +161,15 @@ export class EvolveFitApiClient {
     return this.post("/api/sync/batch", input);
   }
 
-  async coachRecommend(): Promise<ApiResult<unknown>> {
+  async coachRecommend(): Promise<ApiResult<{ recommendation: RecommendationHistoryItem; history: RecommendationHistoryItem[] }>> {
     return this.post("/api/coach/recommend", {});
+  }
+
+  async coachRecommendationFeedback(
+    id: string,
+    input: { decision: RecommendationDecision["decision"]; feedback?: string }
+  ): Promise<ApiResult<{ recommendation: RecommendationHistoryItem; decision: RecommendationDecision; history: RecommendationHistoryItem[] }>> {
+    return this.post(`/api/coach/recommendations/${id}/feedback`, input);
   }
 
   async achievements(): Promise<ApiResult<unknown>> {

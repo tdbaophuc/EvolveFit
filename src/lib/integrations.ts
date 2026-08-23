@@ -1,4 +1,4 @@
-import { progressiveOverloadRecommendation, type Recommendation, type WorkoutSet } from "./core";
+import { coachGuardrailCopy, progressiveOverloadRecommendation, type Recommendation, type WorkoutSet } from "./core";
 import { isWebPushConfigured } from "./push";
 import { normalizeSupabaseProjectUrl } from "./supabase-url";
 
@@ -106,9 +106,10 @@ export async function aiCoachRecommendation(input: {
   recentSets: Pick<WorkoutSet, "actualWeightKg" | "actualReps" | "rpe">[];
   recoveryNote?: string;
   env?: NodeJS.ProcessEnv;
-}): Promise<Recommendation & { mode: IntegrationStatus["ai"] }> {
+}): Promise<Recommendation> {
   const env = input.env ?? process.env;
   const fallback = progressiveOverloadRecommendation(input);
+  if (!fallback.aiEligible) return fallback;
 
   if (env.GEMINI_API_KEY) {
     return callGemini(input, fallback, env.GEMINI_API_KEY);
@@ -131,7 +132,7 @@ async function callGemini(
   },
   fallback: Recommendation,
   apiKey: string
-): Promise<Recommendation & { mode: "gemini" }> {
+): Promise<Recommendation> {
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
     {
@@ -144,7 +145,7 @@ async function callGemini(
     }
   );
 
-  if (!response.ok) return { ...fallback, source: "ai-assisted", mode: "gemini" };
+  if (!response.ok) return fallback;
   const payload = (await response.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
   return parseAiRecommendation(payload.candidates?.[0]?.content?.parts?.[0]?.text, fallback, "gemini");
 }
@@ -159,7 +160,7 @@ async function callOpenAI(
   },
   fallback: Recommendation,
   apiKey: string
-): Promise<Recommendation & { mode: "openai" }> {
+): Promise<Recommendation> {
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -173,7 +174,7 @@ async function callOpenAI(
     })
   });
 
-  if (!response.ok) return { ...fallback, source: "ai-assisted", mode: "openai" };
+  if (!response.ok) return fallback;
   const payload = (await response.json()) as { output_text?: string };
   return parseAiRecommendation(payload.output_text, fallback, "openai");
 }
@@ -190,29 +191,42 @@ function coachPrompt(
 ) {
   return JSON.stringify({
     instruction:
-      "Return only JSON with title, reason, action, nextWeightKg. Keep advice conservative, training-focused, and not medical.",
+      "Return only JSON with title, reason, action, nextWeightKg, dataBasis, suggestedAction. Keep advice conservative, training-focused, and not medical. Do not diagnose, treat injuries, recommend ignoring pain, or replace a qualified professional.",
     input,
-    ruleFallback: fallback
+    ruleFirstInsight: fallback,
+    guardrail: coachGuardrailCopy()
   });
 }
 
-function parseAiRecommendation<TMode extends "gemini" | "openai">(
+function parseAiRecommendation(
   text: string | undefined,
   fallback: Recommendation,
-  mode: TMode
-): Recommendation & { mode: TMode } {
-  if (!text) return { ...fallback, source: "ai-assisted", mode };
+  mode: "gemini" | "openai"
+): Recommendation {
+  if (!text) return fallback;
   try {
     const parsed = JSON.parse(text) as Partial<Recommendation>;
+    const title = parsed.title ?? fallback.title;
+    const reason = parsed.reason ?? fallback.reason;
+    const suggestedAction = parsed.suggestedAction ?? fallback.suggestedAction;
+    if (containsUnsafeMedicalAdvice(`${title} ${reason} ${suggestedAction}`)) return fallback;
     return {
-      title: parsed.title ?? fallback.title,
-      reason: parsed.reason ?? fallback.reason,
+      title,
+      reason,
       source: "ai-assisted",
       action: parsed.action ?? fallback.action,
       nextWeightKg: Number.isFinite(parsed.nextWeightKg) ? Number(parsed.nextWeightKg) : fallback.nextWeightKg,
+      dataBasis: Array.isArray(parsed.dataBasis) && parsed.dataBasis.length ? parsed.dataBasis.map(String).slice(0, 5) : fallback.dataBasis,
+      suggestedAction,
+      guardrail: coachGuardrailCopy(),
+      aiEligible: true,
       mode
     };
   } catch {
-    return { ...fallback, source: "ai-assisted", mode };
+    return fallback;
   }
+}
+
+function containsUnsafeMedicalAdvice(text: string): boolean {
+  return /\b(diagnose|treat injury|ignore pain|push through pain|stop medication|medical emergency|chest pain.*continue)\b/i.test(text);
 }
