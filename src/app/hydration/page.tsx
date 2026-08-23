@@ -139,7 +139,7 @@ export default function HydrationDetailPage() {
               </button>
             ))}
             <button className="custom-water-button" onClick={() => setShowCustom(true)}>
-              Custom
+              Tùy chỉnh
             </button>
           </div>
         </section>
@@ -161,7 +161,7 @@ export default function HydrationDetailPage() {
         <section className="hydration-block">
           <div className="section-heading compact">
             <h2>Lịch sử hôm nay</h2>
-            <span className="sync-pill">{activeHydrationLogs.length} logs</span>
+            <span className="sync-pill">{activeHydrationLogs.length} log</span>
           </div>
           <div className="hydration-history">
             {activeHydrationLogs.length ? (
@@ -228,7 +228,7 @@ export default function HydrationDetailPage() {
               <strong>{customAmount}</strong>
               <span>ml</span>
             </div>
-            <div className="segmented-control" aria-label="Lo?i ?? u?ng">
+            <div className="segmented-control" aria-label="Loại đồ uống">
               {drinkOptions.map(({ id, label }) => (
                 <button key={id} className={drinkType === id ? "active" : ""} onClick={() => setDrinkType(id)}>
                   {label}
@@ -247,7 +247,7 @@ export default function HydrationDetailPage() {
                 setShowCustom(false);
               }}
             >
-              Log {customAmount} ml
+              Ghi {customAmount} ml
             </button>
           </div>
         </div>

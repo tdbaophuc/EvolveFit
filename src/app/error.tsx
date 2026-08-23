@@ -13,12 +13,12 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
       <section className="card state-card">
         <AlertTriangle size={28} />
         <div>
-          <p className="eyebrow">App error</p>
-          <h1>Khong tai duoc man hinh</h1>
-          <p>{error.digest ? `Ma loi: ${error.digest}` : "Hay thu tai lai. Neu loi lap lai, kiem tra /api/health va log server."}</p>
+          <p className="eyebrow">Lỗi ứng dụng</p>
+          <h1>Không tải được màn hình</h1>
+          <p>{error.digest ? `Mã lỗi: ${error.digest}` : "Hãy thử tải lại. Nếu lỗi lặp lại, kiểm tra /api/health và log server."}</p>
         </div>
         <button className="primary-button training-bg" onClick={reset}>
-          <RotateCcw size={18} /> Thu lai
+          <RotateCcw size={18} /> Thử lại
         </button>
       </section>
     </main>
@@ -30,7 +30,7 @@ function reportClientError(error: Error & { digest?: string }) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      message: error.message || "App error",
+      message: error.message || "Lỗi ứng dụng",
       digest: error.digest,
       stack: error.stack,
       path: window.location.pathname,

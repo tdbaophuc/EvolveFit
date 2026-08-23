@@ -13,20 +13,20 @@ describe("Live Workout session queue", () => {
     const user = userEvent.setup();
     render(<AppPage />);
 
-    await user.click(screen.getByRole("button", { name: "Workout" }));
-    await user.click(screen.getByRole("button", { name: /Start workout/i }));
+    await user.click(screen.getByRole("button", { name: "Tập luyện" }));
+    await user.click(screen.getByRole("button", { name: /Bắt đầu tập/i }));
 
     expect(screen.getByRole("heading", { name: "Incline Bench Press" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /Skip exercise/i }));
+    await user.click(screen.getByRole("button", { name: /Bỏ qua bài/i }));
 
     expect(screen.getByRole("heading", { name: "Seated Shoulder Press" })).toBeInTheDocument();
-    const queue = screen.getByRole("heading", { name: "Workout queue" }).closest("section");
+    const queue = screen.getByRole("heading", { name: "Hàng đợi bài tập" }).closest("section");
     expect(queue).not.toBeNull();
-    expect(within(queue as HTMLElement).getByText("2 remaining")).toBeInTheDocument();
-    expect(within(queue as HTMLElement).getByText("1 parked")).toBeInTheDocument();
+    expect(within(queue as HTMLElement).getByText("2 còn lại")).toBeInTheDocument();
+    expect(within(queue as HTMLElement).getByText("1 tạm dừng")).toBeInTheDocument();
 
-    await user.click(within(queue as HTMLElement).getByRole("button", { name: /Incline Bench Press.*Parked/i }));
+    await user.click(within(queue as HTMLElement).getByRole("button", { name: /Incline Bench Press.*Tạm dừng/i }));
 
     expect(screen.getByRole("heading", { name: "Incline Bench Press" })).toBeInTheDocument();
   });
@@ -35,14 +35,14 @@ describe("Live Workout session queue", () => {
     const user = userEvent.setup();
     render(<AppPage />);
 
-    await user.click(screen.getByRole("button", { name: "Workout" }));
-    await user.click(screen.getByRole("button", { name: /Start workout/i }));
+    await user.click(screen.getByRole("button", { name: "Tập luyện" }));
+    await user.click(screen.getByRole("button", { name: /Bắt đầu tập/i }));
 
-    expect(screen.getByLabelText("Plate calculator")).toHaveTextContent("Bar 20kg");
+    expect(screen.getByLabelText("Bộ tính đĩa tạ")).toHaveTextContent("Thanh đòn 20kg");
 
     await user.click(screen.getByRole("button", { name: /Hoàn thành set/i }));
 
-    expect(await screen.findByRole("status", { name: "Live PR notification" })).toHaveTextContent("New PR");
+    expect(await screen.findByRole("status", { name: "Thông báo PR live" })).toHaveTextContent("PR mới");
     expect(screen.getByText(/New PR:/)).toBeInTheDocument();
   });
 });
@@ -69,10 +69,10 @@ describe("Progress dashboard", () => {
 
     render(<AppPage />);
 
-    await user.click(screen.getByRole("button", { name: "Progress" }));
+    await user.click(screen.getByRole("button", { name: "Tiến độ" }));
 
-    expect(screen.getByRole("heading", { name: "Hydration trend" })).toBeInTheDocument();
-    expect(screen.queryByText("Creatine consistency")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Xu hướng nước" })).toBeInTheDocument();
+    expect(screen.queryByText("Độ đều creatine")).not.toBeInTheDocument();
   });
 
   it("shows body metric range toggles and warns on invalid metric input", async () => {
@@ -87,13 +87,13 @@ describe("Progress dashboard", () => {
 
     render(<AppPage />);
 
-    await user.click(screen.getByRole("button", { name: "Progress" }));
-    await user.click(within(screen.getByLabelText("Body metric range")).getByRole("button", { name: "90d" }));
-    const weightInput = screen.getByLabelText("Weight (kg)");
+    await user.click(screen.getByRole("button", { name: "Tiến độ" }));
+    await user.click(within(screen.getByLabelText("Khoảng thời gian chỉ số cơ thể")).getByRole("button", { name: "90n" }));
+    const weightInput = screen.getByLabelText("Cân nặng (kg)");
     await user.clear(weightInput);
     await user.type(weightInput, "0");
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Weight must be greater than 0.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Cân nặng phải lớn hơn 0.");
   });
 
   it("shows guarded coach insight and stores accept feedback history", async () => {
@@ -109,19 +109,19 @@ describe("Progress dashboard", () => {
 
     render(<AppPage />);
 
-    await user.click(screen.getByRole("button", { name: "Progress" }));
+    await user.click(screen.getByRole("button", { name: "Tiến độ" }));
 
-    expect(screen.getByText("Guarded coach")).toBeInTheDocument();
-    expect(screen.getByText(/AI insight is hidden until at least 3 useful working sets/i)).toBeInTheDocument();
-    expect(screen.getByText(/Training guidance only/i)).toBeInTheDocument();
-    expect(screen.getByText(/Recent sets: no completed working sets yet/i)).toBeInTheDocument();
+    expect(screen.getByText("Coach có kiểm soát")).toBeInTheDocument();
+    expect(screen.getByText(/Gợi ý AI sẽ ẩn cho đến khi bài này có ít nhất 3 set chính hữu ích/i)).toBeInTheDocument();
+    expect(screen.getByText(/Chỉ là gợi ý tập luyện/i)).toBeInTheDocument();
+    expect(screen.getByText(/Set gần đây: chưa có set chính hoàn tất/i)).toBeInTheDocument();
 
-    await user.type(screen.getByPlaceholderText(/Too heavy/i), "looks good");
-    await user.click(screen.getByRole("button", { name: "Accept" }));
+    await user.type(screen.getByPlaceholderText(/Quá nặng/i), "ổn");
+    await user.click(screen.getByRole("button", { name: "Chấp nhận" }));
 
-    expect(screen.getByRole("heading", { name: "Recommendation history" })).toBeInTheDocument();
-    expect(screen.getByText("accepted")).toBeInTheDocument();
-    expect(screen.getByText(/looks good/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Lịch sử gợi ý" })).toBeInTheDocument();
+    expect(screen.getByText("Đã chấp nhận")).toBeInTheDocument();
+    expect(screen.getByText(/ổn/)).toBeInTheDocument();
   });
 });
 
@@ -142,7 +142,7 @@ describe("Settings import and privacy", () => {
 
     render(<AppPage />);
 
-    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("button", { name: "Cài đặt" }));
     expect(screen.getByText("Current Athlete")).toBeInTheDocument();
 
     const file = new File(
@@ -150,13 +150,13 @@ describe("Settings import and privacy", () => {
       "bad-export.json",
       { type: "application/json" }
     );
-    await user.upload(screen.getByLabelText("Import JSON"), file);
+    await user.upload(screen.getByLabelText("Nhập JSON"), file);
 
     expect(await screen.findByText(/không hợp lệ/i)).toBeInTheDocument();
     expect(screen.getByText("Current Athlete")).toBeInTheDocument();
     expect(JSON.parse(window.localStorage.getItem("evolvefit-state-v1") ?? "{}").profile.name).toBe("Current Athlete");
-    expect(screen.getByRole("button", { name: "Delete personal data" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Reset demo data" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Xóa dữ liệu cá nhân" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Đặt lại dữ liệu demo" })).toBeInTheDocument();
   });
 
   it("keeps social sharing private by default and requires opt-in before publishing", async () => {
@@ -171,29 +171,29 @@ describe("Settings import and privacy", () => {
 
     render(<AppPage />);
 
-    await user.click(screen.getByRole("button", { name: "Progress" }));
+    await user.click(screen.getByRole("button", { name: "Tiến độ" }));
 
-    expect(screen.getByText(/Friend leaderboard is private and disabled/i)).toBeInTheDocument();
-    expect(screen.getAllByText("Sharing is off.").length).toBeGreaterThan(0);
-    expect(screen.getByText(/redact weight, body fat, email, and workout details/i)).toBeInTheDocument();
+    expect(screen.getByText(/Bảng xếp hạng bạn bè đang riêng tư và tắt/i)).toBeInTheDocument();
+    expect(screen.getAllByText("Chưa bật chia sẻ.").length).toBeGreaterThan(0);
+    expect(screen.getByText(/ẩn cân nặng, mỡ cơ thể, email và chi tiết buổi tập/i)).toBeInTheDocument();
     expect(screen.queryByText(/Bench Press.*RPE/i)).not.toBeInTheDocument();
 
-    await user.click(screen.getAllByRole("button", { name: "Publish" })[0]);
-    expect(await screen.findByText(/Turn on the matching share permission/i)).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "Đăng" })[0]);
+    expect(await screen.findByText(/Bật quyền chia sẻ tương ứng/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Settings" }));
-    expect(screen.getByText("Social privacy")).toBeInTheDocument();
-    await user.click(screen.getByLabelText("Share badges"));
-    await user.click(screen.getByLabelText("Friend leaderboard"));
+    await user.click(screen.getByRole("button", { name: "Cài đặt" }));
+    expect(screen.getByText("Quyền riêng tư xã hội")).toBeInTheDocument();
+    await user.click(screen.getByLabelText("Chia sẻ huy hiệu"));
+    await user.click(screen.getByLabelText("Bảng xếp hạng bạn bè"));
 
-    await user.click(screen.getByRole("button", { name: "Progress" }));
-    expect(screen.getByText("Private friend leaderboard")).toBeInTheDocument();
-    expect(screen.getByText("Badge share")).toBeInTheDocument();
-    expect(screen.getByText(/Redacted: weight, body fat, exercise details, email/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Tiến độ" }));
+    expect(screen.getByText("Bảng xếp hạng bạn bè riêng tư")).toBeInTheDocument();
+    expect(screen.getByText("Chia sẻ huy hiệu")).toBeInTheDocument();
+    expect(screen.getByText(/Đã ẩn: cân nặng, mỡ cơ thể, chi tiết bài tập, email/i)).toBeInTheDocument();
 
-    await user.click(screen.getAllByRole("button", { name: "Publish" })[0]);
-    expect(await screen.findByText(/Shared to private friends/i)).toBeInTheDocument();
-    expect(screen.getByText("private-friends")).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "Đăng" })[0]);
+    expect(await screen.findByText(/Đã chia sẻ với bạn bè riêng tư/i)).toBeInTheDocument();
+    expect(screen.getByText("Bạn bè riêng tư")).toBeInTheDocument();
   });
 
   it("captures health platform permissions without starting sync", async () => {
@@ -208,23 +208,23 @@ describe("Settings import and privacy", () => {
 
     render(<AppPage />);
 
-    await user.click(screen.getByRole("button", { name: "Settings" }));
-    expect(screen.getByText("Health platform permissions")).toBeInTheDocument();
-    expect(screen.getByText(/never syncs health data in the background/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Cài đặt" }));
+    expect(screen.getByText("Quyền nền tảng sức khỏe")).toBeInTheDocument();
+    expect(screen.getByText(/không tự đồng bộ dữ liệu sức khỏe trong nền/i)).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText("Platform"), "apple-health");
-    await user.selectOptions(screen.getByLabelText("Weight unit"), "lb");
-    await user.selectOptions(screen.getByLabelText("Hydration unit"), "oz");
-    await user.click(screen.getByLabelText("Sync weight"));
-    await user.click(screen.getByLabelText("Sync workout"));
-    await user.click(screen.getByLabelText("Sync hydration"));
-    await user.click(screen.getByLabelText("Health privacy consent"));
-    await user.click(screen.getByRole("button", { name: "Request health permission" }));
+    await user.selectOptions(screen.getByLabelText("Nền tảng"), "apple-health");
+    await user.selectOptions(screen.getByLabelText("Đơn vị cân nặng"), "lb");
+    await user.selectOptions(screen.getByLabelText("Đơn vị nước"), "oz");
+    await user.click(screen.getByLabelText("Đồng bộ cân nặng"));
+    await user.click(screen.getByLabelText("Đồng bộ buổi tập"));
+    await user.click(screen.getByLabelText("Đồng bộ nước"));
+    await user.click(screen.getByLabelText("Đồng ý quyền riêng tư sức khỏe"));
+    await user.click(screen.getByRole("button", { name: "Yêu cầu quyền sức khỏe" }));
 
-    expect(await screen.findByText(/Native bridge required before sync/i)).toBeInTheDocument();
-    expect(screen.getByText("Permission: requested")).toBeInTheDocument();
-    expect(screen.getByText("weight: Not syncing")).toBeInTheDocument();
-    expect(screen.getByText("workout: Not syncing")).toBeInTheDocument();
-    expect(screen.getByText("hydration: Not syncing")).toBeInTheDocument();
+    expect(await screen.findByText(/Cần native bridge trước khi đồng bộ/i)).toBeInTheDocument();
+    expect(screen.getByText("Quyền: Đã lưu yêu cầu")).toBeInTheDocument();
+    expect(screen.getByText("Cân nặng: Chưa đồng bộ")).toBeInTheDocument();
+    expect(screen.getByText("Buổi tập: Chưa đồng bộ")).toBeInTheDocument();
+    expect(screen.getByText("Nước: Chưa đồng bộ")).toBeInTheDocument();
   });
 });

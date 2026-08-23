@@ -1030,7 +1030,7 @@ describe("progressive overload", () => {
     expect(rec.aiEligible).toBe(false);
     expect(rec.dataBasis.join(" ")).toContain("Bench");
     expect(rec.suggestedAction).toContain("52.5kg");
-    expect(rec.guardrail).toContain("Training guidance only");
+    expect(rec.guardrail).toContain("Chỉ là gợi ý tập luyện");
   });
 
   it("deloads after very hard failed work", () => {
@@ -1248,12 +1248,12 @@ describe("body metrics and export", () => {
   it("validates body metric fields", () => {
     expect(validateBodyMetric({ weightKg: 72, bodyFatPercent: 18, waistCm: 82, chestCm: 96, armCm: 34, thighCm: 56 })).toEqual([]);
     expect(validateBodyMetric({ weightKg: 0, bodyFatPercent: 80, waistCm: -1, chestCm: 300, armCm: 0, thighCm: Number.NaN })).toEqual([
-      "Weight must be greater than 0.",
-      "Body fat must be between 0 and 70%.",
-      "Waist must be between 1 and 250cm.",
-      "Chest must be between 1 and 250cm.",
-      "Arm must be between 1 and 250cm.",
-      "Thigh must be between 1 and 250cm."
+      "Cân nặng phải lớn hơn 0.",
+      "Mỡ cơ thể phải nằm trong khoảng 0 đến 70%.",
+      "Eo phải nằm trong khoảng 1 đến 250cm.",
+      "Ngực phải nằm trong khoảng 1 đến 250cm.",
+      "Tay phải nằm trong khoảng 1 đến 250cm.",
+      "Đùi phải nằm trong khoảng 1 đến 250cm."
     ]);
   });
 
@@ -1359,8 +1359,8 @@ describe("social privacy sharing", () => {
       now: new Date("2026-08-23T00:00:00.000Z")
     });
 
-    expect(badge?.redactedFields).toEqual(expect.arrayContaining(["weight", "body fat", "exercise details", "email"]));
-    expect(workout?.redactedFields).toEqual(expect.arrayContaining(["weight", "body fat", "exercise names", "set weights", "set reps", "RPE"]));
+    expect(badge?.redactedFields).toEqual(expect.arrayContaining(["cân nặng", "mỡ cơ thể", "chi tiết bài tập", "email"]));
+    expect(workout?.redactedFields).toEqual(expect.arrayContaining(["cân nặng", "mỡ cơ thể", "tên bài tập", "tạ từng set", "rep từng set", "RPE"]));
     expect(workout?.summary).not.toContain("Bench");
     const post = publishSharePreview(workout, privacy, new Date("2026-08-23T01:00:00.000Z"));
     expect(post).toMatchObject({ audience: "private-friends", kind: "workout-summary" });
@@ -1395,7 +1395,7 @@ describe("health platform permissions", () => {
       nativeBridgeAvailable: false
     });
     expect(canSyncHealthData(settings, "weight")).toBe(false);
-    expect(healthIntegrationPrivacyCopy(settings)).toContain("never syncs health data in the background");
+    expect(healthIntegrationPrivacyCopy(settings)).toContain("không tự đồng bộ dữ liệu sức khỏe trong nền");
   });
 
   it("saves a web permission request without granting sync", () => {

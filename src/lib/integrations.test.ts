@@ -110,7 +110,7 @@ describe("integration contracts", () => {
     expect(recommendation.mode).toBe("rule-fallback");
     expect(recommendation.action).toBe("increase");
     expect(recommendation.aiEligible).toBe(false);
-    expect(recommendation.guardrail).toContain("Training guidance only");
+    expect(recommendation.guardrail).toContain("Chỉ là gợi ý tập luyện");
   });
 
   it("uses OpenAI mode and parses provider JSON", async () => {
@@ -193,7 +193,7 @@ describe("integration contracts", () => {
     });
 
     expect(recommendation.mode).toBe("rule-fallback");
-    expect(recommendation.guardrail).toContain("medical concerns");
+    expect(recommendation.guardrail).toContain("vấn đề y tế");
     vi.unstubAllGlobals();
   });
 });
