@@ -404,19 +404,19 @@ export type BodyMetricChartDataset = {
 export const todayKey = (date = new Date()) => date.toISOString().slice(0, 10);
 
 export const builtInExerciseDefinitions: ExerciseDefinition[] = [
-  { id: "lib-bench-press", name: "Barbell Bench Press", muscleGroup: "Chest", equipment: "barbell", movementPattern: "push", builtIn: true },
-  { id: "lib-incline-db-press", name: "Incline Dumbbell Press", muscleGroup: "Chest", equipment: "dumbbell", movementPattern: "push", builtIn: true },
-  { id: "lib-push-up", name: "Push-up", muscleGroup: "Chest", equipment: "bodyweight", movementPattern: "push", builtIn: true },
-  { id: "lib-row", name: "Chest Supported Row", muscleGroup: "Back", equipment: "machine", movementPattern: "pull", builtIn: true },
-  { id: "lib-lat-pulldown", name: "Lat Pulldown", muscleGroup: "Back", equipment: "cable", movementPattern: "pull", builtIn: true },
-  { id: "lib-pull-up", name: "Pull-up", muscleGroup: "Back", equipment: "bodyweight", movementPattern: "pull", builtIn: true },
-  { id: "lib-squat", name: "Back Squat", muscleGroup: "Legs", equipment: "barbell", movementPattern: "squat", builtIn: true },
-  { id: "lib-rdl", name: "Romanian Deadlift", muscleGroup: "Legs", equipment: "barbell", movementPattern: "hinge", builtIn: true },
-  { id: "lib-leg-press", name: "Leg Press", muscleGroup: "Legs", equipment: "machine", movementPattern: "squat", builtIn: true },
-  { id: "lib-shoulder-press", name: "Seated Shoulder Press", muscleGroup: "Shoulders", equipment: "dumbbell", movementPattern: "push", builtIn: true },
-  { id: "lib-lateral-raise", name: "Lateral Raise", muscleGroup: "Shoulders", equipment: "dumbbell", movementPattern: "isolation", builtIn: true },
-  { id: "lib-curl", name: "Dumbbell Curl", muscleGroup: "Arms", equipment: "dumbbell", movementPattern: "isolation", builtIn: true },
-  { id: "lib-triceps-pushdown", name: "Cable Triceps Pushdown", muscleGroup: "Arms", equipment: "cable", movementPattern: "isolation", builtIn: true },
+  { id: "lib-bench-press", name: "Barbell Bench Press", muscleGroup: "Ngực", equipment: "barbell", movementPattern: "push", builtIn: true },
+  { id: "lib-incline-db-press", name: "Incline Dumbbell Press", muscleGroup: "Ngực", equipment: "dumbbell", movementPattern: "push", builtIn: true },
+  { id: "lib-push-up", name: "Push-up", muscleGroup: "Ngực", equipment: "bodyweight", movementPattern: "push", builtIn: true },
+  { id: "lib-row", name: "Chest Supported Row", muscleGroup: "Lưng", equipment: "machine", movementPattern: "pull", builtIn: true },
+  { id: "lib-lat-pulldown", name: "Lat Pulldown", muscleGroup: "Lưng", equipment: "cable", movementPattern: "pull", builtIn: true },
+  { id: "lib-pull-up", name: "Pull-up", muscleGroup: "Lưng", equipment: "bodyweight", movementPattern: "pull", builtIn: true },
+  { id: "lib-squat", name: "Back Squat", muscleGroup: "Chân", equipment: "barbell", movementPattern: "squat", builtIn: true },
+  { id: "lib-rdl", name: "Romanian Deadlift", muscleGroup: "Chân", equipment: "barbell", movementPattern: "hinge", builtIn: true },
+  { id: "lib-leg-press", name: "Leg Press", muscleGroup: "Chân", equipment: "machine", movementPattern: "squat", builtIn: true },
+  { id: "lib-shoulder-press", name: "Seated Shoulder Press", muscleGroup: "Vai", equipment: "dumbbell", movementPattern: "push", builtIn: true },
+  { id: "lib-lateral-raise", name: "Lateral Raise", muscleGroup: "Vai", equipment: "dumbbell", movementPattern: "isolation", builtIn: true },
+  { id: "lib-curl", name: "Dumbbell Curl", muscleGroup: "Tay", equipment: "dumbbell", movementPattern: "isolation", builtIn: true },
+  { id: "lib-triceps-pushdown", name: "Cable Triceps Pushdown", muscleGroup: "Tay", equipment: "cable", movementPattern: "isolation", builtIn: true },
   { id: "lib-plank", name: "Plank", muscleGroup: "Core", equipment: "bodyweight", movementPattern: "core", builtIn: true },
   { id: "lib-cable-crunch", name: "Cable Crunch", muscleGroup: "Core", equipment: "cable", movementPattern: "core", builtIn: true }
 ];
@@ -424,7 +424,7 @@ export const builtInExerciseDefinitions: ExerciseDefinition[] = [
 export const defaultDrinkModules: DrinkModule[] = [
   {
     id: "water",
-    name: "Water",
+    name: "Nước",
     category: "water",
     unit: "ml",
     active: true,
@@ -754,14 +754,14 @@ export function migrateWorkoutExercisesToRoutine(
   const nowIso = (options.now ?? new Date()).toISOString();
   return {
     id: options.routineId ?? "routine-local",
-    name: options.name ?? "Current Routine",
+    name: options.name ?? "Lịch tập hiện tại",
     daysPerWeek: 1,
     createdAt: nowIso,
     updatedAt: nowIso,
     days: [
       {
         id: `${options.routineId ?? "routine-local"}-day-1`,
-        name: options.dayName ?? "Day 1",
+        name: options.dayName ?? "Ngày 1",
         day: options.day ?? "Mon",
         order: 0,
         exercises: exercises.map((exercise, index) => workoutExerciseToRoutineExercise(exercise, index))
@@ -776,14 +776,30 @@ export function selectedWorkoutDay(routine: Routine | undefined, date = new Date
   return routine.days.find((day) => day.day === weekday) ?? [...routine.days].sort((a, b) => a.order - b.order)[0];
 }
 
+function normalizeMuscleGroupForFilter(group: string): string {
+  const aliases: Record<string, string> = {
+    chest: "ngực",
+    back: "lưng",
+    legs: "chân",
+    shoulders: "vai",
+    arms: "tay",
+    upper: "thân trên",
+    lower: "thân dưới",
+    custom: "tùy chỉnh"
+  };
+  const normalized = group.trim().toLowerCase();
+  return aliases[normalized] ?? normalized;
+}
+
 export function filterExerciseLibrary(
   exercises: ExerciseDefinition[],
   filters: { query?: string; muscleGroup?: string; equipment?: string; movementPattern?: string }
 ): ExerciseDefinition[] {
   const query = filters.query?.trim().toLowerCase() ?? "";
+  const muscleGroup = filters.muscleGroup ? normalizeMuscleGroupForFilter(filters.muscleGroup) : undefined;
   return exercises
     .filter((exercise) => !query || exercise.name.toLowerCase().includes(query) || exercise.muscleGroup.toLowerCase().includes(query))
-    .filter((exercise) => !filters.muscleGroup || filters.muscleGroup === "all" || exercise.muscleGroup === filters.muscleGroup)
+    .filter((exercise) => !muscleGroup || muscleGroup === "all" || normalizeMuscleGroupForFilter(exercise.muscleGroup) === muscleGroup)
     .filter((exercise) => !filters.equipment || filters.equipment === "all" || exercise.equipment === filters.equipment)
     .filter((exercise) => !filters.movementPattern || filters.movementPattern === "all" || exercise.movementPattern === filters.movementPattern)
     .sort((a, b) => Number(b.builtIn) - Number(a.builtIn) || a.muscleGroup.localeCompare(b.muscleGroup) || a.name.localeCompare(b.name));
@@ -798,8 +814,8 @@ export function createCustomExerciseDefinition(input: {
 }): ExerciseDefinition {
   return {
     id: cryptoSafeId(),
-    name: input.name.trim() || "Custom Exercise",
-    muscleGroup: input.muscleGroup.trim() || "Custom",
+    name: input.name.trim() || "Bài tập tùy chỉnh",
+    muscleGroup: input.muscleGroup.trim() || "Tùy chỉnh",
     equipment: input.equipment,
     movementPattern: input.movementPattern,
     notes: input.notes,
@@ -1263,7 +1279,7 @@ export function progressiveOverloadRecommendation(params: {
     action: "hold",
     nextWeightKg: params.targetWeightKg,
     dataBasis,
-    suggestedAction: `Repeat ${params.targetWeightKg}kg and aim to add clean reps before loading more weight.`,
+    suggestedAction: `Lặp lại ${params.targetWeightKg}kg và cố gắng thêm rep sạch trước khi tăng tạ.`,
     guardrail,
     aiEligible,
     mode: "rule-fallback"
@@ -1271,7 +1287,7 @@ export function progressiveOverloadRecommendation(params: {
 }
 
 export function coachGuardrailCopy(): string {
-  return "Training guidance only. Stop for sharp pain, dizziness, chest pain, or unusual symptoms, and consult a qualified professional for medical concerns.";
+  return "Chỉ là gợi ý tập luyện. Dừng lại nếu đau nhói, chóng mặt, đau ngực hoặc có triệu chứng bất thường, và hỏi chuyên gia đủ điều kiện khi có vấn đề y tế.";
 }
 
 export function hasEnoughCoachData(recentSets: Pick<WorkoutSet, "actualWeightKg" | "actualReps" | "rpe">[]): boolean {
@@ -1287,11 +1303,11 @@ export function coachDataBasis(params: {
 }): string[] {
   const recentSetText = params.recentSets.length
     ? params.recentSets.map((set) => `${set.actualWeightKg}kg x ${set.actualReps}${set.rpe ? ` @RPE ${set.rpe}` : ""}`).join(", ")
-    : "no completed working sets yet";
+    : "chưa có set chính hoàn tất";
   return [
-    `Exercise: ${params.exerciseName}`,
-    `Target: ${params.targetWeightKg}kg x ${params.targetRepsMax} reps`,
-    `Recent sets: ${recentSetText}`
+    `Bài tập: ${params.exerciseName}`,
+    `Mục tiêu: ${params.targetWeightKg}kg x ${params.targetRepsMax} rep`,
+    `Set gần đây: ${recentSetText}`
   ];
 }
 
@@ -1379,8 +1395,8 @@ export function canSyncHealthData(settings: HealthIntegrationSettings, dataType:
 }
 
 export function healthIntegrationPrivacyCopy(settings: HealthIntegrationSettings): string {
-  const platform = settings.provider === "apple-health" ? "Apple Health requires HealthKit in an iOS app." : "Health Connect requires the Android Health Connect SDK.";
-  return `${platform} This web app stores only your consent choices and never syncs health data in the background. Weight, workout, and hydration data can sync only after you choose the categories and a native bridge confirms permission.`;
+  const platform = settings.provider === "apple-health" ? "Apple Health cần HealthKit trong app iOS." : "Health Connect cần Android Health Connect SDK.";
+  return `${platform} Web app này chỉ lưu lựa chọn đồng ý của bạn và không tự đồng bộ dữ liệu sức khỏe trong nền. Cân nặng, buổi tập và dữ liệu nước chỉ có thể đồng bộ sau khi bạn chọn nhóm dữ liệu và cầu nối native xác nhận quyền.`;
 }
 
 function isHealthPermissionStatus(value: unknown): value is HealthPermissionStatus {
@@ -1415,13 +1431,15 @@ export function buildBadgeSharePreview(input: {
   now?: Date;
 }): SharePreview | null {
   if (!input.privacy.shareBadges) return null;
+  const status = String(input.badge.status);
+  const badgeStatus = status === "active" ? "đang bật" : status === "earned" ? "đã đạt" : status;
   return {
     id: `share-${cryptoSafeId()}`,
     kind: "badge",
-    title: `${input.badge.name} badge`,
-    summary: `${input.badge.status} badge, streak ${input.badge.streakMonths} months, progress ${input.badge.progress}/${input.badge.target}.`,
-    visibleFields: ["badge name", "badge status", "badge streak", "badge progress"],
-    redactedFields: ["weight", "body fat", "exercise details", "email"],
+    title: `Huy hiệu ${input.badge.name}`,
+    summary: `Huy hiệu ${badgeStatus}, streak ${input.badge.streakMonths} tháng, tiến độ ${input.badge.progress}/${input.badge.target}.`,
+    visibleFields: ["tên huy hiệu", "trạng thái huy hiệu", "streak huy hiệu", "tiến độ huy hiệu"],
+    redactedFields: ["cân nặng", "mỡ cơ thể", "chi tiết bài tập", "email"],
     createdAt: (input.now ?? new Date()).toISOString()
   };
 }
@@ -1434,17 +1452,19 @@ export function buildWorkoutSummarySharePreview(input: {
   now?: Date;
 }): SharePreview | null {
   if (!input.privacy.shareWorkoutSummaries) return null;
+  const status = String(input.session.status);
+  const sessionStatus = status === "finished" ? "hoàn tất" : status === "active" ? "đang tập" : status === "paused" ? "tạm dừng" : status === "cancelled" ? "đã hủy" : status;
   return {
     id: `share-${cryptoSafeId()}`,
     kind: "workout-summary",
-    title: `${input.session.sessionName} summary`,
-    summary: `${input.session.status} workout, ${Math.round(input.session.durationSeconds / 60)} minutes, ${input.setCount} sets, ${input.totalVolumeKg}kg volume.`,
-    visibleFields: ["session name", "duration", "set count", "total volume"],
+    title: `Tóm tắt ${input.session.sessionName}`,
+    summary: `Buổi tập ${sessionStatus}, ${Math.round(input.session.durationSeconds / 60)} phút, ${input.setCount} set, ${input.totalVolumeKg}kg volume.`,
+    visibleFields: ["tên buổi", "thời lượng", "số set", "tổng volume"],
     redactedFields: [
-      "weight",
-      "body fat",
+      "cân nặng",
+      "mỡ cơ thể",
       "email",
-      ...(input.privacy.shareWorkoutDetails ? [] : ["exercise names", "set weights", "set reps", "RPE"])
+      ...(input.privacy.shareWorkoutDetails ? [] : ["tên bài tập", "tạ từng set", "rep từng set", "RPE"])
     ],
     createdAt: (input.now ?? new Date()).toISOString()
   };
@@ -1870,20 +1890,20 @@ export function inputWeightToKg(value: number, unit: WeightUnit): number {
 
 export function validateBodyMetric(input: BodyMetricValidationInput): string[] {
   const errors: string[] = [];
-  if (!Number.isFinite(input.weightKg) || input.weightKg <= 0) errors.push("Weight must be greater than 0.");
+  if (!Number.isFinite(input.weightKg) || input.weightKg <= 0) errors.push("Cân nặng phải lớn hơn 0.");
   if (input.bodyFatPercent !== undefined && (!Number.isFinite(input.bodyFatPercent) || input.bodyFatPercent < 0 || input.bodyFatPercent > 70)) {
-    errors.push("Body fat must be between 0 and 70%.");
+    errors.push("Mỡ cơ thể phải nằm trong khoảng 0 đến 70%.");
   }
   const circumferenceFields: [keyof BodyMetricValidationInput, string][] = [
-    ["waistCm", "Waist"],
-    ["chestCm", "Chest"],
-    ["armCm", "Arm"],
-    ["thighCm", "Thigh"]
+    ["waistCm", "Eo"],
+    ["chestCm", "Ngực"],
+    ["armCm", "Tay"],
+    ["thighCm", "Đùi"]
   ];
   circumferenceFields.forEach(([key, label]) => {
     const value = input[key];
     if (value !== undefined && (!Number.isFinite(value) || value <= 0 || value > 250)) {
-      errors.push(`${label} must be between 1 and 250cm.`);
+      errors.push(`${label} phải nằm trong khoảng 1 đến 250cm.`);
     }
   });
   return errors;

@@ -112,7 +112,7 @@ export const routineTemplates: Record<AppState["activeTemplate"], WorkoutExercis
     {
       id: "ex1",
       name: "Incline Bench Press",
-      muscleGroup: "Chest",
+      muscleGroup: "Ngực",
       targetSets: 3,
       targetRepsMin: 8,
       targetRepsMax: 10,
@@ -123,7 +123,7 @@ export const routineTemplates: Record<AppState["activeTemplate"], WorkoutExercis
     {
       id: "ex2",
       name: "Seated Shoulder Press",
-      muscleGroup: "Shoulders",
+      muscleGroup: "Vai",
       targetSets: 3,
       targetRepsMin: 8,
       targetRepsMax: 10,
@@ -134,7 +134,7 @@ export const routineTemplates: Record<AppState["activeTemplate"], WorkoutExercis
     {
       id: "ex3",
       name: "Cable Triceps Pushdown",
-      muscleGroup: "Triceps",
+      muscleGroup: "Tay sau",
       targetSets: 3,
       targetRepsMin: 10,
       targetRepsMax: 12,
@@ -147,7 +147,7 @@ export const routineTemplates: Record<AppState["activeTemplate"], WorkoutExercis
     {
       id: "ex-ul-1",
       name: "Barbell Bench Press",
-      muscleGroup: "Upper",
+      muscleGroup: "Thân trên",
       targetSets: 4,
       targetRepsMin: 6,
       targetRepsMax: 8,
@@ -158,7 +158,7 @@ export const routineTemplates: Record<AppState["activeTemplate"], WorkoutExercis
     {
       id: "ex-ul-2",
       name: "Chest Supported Row",
-      muscleGroup: "Upper",
+      muscleGroup: "Thân trên",
       targetSets: 4,
       targetRepsMin: 8,
       targetRepsMax: 10,
@@ -169,7 +169,7 @@ export const routineTemplates: Record<AppState["activeTemplate"], WorkoutExercis
     {
       id: "ex-ul-3",
       name: "Romanian Deadlift",
-      muscleGroup: "Lower",
+      muscleGroup: "Thân dưới",
       targetSets: 3,
       targetRepsMin: 8,
       targetRepsMax: 10,
@@ -182,7 +182,7 @@ export const routineTemplates: Record<AppState["activeTemplate"], WorkoutExercis
     {
       id: "ex-fb-1",
       name: "Goblet Squat",
-      muscleGroup: "Legs",
+      muscleGroup: "Chân",
       targetSets: 3,
       targetRepsMin: 10,
       targetRepsMax: 12,
@@ -193,7 +193,7 @@ export const routineTemplates: Record<AppState["activeTemplate"], WorkoutExercis
     {
       id: "ex-fb-2",
       name: "Push-up",
-      muscleGroup: "Chest",
+      muscleGroup: "Ngực",
       targetSets: 3,
       targetRepsMin: 8,
       targetRepsMax: 15,
@@ -204,7 +204,7 @@ export const routineTemplates: Record<AppState["activeTemplate"], WorkoutExercis
     {
       id: "ex-fb-3",
       name: "Lat Pulldown",
-      muscleGroup: "Back",
+      muscleGroup: "Lưng",
       targetSets: 3,
       targetRepsMin: 10,
       targetRepsMax: 12,
@@ -218,9 +218,9 @@ export const routineTemplates: Record<AppState["activeTemplate"], WorkoutExercis
 
 const defaultRoutine = migrateWorkoutExercisesToRoutine(routineTemplates.ppl, {
   routineId: "routine-ppl",
-  name: "Push/Pull/Legs",
+  name: "Đẩy/Kéo/Chân",
   day: "Mon",
-  dayName: "Push Day",
+  dayName: "Ngày đẩy",
   now
 });
 

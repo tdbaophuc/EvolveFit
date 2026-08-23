@@ -146,18 +146,182 @@ type NavigatorWithWakeLock = Navigator & {
 };
 
 const tabs: { id: Tab; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
-  { id: "today", label: "Today", icon: Home },
-  { id: "hydration", label: "Water", icon: Waves },
-  { id: "workout", label: "Workout", icon: Dumbbell },
-  { id: "progress", label: "Progress", icon: Activity },
-  { id: "settings", label: "Settings", icon: Settings }
+  { id: "today", label: "Hôm nay", icon: Home },
+  { id: "hydration", label: "Nước", icon: Waves },
+  { id: "workout", label: "Tập luyện", icon: Dumbbell },
+  { id: "progress", label: "Tiến độ", icon: Activity },
+  { id: "settings", label: "Cài đặt", icon: Settings }
 ];
 
 function syncStatusLabel(status: SyncStatus) {
-  if (status === "offline") return "Offline";
-  if (status === "pending") return "Pending sync";
-  if (status === "failed") return "Sync failed";
-  return "Synced";
+  if (status === "offline") return "Ngoại tuyến";
+  if (status === "pending") return "Đang chờ đồng bộ";
+  if (status === "failed") return "Đồng bộ lỗi";
+  return "Đã đồng bộ";
+}
+
+const weekdays = [
+  ["Mon", "T2"],
+  ["Tue", "T3"],
+  ["Wed", "T4"],
+  ["Thu", "T5"],
+  ["Fri", "T6"],
+  ["Sat", "T7"],
+  ["Sun", "CN"]
+] as const;
+
+function syncQueueStatusLabel(status: SyncQueueItem["status"]) {
+  if (status === "pending") return "Đang chờ";
+  if (status === "syncing") return "Đang đồng bộ";
+  if (status === "synced") return "Đã đồng bộ";
+  if (status === "failed") return "Lỗi";
+  return "Xung đột";
+}
+
+function healthPermissionStatusLabel(status: HealthIntegrationSettings["permissionStatus"]) {
+  if (status === "not_requested") return "Chưa yêu cầu";
+  if (status === "requested") return "Đã lưu yêu cầu";
+  if (status === "granted") return "Đã cấp quyền";
+  if (status === "denied") return "Bị từ chối";
+  return "Đã thu hồi";
+}
+
+function notificationPermissionLabel(status: NotificationPermission) {
+  if (status === "granted") return "Đã cấp quyền";
+  if (status === "denied") return "Bị từ chối";
+  return "Chưa hỏi quyền";
+}
+
+function pushSubscriptionStatusLabel(status: PushSubscriptionStatus) {
+  if (status === "unsupported") return "Không hỗ trợ";
+  if (status === "missing-env") return "Thiếu cấu hình";
+  if (status === "subscribed") return "Đã đăng ký";
+  return "Chưa đăng ký";
+}
+
+const templateLabels: Record<AppState["activeTemplate"], string> = {
+  ppl: "PPL",
+  "upper-lower": "Trên/Dưới",
+  "full-body": "Toàn thân",
+  custom: "Tùy chỉnh"
+};
+
+const muscleFilterLabels: Record<string, string> = {
+  all: "Tất cả",
+  Chest: "Ngực",
+  Back: "Lưng",
+  Legs: "Chân",
+  Shoulders: "Vai",
+  Arms: "Tay",
+  Core: "Core",
+  Custom: "Tùy chỉnh",
+  Ngực: "Ngực",
+  Lưng: "Lưng",
+  Chân: "Chân",
+  Vai: "Vai",
+  Tay: "Tay",
+  "Tùy chỉnh": "Tùy chỉnh"
+};
+
+const equipmentLabels: Record<string, string> = {
+  all: "Tất cả",
+  barbell: "Đòn tạ",
+  dumbbell: "Tạ đơn",
+  cable: "Cáp",
+  machine: "Máy",
+  bodyweight: "Trọng lượng cơ thể",
+  kettlebell: "Kettlebell",
+  other: "Khác"
+};
+
+const movementPatternLabels: Record<string, string> = {
+  push: "Đẩy",
+  pull: "Kéo",
+  squat: "Squat",
+  hinge: "Gập hông",
+  lunge: "Lunge",
+  carry: "Mang vác",
+  isolation: "Cô lập",
+  core: "Core"
+};
+
+const friendStatusLabels: Record<Friend["status"], string> = {
+  pending: "Đang chờ",
+  accepted: "Đã chấp nhận",
+  blocked: "Đã chặn"
+};
+
+const healthDataTypeLabels: Record<HealthSyncDataType, string> = {
+  weight: "Cân nặng",
+  workout: "Buổi tập",
+  hydration: "Nước"
+};
+
+const restoreSectionLabels: Record<RestoreSection, string> = {
+  profile: "Hồ sơ",
+  hydration: "Nước",
+  workouts: "Tập luyện",
+  bodyMetrics: "Chỉ số cơ thể",
+  settings: "Cài đặt"
+};
+
+const csvDatasetLabels: Record<CsvDataset, string> = {
+  hydration: "Nước",
+  creatine: "Creatine",
+  workouts: "Tập luyện",
+  "body-metrics": "Chỉ số cơ thể"
+};
+
+function healthSyncContractLabel(settings: HealthIntegrationSettings, dataType: HealthSyncDataType) {
+  return canSyncHealthData(settings, dataType) ? "Được phép theo quyền đã chọn" : "Chưa đồng bộ";
+}
+
+function integrationStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    configured: "Đã cấu hình",
+    "missing-env": "Thiếu cấu hình",
+    "rule-fallback": "Dùng luật nội bộ",
+    "native-bridge-required": "Cần native bridge",
+    "supabase-ready": "Supabase sẵn sàng"
+  };
+  return labels[status] ?? status;
+}
+
+function sessionStatusLabel(status: string) {
+  if (status === "active") return "Đang tập";
+  if (status === "finished" || status === "completed") return "Hoàn tất";
+  if (status === "paused") return "Tạm dừng";
+  if (status === "cancelled") return "Đã hủy";
+  return status;
+}
+
+function muscleGroupLabel(group: string) {
+  return muscleFilterLabels[group] ?? group;
+}
+
+function recommendationDecisionLabel(decision: RecommendationDecision["decision"]) {
+  return decision === "accepted" ? "Đã chấp nhận" : "Đã từ chối";
+}
+
+function recommendationActionLabel(action: string) {
+  if (action === "increase") return "tăng";
+  if (action === "deload") return "giảm tải";
+  if (action === "hold") return "giữ";
+  return action;
+}
+
+function audienceLabel(audience: SharedPost["audience"]) {
+  if (audience === "private-friends") return "Bạn bè riêng tư";
+  return audience;
+}
+
+function badgeStatusLabel(status: string) {
+  if (status === "active") return "đang bật";
+  if (status === "earned") return "đã đạt";
+  if (status === "locked") return "đang khóa";
+  if (status === "lost") return "đã mất";
+  if (status === "disabled") return "đã tắt";
+  return status;
 }
 
 export default function AppPage() {
@@ -173,7 +337,7 @@ export default function AppPage() {
   const [libraryMuscleFilter, setLibraryMuscleFilter] = useState("all");
   const [libraryEquipmentFilter, setLibraryEquipmentFilter] = useState("all");
   const [newLibraryExerciseName, setNewLibraryExerciseName] = useState("Cable Fly");
-  const [newLibraryMuscleGroup, setNewLibraryMuscleGroup] = useState("Chest");
+  const [newLibraryMuscleGroup, setNewLibraryMuscleGroup] = useState("Ngực");
   const [newLibraryEquipment, setNewLibraryEquipment] = useState<EquipmentType>("cable");
   const [newLibraryPattern, setNewLibraryPattern] = useState<MovementPattern>("isolation");
   const [routineImportPreview, setRoutineImportPreview] = useState<RoutineImportPreview | null>(null);
@@ -300,7 +464,7 @@ export default function AppPage() {
           };
           error?: string;
         };
-        if (!response.ok || !body.ok) throw new Error(body.error ?? "sync request failed");
+        if (!response.ok || !body.ok) throw new Error(body.error ?? "Yêu cầu đồng bộ thất bại");
         return body.data?.results?.[0];
       })
       .then((result) => {
@@ -315,7 +479,7 @@ export default function AppPage() {
           setToast("Routine conflict needs preview and confirm");
           return;
         }
-        setState((current) => ({ ...current, syncQueue: markSyncItemFailed(current.syncQueue, nextItem.id, result.error ?? "sync failed") }));
+        setState((current) => ({ ...current, syncQueue: markSyncItemFailed(current.syncQueue, nextItem.id, result.error ?? "Đồng bộ thất bại") }));
       })
       .catch((error: Error) => {
         if (cancelled) return;
@@ -331,7 +495,7 @@ export default function AppPage() {
     if (!mounted || !isOnline || !state.syncQueue.some((item) => item.status === "pending" && item.type === "__legacy_disabled__")) return;
     const id = window.setTimeout(() => {
       setState((current) => ({ ...current, syncQueue: markSyncQueue(current.syncQueue, "synced") }));
-      setToast("Offline queue đã retry local và đánh dấu synced");
+      setToast("Queue ngoại tuyến đã thử lại local và đánh dấu đã đồng bộ");
     }, 1200);
     return () => window.clearTimeout(id);
   }, [mounted, isOnline, state.syncQueue]);
@@ -427,7 +591,7 @@ export default function AppPage() {
   const quickCreatine = visibleQuickAmounts(state.quickAmounts, "supplement", 2);
   const hydrationReminderLabel =
     state.notificationSettings.snoozeUntil && new Date(state.notificationSettings.snoozeUntil).getTime() > now.getTime()
-      ? `Snooze đến ${new Date(state.notificationSettings.snoozeUntil).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}`
+      ? `Tạm hoãn đến ${new Date(state.notificationSettings.snoozeUntil).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}`
       : state.notificationSettings.hydrationMode === "fixed"
         ? `Giờ cố định ${state.notificationSettings.hydrationTimes.join(", ")}h`
         : `Mỗi ${state.notificationSettings.hydrationIntervalHours} giờ`;
@@ -696,7 +860,7 @@ export default function AppPage() {
 
   function updateDrinkModule(id: DrinkModule["id"], patch: Partial<DrinkModule>) {
     if (id === "water" && patch.active === false) {
-      setToast("Water is the primary drink and cannot be disabled.");
+      setToast("Nước là đồ uống chính nên không thể tắt.");
       return;
     }
     const nextModules = normalizeDrinkModules(state.drinkModules, state.profile.waterTargetMl, state.profile.creatineAmountG).map((module) =>
@@ -798,14 +962,14 @@ export default function AppPage() {
   function addExercise() {
     const exercise: WorkoutExercise = {
       id: cryptoSafeId(),
-      name: newExerciseName.trim() || "Custom Exercise",
-      muscleGroup: "Custom",
+        name: newExerciseName.trim() || "Bài tập tùy chỉnh",
+      muscleGroup: "Tùy chỉnh",
       targetSets: 3,
       targetRepsMin: 10,
       targetRepsMax: 12,
       targetWeightKg: 10,
       restSeconds: 60,
-      lastSession: "Custom exercise"
+      lastSession: "Bài tập tùy chỉnh"
     };
     updateActiveWorkoutDay(
       (day) => ({ ...day, exercises: [...day.exercises, routineExerciseFromWorkout(exercise, day.exercises.length)] }),
@@ -947,7 +1111,7 @@ export default function AppPage() {
       targetRepsMax: 12,
       targetWeightKg,
       restSeconds: 90,
-      lastSession: "Template exercise",
+      lastSession: "Bài tập từ mẫu",
       order
     });
     const day = (name: string, weekday: string, order: number, exercises: RoutineExercise[]) => ({
@@ -960,23 +1124,23 @@ export default function AppPage() {
     const days =
       template === "ppl"
         ? [
-            day("Push Day", "Mon", 0, routineTemplates.ppl.map((item, index) => routineExerciseFromWorkout(item, index))),
-            day("Pull Day", "Wed", 1, [exercise("Chest Supported Row", "Back", 0, 40), exercise("Lat Pulldown", "Back", 1, 45), exercise("Dumbbell Curl", "Arms", 2, 12)]),
-            day("Leg Day", "Fri", 2, [exercise("Back Squat", "Legs", 0, 80), exercise("Romanian Deadlift", "Legs", 1, 70), exercise("Leg Press", "Legs", 2, 120)])
+            day("Ngày đẩy", "Mon", 0, routineTemplates.ppl.map((item, index) => routineExerciseFromWorkout(item, index))),
+            day("Ngày kéo", "Wed", 1, [exercise("Chest Supported Row", "Lưng", 0, 40), exercise("Lat Pulldown", "Lưng", 1, 45), exercise("Dumbbell Curl", "Tay", 2, 12)]),
+            day("Ngày chân", "Fri", 2, [exercise("Back Squat", "Chân", 0, 80), exercise("Romanian Deadlift", "Chân", 1, 70), exercise("Leg Press", "Chân", 2, 120)])
           ]
         : template === "upper-lower"
           ? [
-              day("Upper Day", "Mon", 0, routineTemplates["upper-lower"].map((item, index) => routineExerciseFromWorkout(item, index))),
-              day("Lower Day", "Thu", 1, [exercise("Back Squat", "Legs", 0, 80), exercise("Romanian Deadlift", "Legs", 1, 70), exercise("Leg Press", "Legs", 2, 120)])
+              day("Ngày thân trên", "Mon", 0, routineTemplates["upper-lower"].map((item, index) => routineExerciseFromWorkout(item, index))),
+              day("Ngày thân dưới", "Thu", 1, [exercise("Back Squat", "Chân", 0, 80), exercise("Romanian Deadlift", "Chân", 1, 70), exercise("Leg Press", "Chân", 2, 120)])
             ]
           : [
-              day("Full Body A", "Mon", 0, routineTemplates["full-body"].map((item, index) => routineExerciseFromWorkout(item, index))),
-              day("Full Body B", "Wed", 1, [exercise("Barbell Bench Press", "Chest", 0, 60), exercise("Chest Supported Row", "Back", 1, 40), exercise("Back Squat", "Legs", 2, 80)]),
-              day("Full Body C", "Fri", 2, [exercise("Seated Shoulder Press", "Shoulders", 0, 24), exercise("Lat Pulldown", "Back", 1, 45), exercise("Romanian Deadlift", "Legs", 2, 70)])
+              day("Toàn thân A", "Mon", 0, routineTemplates["full-body"].map((item, index) => routineExerciseFromWorkout(item, index))),
+              day("Toàn thân B", "Wed", 1, [exercise("Barbell Bench Press", "Ngực", 0, 60), exercise("Chest Supported Row", "Lưng", 1, 40), exercise("Back Squat", "Chân", 2, 80)]),
+              day("Toàn thân C", "Fri", 2, [exercise("Seated Shoulder Press", "Vai", 0, 24), exercise("Lat Pulldown", "Lưng", 1, 45), exercise("Romanian Deadlift", "Chân", 2, 70)])
             ];
     return {
       id: `routine-${template}-${cryptoSafeId()}`,
-      name: template === "ppl" ? "Push/Pull/Legs" : template === "upper-lower" ? "Upper/Lower" : "Full Body",
+      name: templateLabels[template],
       daysPerWeek: days.length,
       days,
       createdAt: nowIso,
@@ -986,7 +1150,7 @@ export default function AppPage() {
 
   function applyTemplate(template: AppState["activeTemplate"]) {
     if (template === "custom") {
-      commit({ ...state, activeTemplate: "custom" }, "Đã chuyển sang Custom");
+      commit({ ...state, activeTemplate: "custom" }, "Đã chuyển sang Tùy chỉnh");
       return;
     }
     const routine = routineFromTemplate(template);
@@ -1002,7 +1166,7 @@ export default function AppPage() {
       }),
       "routine.create",
       routine,
-      `Đã áp dụng template ${template}`
+      `Đã áp dụng mẫu ${templateLabels[template]}`
     );
   }
 
@@ -1075,7 +1239,7 @@ export default function AppPage() {
       targetRepsMax: definition.movementPattern === "core" ? 60 : 12,
       targetWeightKg: definition.equipment === "bodyweight" ? 0 : 20,
       restSeconds: definition.movementPattern === "isolation" ? 60 : 90,
-      lastSession: definition.builtIn ? "Copied from built-in library" : "Custom library exercise"
+      lastSession: definition.builtIn ? "Sao chép từ thư viện có sẵn" : "Bài tập tùy chỉnh trong thư viện"
     };
     updateActiveWorkoutDay(
       (day) => ({
@@ -1230,25 +1394,25 @@ export default function AppPage() {
           </style>
         </head>
         <body>
-          <h1>EvolveFit ${report.period === "weekly" ? "Weekly" : "Monthly"} Report</h1>
-          <p>${report.periodStart} to ${report.periodEnd}</p>
+          <h1>Báo cáo ${report.period === "weekly" ? "tuần" : "tháng"} EvolveFit</h1>
+          <p>${report.periodStart} đến ${report.periodEnd}</p>
           <div class="grid">
-            <div class="card"><span>Hydration average</span><strong>${report.hydrationAverageMl}ml</strong></div>
-            <div class="card"><span>Goal hit rate</span><strong>${report.hydrationGoalHitRate}%</strong></div>
-            <div class="card"><span>Workout count</span><strong>${report.workoutCount}</strong></div>
-            <div class="card"><span>Total volume</span><strong>${report.totalVolumeKg}kg</strong></div>
+            <div class="card"><span>Nước trung bình</span><strong>${report.hydrationAverageMl}ml</strong></div>
+            <div class="card"><span>Tỷ lệ đạt mục tiêu</span><strong>${report.hydrationGoalHitRate}%</strong></div>
+            <div class="card"><span>Số buổi tập</span><strong>${report.workoutCount}</strong></div>
+            <div class="card"><span>Tổng volume</span><strong>${report.totalVolumeKg}kg</strong></div>
           </div>
-          <h2>Trend vs previous period</h2>
+          <h2>Xu hướng so với kỳ trước</h2>
           <ul>
-            <li>Hydration average: ${report.trendVsPrevious.hydrationAverageMl >= 0 ? "+" : ""}${report.trendVsPrevious.hydrationAverageMl}ml</li>
-            <li>Goal hit rate: ${report.trendVsPrevious.goalHitRate >= 0 ? "+" : ""}${report.trendVsPrevious.goalHitRate}%</li>
-            <li>Workout count: ${report.trendVsPrevious.workoutCount >= 0 ? "+" : ""}${report.trendVsPrevious.workoutCount}</li>
-            <li>Total volume: ${report.trendVsPrevious.totalVolumeKg >= 0 ? "+" : ""}${report.trendVsPrevious.totalVolumeKg}kg</li>
+            <li>Nước trung bình: ${report.trendVsPrevious.hydrationAverageMl >= 0 ? "+" : ""}${report.trendVsPrevious.hydrationAverageMl}ml</li>
+            <li>Tỷ lệ đạt mục tiêu: ${report.trendVsPrevious.goalHitRate >= 0 ? "+" : ""}${report.trendVsPrevious.goalHitRate}%</li>
+            <li>Số buổi tập: ${report.trendVsPrevious.workoutCount >= 0 ? "+" : ""}${report.trendVsPrevious.workoutCount}</li>
+            <li>Tổng volume: ${report.trendVsPrevious.totalVolumeKg >= 0 ? "+" : ""}${report.trendVsPrevious.totalVolumeKg}kg</li>
           </ul>
-          <h2>PRs</h2>
-          <ul>${prRows || "<li>No PRs in this period.</li>"}</ul>
-          <h2>Badges</h2>
-          <ul>${badgeRows || "<li>No active badge data for this period.</li>"}</ul>
+          <h2>PR</h2>
+          <ul>${prRows || "<li>Không có PR trong kỳ này.</li>"}</ul>
+          <h2>Huy hiệu</h2>
+          <ul>${badgeRows || "<li>Không có dữ liệu huy hiệu đang bật trong kỳ này.</li>"}</ul>
         </body>
       </html>`;
     const popup = window.open("", "_blank", "noopener,noreferrer,width=900,height=700");
@@ -1285,7 +1449,7 @@ export default function AppPage() {
 
   async function authenticateEmail(mode: "sign-in" | "sign-up") {
     if (!state.profile.email.trim() || authPassword.length < 6) {
-      setToast("Email/password chÆ°a há»£p lá»‡");
+      setToast("Email hoặc mật khẩu chưa hợp lệ");
       return;
     }
     const response = await fetch(mode === "sign-up" ? "/api/auth/sign-up" : "/api/auth/sign-in", {
@@ -1295,14 +1459,14 @@ export default function AppPage() {
     });
     const payload = (await response.json()) as { ok: boolean; data?: { email: string; mode: AppState["profile"]["authMode"] }; error?: string };
     if (!payload.ok || !payload.data) {
-      setToast(payload.error ?? "Auth failed");
+      setToast(payload.error ?? "Đăng nhập thất bại");
       return;
     }
     commitSynced(
       { ...state, profile: { ...state.profile, email: payload.data.email, authMode: payload.data.mode } },
       `auth.${mode}`,
       { email: payload.data.email, mergeMode: "keep-local" },
-      "ÄÃ£ liÃªn káº¿t account; dá»¯ liá»‡u local Ä‘Æ°á»£c giá»¯ Ä‘á»ƒ sync"
+      "Đã liên kết tài khoản; dữ liệu local được giữ để đồng bộ"
     );
   }
 
@@ -1385,13 +1549,13 @@ export default function AppPage() {
   async function subscribeWebPush() {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
       setPushSubscriptionStatus("unsupported");
-      setToast("TrÃ¬nh duyá»‡t khÃ´ng há»— trá»£ Web Push, sáº½ dÃ¹ng in-app fallback");
+      setToast("Trình duyệt không hỗ trợ Web Push, sẽ dùng nhắc trong app");
       return;
     }
     const key = vapidPublicKey || process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
     if (!key || !pushConfigured) {
       setPushSubscriptionStatus("missing-env");
-      setToast("Thiáº¿u VAPID public key hoáº·c server env, sáº½ dÃ¹ng in-app fallback");
+      setToast("Thiếu VAPID public key hoặc cấu hình server, sẽ dùng nhắc trong app");
       return;
     }
     const registration = await getServiceWorkerRegistration();
@@ -1408,7 +1572,7 @@ export default function AppPage() {
       body: JSON.stringify({ ...subscription.toJSON(), localProfileId: localProfileId(), platform: navigator.userAgent })
     });
     setPushSubscriptionStatus("subscribed");
-    setToast("ÄÃ£ subscribe Web Push");
+    setToast("Đã đăng ký Web Push");
   }
 
   async function unsubscribeWebPush() {
@@ -1424,7 +1588,7 @@ export default function AppPage() {
       });
     }
     setPushSubscriptionStatus(pushConfigured ? "unsubscribed" : "missing-env");
-    setToast("ÄÃ£ unsubscribe Web Push");
+    setToast("Đã hủy đăng ký Web Push");
   }
 
   async function sendTestPushNotification() {
@@ -1441,14 +1605,14 @@ export default function AppPage() {
     });
     const result = (await response.json()) as { ok?: boolean; data?: { sent?: number } };
     if (result.ok && result.data?.sent) {
-      setToast("ÄÃ£ gá»­i test Web Push");
+      setToast("Đã gửi thử Web Push");
       return;
     }
     registration?.active?.postMessage({
       type: "EVOLVEFIT_TEST_NOTIFICATION",
       payload: { title: "EvolveFit test", body: "In-app/service worker fallback notification." }
     });
-    setToast("ÄÃ£ dÃ¹ng fallback test notification");
+    setToast("Đã dùng thông báo thử bằng fallback");
   }
 
   async function requestNotifications() {
@@ -1601,7 +1765,7 @@ export default function AppPage() {
     const session = createWorkoutSession({
       routineId: activeRoutine?.id ?? state.activeRoutineId,
       workoutDayId: activeWorkoutDay?.id ?? state.selectedWorkoutDayId,
-      sessionName: activeWorkoutDay?.name ?? "Workout Session",
+      sessionName: activeWorkoutDay?.name ?? "Buổi tập",
       sessionExerciseOrder: state.workoutExercises.map((exercise) => exercise.id)
     });
     setWorkoutMode("live");
@@ -1616,7 +1780,7 @@ export default function AppPage() {
         restEndsAt: undefined,
         syncQueue: enqueueSync(state.syncQueue, { type: "workout.session.start", payload: session })
       },
-      "Start workout"
+      "Bắt đầu buổi tập"
     );
   }
 
@@ -1775,7 +1939,7 @@ export default function AppPage() {
     const healthIntegration = requestHealthIntegrationPermission(state.healthIntegration, state.healthIntegration.selectedDataTypes);
     commitSynced({ ...state, healthIntegration }, "health.permission.request", healthIntegration, "Health permission request saved");
     if (!healthIntegration.nativeBridgeAvailable) {
-      setToast("Health permission choices saved. Native bridge required before sync.");
+      setToast("Đã lưu lựa chọn quyền sức khỏe. Cần native bridge trước khi đồng bộ.");
     }
   }
 
@@ -1802,7 +1966,7 @@ export default function AppPage() {
       { ...state, friends: state.friends.map((friend) => (friend.id === id ? { ...friend, ...patch } : friend)) },
       "social.friend.update",
       { id, patch },
-      "Updated friend"
+      "Đã cập nhật bạn bè"
     );
   }
 
@@ -1810,10 +1974,10 @@ export default function AppPage() {
     const preview = kind === "badge" ? badgeSharePreview : workoutSummarySharePreview;
     const post = publishSharePreview(preview, state.socialPrivacy);
     if (!post) {
-      setToast("Turn on the matching share permission before publishing.");
+      setToast("Bật quyền chia sẻ tương ứng trước khi đăng.");
       return;
     }
-    commitSynced({ ...state, sharedPosts: [post, ...state.sharedPosts] }, "social.share.publish", post, "Shared to private friends");
+    commitSynced({ ...state, sharedPosts: [post, ...state.sharedPosts] }, "social.share.publish", post, "Đã chia sẻ với bạn bè riêng tư");
   }
 
   function updatePlateSettings(next: Partial<PlateSettings>) {
@@ -1826,7 +1990,7 @@ export default function AppPage() {
   }
 
   function markQueue(status: "synced" | "failed") {
-    commit({ ...state, syncQueue: markSyncQueue(state.syncQueue, status) }, status === "synced" ? "Đã đánh dấu sync xong" : "Đã đánh dấu sync lỗi");
+    commit({ ...state, syncQueue: markSyncQueue(state.syncQueue, status) }, status === "synced" ? "Đã đánh dấu đồng bộ xong" : "Đã đánh dấu đồng bộ lỗi");
   }
 
   function retryQueueItem(id: string) {
@@ -1871,7 +2035,7 @@ export default function AppPage() {
   }
 
   const legacyRecommendationPlaceholder = {
-    title: "V1 insight moved to Progress",
+    title: "Gợi ý V1 đã chuyển sang Tiến độ",
     reason: "Coach không nằm trong navigation chính của V1."
   };
 
@@ -2368,13 +2532,8 @@ function OnboardingPanel(props: {
 
       {props.step === 2 && (
         <div className="stack compact-stack">
-          <div className="template-row" aria-label="Routine templates onboarding">
-            {[
-              ["ppl", "PPL"],
-              ["upper-lower", "Upper/Lower"],
-              ["full-body", "Full Body"],
-              ["custom", "Custom"]
-            ].map(([id, label]) => (
+          <div className="template-row" aria-label="Mẫu lịch tập onboarding">
+            {(Object.entries(templateLabels) as [AppState["activeTemplate"], string][]).map(([id, label]) => (
               <button key={id} className={props.activeTemplate === id ? "active" : ""} onClick={() => props.applyTemplate(id as AppState["activeTemplate"])}>
                 {label}
               </button>
@@ -2388,7 +2547,7 @@ function OnboardingPanel(props: {
             ))}
           </div>
           <button className="secondary-button" onClick={() => props.applyTemplate(suggestedTemplate)}>
-            Gợi ý template {suggestedTemplate}
+            Gợi ý mẫu {templateLabels[suggestedTemplate]}
           </button>
         </div>
       )}
@@ -2442,7 +2601,7 @@ function TodayOverview(props: Parameters<typeof TodayView>[0] & { latestMetric?:
           <div className="action-icon">
             <Waves size={22} />
           </div>
-          <span>Hydration today</span>
+          <span>Nước hôm nay</span>
           <strong>
             {props.totalWater.toLocaleString("vi-VN")} / {props.target.toLocaleString("vi-VN")} ml
           </strong>
@@ -2456,9 +2615,9 @@ function TodayOverview(props: Parameters<typeof TodayView>[0] & { latestMetric?:
           <div className="action-icon">
             <Dumbbell size={22} />
           </div>
-          <span>Workout today</span>
+          <span>Buổi tập hôm nay</span>
           <strong>{props.workoutName}</strong>
-          <em>{props.workoutExerciseCount ?? 6} bài - focus mode</em>
+          <em>{props.workoutExerciseCount ?? 6} bài - chế độ tập trung</em>
           <b>Bắt đầu tập</b>
         </button>
       </section>
@@ -2474,13 +2633,13 @@ function TodayOverview(props: Parameters<typeof TodayView>[0] & { latestMetric?:
               {props.creatineLogged ? <Check size={18} /> : <Plus size={18} />}
             </button>
           </div>
-          <p>Mục tiêu {props.creatineAmount}g mỗi ngày, nhắc trong Settings.</p>
+          <p>Mục tiêu {props.creatineAmount}g mỗi ngày, nhắc trong Cài đặt.</p>
         </section>
       )}
 
       <section className="stats-grid">
         <MetricCard label="Nước" value={`${props.percent}%`} accent="hydration" />
-        {props.creatineActive && <MetricCard label="Creatine" value={props.creatineLogged ? "Done" : "Open"} accent="neutral" />}
+        {props.creatineActive && <MetricCard label="Creatine" value={props.creatineLogged ? "Xong" : "Mở"} accent="neutral" />}
         <MetricCard label="Set hôm nay" value={`${props.workoutExerciseCount ?? 0} bài`} accent="training" />
         <MetricCard label="Cân nặng" value={props.latestMetric ? `${props.latestMetric.weightKg}kg` : "Chưa có"} accent="coach" />
       </section>
@@ -2488,7 +2647,7 @@ function TodayOverview(props: Parameters<typeof TodayView>[0] & { latestMetric?:
       <section className="card chart-card">
         <div className="section-heading">
           <h2>Hoạt động gần đây</h2>
-          <span className="sync-pill">Local-first</span>
+          <span className="sync-pill">Local trước</span>
         </div>
         <div className="timeline">
           {props.recentLogs.length ? (
@@ -2610,7 +2769,7 @@ function TodayView(props: {
             </button>
           ))}
           <button className="custom-water-button" onClick={() => setShowCustom(true)}>
-            Custom
+            Tùy chỉnh
           </button>
         </div>
       </section>
@@ -2866,10 +3025,10 @@ function WorkoutView(props: {
     workingReps: props.activeExercise.targetRepsMin
   });
   const setTypeLabels: Record<WorkoutSetType, string> = {
-    warmup: "Warm-up",
-    working: "Working",
+    warmup: "Khởi động",
+    working: "Chính",
     drop: "Drop",
-    failure: "Failure"
+    failure: "Thất bại"
   };
 
   if (props.mode === "finished") {
@@ -2878,11 +3037,11 @@ function WorkoutView(props: {
         <div className="finish-icon">
           <Check size={38} />
         </div>
-        <h1>Workout complete</h1>
-        <p>{props.currentSessionSets.length} sets - {Math.round(totalVolume)}kg volume - {completedExerciseCount} exercises</p>
+        <h1>Hoàn tất buổi tập</h1>
+        <p>{props.currentSessionSets.length} set - {Math.round(totalVolume)}kg tổng volume - {completedExerciseCount} bài</p>
         <div className="finish-actions">
-          <button className="primary-button training-bg" onClick={props.backToPlan}>Back to workout</button>
-          <button className="secondary-button" onClick={props.startWorkout}>Start again</button>
+          <button className="primary-button training-bg" onClick={props.backToPlan}>Quay lại tập luyện</button>
+          <button className="secondary-button" onClick={props.startWorkout}>Tập lại</button>
         </div>
       </div>
     );
@@ -2893,29 +3052,29 @@ function WorkoutView(props: {
       <div className="stack workout-plan">
         <section className="workout-hero">
           <div>
-            <p className="eyebrow">Plan mode</p>
-            <h1>{props.activeWorkoutDay?.name ?? "Workout day"}</h1>
-            <p>{props.activeRoutine?.name ?? "Routine"} - {props.state.workoutExercises.length} exercises in selected day</p>
+            <p className="eyebrow">Chế độ kế hoạch</p>
+            <h1>{props.activeWorkoutDay?.name ?? "Ngày tập"}</h1>
+            <p>{props.activeRoutine?.name ?? "Lịch tập"} - {props.state.workoutExercises.length} bài trong ngày đã chọn</p>
           </div>
           <div className="action-icon workout-icon">
             <Dumbbell size={24} />
           </div>
           <button className="primary-button training-bg" onClick={props.startWorkout}>
-            <Check size={18} /> Start workout
+            <Check size={18} /> Bắt đầu tập
           </button>
         </section>
 
         <section className="card">
           <div className="section-heading">
-            <h2>Weekly schedule</h2>
-            <span className="sync-pill">{props.activeRoutine?.daysPerWeek ?? props.activeRoutine?.days.length ?? 0} days/week</span>
+            <h2>Lịch tuần</h2>
+            <span className="sync-pill">{props.activeRoutine?.daysPerWeek ?? props.activeRoutine?.days.length ?? 0} ngày/tuần</span>
           </div>
           <div className="week-strip">
-            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => {
+            {weekdays.map(([day, label]) => {
               const planned = props.activeRoutine?.days.find((item) => item.day === day);
               return (
               <button key={day} className={planned?.id === props.activeWorkoutDay?.id ? "active" : planned ? "done" : ""} onClick={() => planned && props.selectWorkoutDay(planned.id)} disabled={!planned}>
-                <strong>{day.slice(0, 1)}</strong>
+                <strong>{label}</strong>
                 <em>{planned?.name ?? "-"}</em>
               </button>
             );})}
@@ -2925,47 +3084,42 @@ function WorkoutView(props: {
         <section className="card">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Active routine</p>
-              <h2>Routine editor</h2>
+              <p className="eyebrow">Lịch đang dùng</p>
+              <h2>Chỉnh lịch tập</h2>
             </div>
             <Dumbbell size={22} />
           </div>
           <div className="exercise-edit-grid">
             <label className="wide-field">
-              <span>Routine name</span>
+              <span>Tên lịch tập</span>
               <input value={props.activeRoutine?.name ?? ""} onChange={(event) => props.updateRoutineName(event.target.value)} />
             </label>
             <label>
-              <span>Session name</span>
+              <span>Tên buổi</span>
               <input value={props.activeWorkoutDay?.name ?? ""} onChange={(event) => props.activeWorkoutDay && props.updateWorkoutDay(props.activeWorkoutDay.id, { name: event.target.value })} />
             </label>
             <label>
-              <span>Day</span>
+              <span>Ngày</span>
               <select value={props.activeWorkoutDay?.day ?? "Mon"} onChange={(event) => props.activeWorkoutDay && props.updateWorkoutDay(props.activeWorkoutDay.id, { day: event.target.value })}>
-                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => <option key={day} value={day}>{day}</option>)}
+                {weekdays.map(([day, label]) => <option key={day} value={day}>{label}</option>)}
               </select>
             </label>
             <label>
-              <span>Days/week</span>
+              <span>Ngày/tuần</span>
               <input value={props.activeRoutine?.days.length ?? 0} readOnly />
             </label>
           </div>
-          <div className="template-row" aria-label="Workout days">
+          <div className="template-row" aria-label="Ngày tập">
             {[...(props.activeRoutine?.days ?? [])].sort((a, b) => a.order - b.order).map((day) => (
               <button key={day.id} className={day.id === props.activeWorkoutDay?.id ? "active" : ""} onClick={() => props.selectWorkoutDay(day.id)}>
                 {day.name}
               </button>
             ))}
-            <button onClick={props.addWorkoutDay}>+ Day</button>
-            {props.activeWorkoutDay && <button onClick={() => props.deleteWorkoutDay(props.activeWorkoutDay!.id)} disabled={(props.activeRoutine?.days.length ?? 0) <= 1}>Delete day</button>}
+            <button onClick={props.addWorkoutDay}>+ Ngày</button>
+            {props.activeWorkoutDay && <button onClick={() => props.deleteWorkoutDay(props.activeWorkoutDay!.id)} disabled={(props.activeRoutine?.days.length ?? 0) <= 1}>Xóa ngày</button>}
           </div>
-          <div className="template-row" aria-label="Routine templates">
-            {[
-              ["ppl", "PPL"],
-              ["upper-lower", "Upper/Lower"],
-              ["full-body", "Full Body"],
-              ["custom", "Custom"]
-            ].map(([id, label]) => (
+          <div className="template-row" aria-label="Mẫu lịch tập">
+            {(Object.entries(templateLabels) as [AppState["activeTemplate"], string][]).map(([id, label]) => (
               <button key={id} className={props.state.activeTemplate === id ? "active" : ""} onClick={() => props.applyTemplate(id as AppState["activeTemplate"])}>
                 {label}
               </button>
@@ -2977,70 +3131,70 @@ function WorkoutView(props: {
                 <span>{index + 1}</span>
                 <button className="exercise-select" onClick={() => props.selectExercise(exercise.id)}>
                   <strong>{exercise.name}</strong>
-                  <em>{exercise.muscleGroup} - {exercise.targetSets} x {exercise.targetRepsMin}-{exercise.targetRepsMax}</em>
+                  <em>{muscleGroupLabel(exercise.muscleGroup)} - {exercise.targetSets} x {exercise.targetRepsMin}-{exercise.targetRepsMax}</em>
                 </button>
                 <div className="row-actions">
-                  <button onClick={() => props.moveExercise(exercise.id, -1)} aria-label="Move exercise up">↑</button>
-                  <button onClick={() => props.moveExercise(exercise.id, 1)} aria-label="Move exercise down">↓</button>
-                  <button onClick={() => props.deleteExercise(exercise.id)} aria-label="Delete exercise"><Trash2 size={14} /></button>
+                  <button onClick={() => props.moveExercise(exercise.id, -1)} aria-label="Đưa bài tập lên">↑</button>
+                  <button onClick={() => props.moveExercise(exercise.id, 1)} aria-label="Đưa bài tập xuống">↓</button>
+                  <button onClick={() => props.deleteExercise(exercise.id)} aria-label="Xóa bài tập"><Trash2 size={14} /></button>
                 </div>
                 <div className="exercise-edit-grid">
-                  <label><span>Name</span><input value={exercise.name} onChange={(event) => props.updateExerciseTarget(exercise.id, { name: event.target.value })} /></label>
-                  <label><span>Muscle</span><input value={exercise.muscleGroup} onChange={(event) => props.updateExerciseTarget(exercise.id, { muscleGroup: event.target.value })} /></label>
-                  <label><span>Sets</span><input type="number" min="1" max="10" value={exercise.targetSets} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetSets: Number(event.target.value) })} /></label>
+                  <label><span>Tên</span><input value={exercise.name} onChange={(event) => props.updateExerciseTarget(exercise.id, { name: event.target.value })} /></label>
+                  <label><span>Nhóm cơ</span><input value={exercise.muscleGroup} onChange={(event) => props.updateExerciseTarget(exercise.id, { muscleGroup: event.target.value })} /></label>
+                  <label><span>Set</span><input type="number" min="1" max="10" value={exercise.targetSets} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetSets: Number(event.target.value) })} /></label>
                   <label><span>Reps min</span><input type="number" min="1" max="50" value={exercise.targetRepsMin} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetRepsMin: Number(event.target.value) })} /></label>
                   <label><span>Reps max</span><input type="number" min="1" max="50" value={exercise.targetRepsMax} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetRepsMax: Number(event.target.value) })} /></label>
                   <label><span>Kg</span><input type="number" min="0" step="0.5" value={exercise.targetWeightKg} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetWeightKg: Number(event.target.value) })} /></label>
-                  <label><span>Rest</span><input type="number" min="15" step="15" value={exercise.restSeconds} onChange={(event) => props.updateExerciseTarget(exercise.id, { restSeconds: Number(event.target.value) })} /></label>
-                  <label><span>Superset</span><input value={exercise.supersetGroup ?? ""} onChange={(event) => props.updateExerciseTarget(exercise.id, { supersetGroup: event.target.value.trim() || undefined })} placeholder="A1" /></label>
-                  <label className="wide-field"><span>Last session</span><input value={exercise.lastSession} onChange={(event) => props.updateExerciseTarget(exercise.id, { lastSession: event.target.value })} /></label>
+                  <label><span>Nghỉ</span><input type="number" min="15" step="15" value={exercise.restSeconds} onChange={(event) => props.updateExerciseTarget(exercise.id, { restSeconds: Number(event.target.value) })} /></label>
+                  <label><span>Nhóm superset</span><input value={exercise.supersetGroup ?? ""} onChange={(event) => props.updateExerciseTarget(exercise.id, { supersetGroup: event.target.value.trim() || undefined })} placeholder="A1" /></label>
+                  <label className="wide-field"><span>Lần trước</span><input value={exercise.lastSession} onChange={(event) => props.updateExerciseTarget(exercise.id, { lastSession: event.target.value })} /></label>
                 </div>
               </div>
             ))}
           </div>
           <div className="inline-form">
-            <input value={props.newExerciseName} onChange={(event) => props.setNewExerciseName(event.target.value)} aria-label="New exercise name" />
-            <button className="secondary-button" onClick={props.addExercise}>Add exercise</button>
+            <input value={props.newExerciseName} onChange={(event) => props.setNewExerciseName(event.target.value)} aria-label="Tên bài tập mới" />
+            <button className="secondary-button" onClick={props.addExercise}>Thêm bài</button>
           </div>
         </section>
 
         <section className="card">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Exercise library</p>
-              <h2>Pick or customize</h2>
+              <p className="eyebrow">Thư viện bài tập</p>
+              <h2>Chọn hoặc tùy chỉnh</h2>
             </div>
             <Plus size={20} />
           </div>
           <div className="exercise-edit-grid">
             <label className="wide-field">
-              <span>Search</span>
-              <input value={props.librarySearch} onChange={(event) => props.setLibrarySearch(event.target.value)} placeholder="Bench, back, cable..." />
+              <span>Tìm kiếm</span>
+              <input value={props.librarySearch} onChange={(event) => props.setLibrarySearch(event.target.value)} placeholder="Tìm theo tên bài, nhóm cơ, dụng cụ..." />
             </label>
             <label>
-              <span>Muscle</span>
+              <span>Nhóm cơ</span>
               <select value={props.libraryMuscleFilter} onChange={(event) => props.setLibraryMuscleFilter(event.target.value)}>
-                {["all", "Chest", "Back", "Legs", "Shoulders", "Arms", "Core", "Custom"].map((item) => <option key={item} value={item}>{item}</option>)}
+                {["all", "Chest", "Back", "Legs", "Shoulders", "Arms", "Core", "Custom", "Ngực", "Lưng", "Chân", "Vai", "Tay", "Tùy chỉnh"].map((item) => <option key={item} value={item}>{muscleFilterLabels[item] ?? item}</option>)}
               </select>
             </label>
             <label>
-              <span>Equipment</span>
+              <span>Dụng cụ</span>
               <select value={props.libraryEquipmentFilter} onChange={(event) => props.setLibraryEquipmentFilter(event.target.value)}>
-                {["all", "barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "other"].map((item) => <option key={item} value={item}>{item}</option>)}
+                {["all", "barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "other"].map((item) => <option key={item} value={item}>{equipmentLabels[item] ?? item}</option>)}
               </select>
             </label>
           </div>
           <div className="exercise-library plan-list">
             {props.filteredExerciseLibrary.slice(0, 10).map((exercise) => (
               <div key={exercise.id}>
-                <span>{exercise.builtIn ? "Built-in" : "Custom"}</span>
+                <span>{exercise.builtIn ? "Có sẵn" : "Tùy chỉnh"}</span>
                 <button className="exercise-select" onClick={() => props.addExerciseFromLibrary(exercise)}>
                   <strong>{exercise.name}</strong>
-                  <em>{exercise.muscleGroup} - {exercise.equipment} - {exercise.movementPattern}</em>
+                  <em>{muscleGroupLabel(exercise.muscleGroup)} - {equipmentLabels[exercise.equipment] ?? exercise.equipment} - {movementPatternLabels[exercise.movementPattern] ?? exercise.movementPattern}</em>
                 </button>
                 {!exercise.builtIn && (
                   <div className="row-actions">
-                    <button onClick={() => props.updateExerciseDefinition(exercise.id, { name: `${exercise.name}*` })}>Edit</button>
+                    <button onClick={() => props.updateExerciseDefinition(exercise.id, { name: `${exercise.name}*` })}>Sửa</button>
                     <button onClick={() => props.deleteExerciseDefinition(exercise.id)}><Trash2 size={14} /></button>
                   </div>
                 )}
@@ -3049,47 +3203,47 @@ function WorkoutView(props: {
           </div>
           <div className="exercise-edit-grid">
             <label>
-              <span>Custom name</span>
+              <span>Tên tùy chỉnh</span>
               <input value={props.newLibraryExerciseName} onChange={(event) => props.setNewLibraryExerciseName(event.target.value)} />
             </label>
             <label>
-              <span>Muscle</span>
+              <span>Nhóm cơ</span>
               <input value={props.newLibraryMuscleGroup} onChange={(event) => props.setNewLibraryMuscleGroup(event.target.value)} />
             </label>
             <label>
-              <span>Equipment</span>
+              <span>Dụng cụ</span>
               <select value={props.newLibraryEquipment} onChange={(event) => props.setNewLibraryEquipment(event.target.value as EquipmentType)}>
-                {["barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "other"].map((item) => <option key={item} value={item}>{item}</option>)}
+                {["barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "other"].map((item) => <option key={item} value={item}>{equipmentLabels[item] ?? item}</option>)}
               </select>
             </label>
             <label>
-              <span>Pattern</span>
+              <span>Kiểu chuyển động</span>
               <select value={props.newLibraryPattern} onChange={(event) => props.setNewLibraryPattern(event.target.value as MovementPattern)}>
-                {["push", "pull", "squat", "hinge", "lunge", "carry", "isolation", "core"].map((item) => <option key={item} value={item}>{item}</option>)}
+                {["push", "pull", "squat", "hinge", "lunge", "carry", "isolation", "core"].map((item) => <option key={item} value={item}>{movementPatternLabels[item] ?? item}</option>)}
               </select>
             </label>
-            <button className="secondary-button" onClick={props.addCustomExerciseDefinition}>Add custom exercise</button>
+            <button className="secondary-button" onClick={props.addCustomExerciseDefinition}>Thêm bài tùy chỉnh</button>
           </div>
         </section>
 
         <section className="card import-card">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Import routine</p>
-              <h2>CSV preview</h2>
+              <p className="eyebrow">Nhập lịch tập</p>
+              <h2>Xem trước CSV</h2>
             </div>
             <Plus size={20} />
           </div>
-          <p>CSV/XLSX columns: session, day, exercise, muscle group, sets, reps min, reps max, weight, rest seconds, note.</p>
+          <p>Cột CSV/XLSX: buổi, ngày, bài tập, nhóm cơ, số set, rep tối thiểu, rep tối đa, tạ, giây nghỉ, ghi chú.</p>
           <div className="split-actions">
             <a className="secondary-button import-button" href="/samples/evolvefit-routine-template.csv" download>
-              Download sample CSV
+              Tải CSV mẫu
             </a>
             <button className="secondary-button" onClick={props.downloadRoutineSampleXlsx}>
-              Download sample XLSX
+              Tải XLSX mẫu
             </button>
             <label className="secondary-button import-button">
-              Choose CSV/XLSX
+              Chọn CSV/XLSX
               <input type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={(event) => event.target.files?.[0] && props.previewRoutineImport(event.target.files[0])} />
             </label>
           </div>
@@ -3097,7 +3251,7 @@ function WorkoutView(props: {
             <div className="import-preview">
               <div className="section-heading">
                 <strong>{props.routineImportPreview.fileName}</strong>
-                <span className="sync-pill">{props.routineImportPreview.rows.length} rows</span>
+                <span className="sync-pill">{props.routineImportPreview.rows.length} dòng</span>
               </div>
               {props.routineImportPreview.errors.length ? (
                 <div className="import-errors">
@@ -3110,19 +3264,19 @@ function WorkoutView(props: {
                   <div className="import-table">
                     {props.routineImportPreview.rows.slice(0, 6).map((row) => (
                       <div key={row.id}>
-                        <span>Line {row.sourceLine}</span>
+                        <span>Dòng {row.sourceLine}</span>
                         <strong>{row.name}</strong>
                         <em>{row.session} / {row.day} - {row.muscleGroup} - {row.targetSets} x {row.targetRepsMin}-{row.targetRepsMax} - {row.targetWeightKg}kg</em>
                       </div>
                     ))}
                   </div>
                   <div className="split-actions">
-                    <button className="secondary-button" onClick={() => props.confirmRoutineImport("append")}>Append</button>
-                    <button className="primary-button training-bg" onClick={() => props.confirmRoutineImport("replace")}>Replace routine</button>
+                    <button className="secondary-button" onClick={() => props.confirmRoutineImport("append")}>Thêm vào lịch</button>
+                    <button className="primary-button training-bg" onClick={() => props.confirmRoutineImport("replace")}>Thay lịch hiện tại</button>
                   </div>
                 </>
               )}
-              <button className="secondary-button" onClick={props.clearRoutineImport}>Clear preview</button>
+              <button className="secondary-button" onClick={props.clearRoutineImport}>Xóa bản xem trước</button>
             </div>
           )}
         </section>
@@ -3135,18 +3289,13 @@ function WorkoutView(props: {
       <section className="card">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">Live mode</p>
-            <h2>{props.activeWorkoutDay?.name ?? "Workout session"}</h2>
+            <p className="eyebrow">Chế độ live</p>
+            <h2>{props.activeWorkoutDay?.name ?? "Buổi tập"}</h2>
           </div>
           <Dumbbell size={22} />
         </div>
-        <div className="template-row" aria-label="Routine templates">
-          {[
-            ["ppl", "PPL"],
-            ["upper-lower", "Upper/Lower"],
-            ["full-body", "Full Body"],
-            ["custom", "Custom"]
-          ].map(([id, label]) => (
+        <div className="template-row" aria-label="Mẫu lịch tập">
+          {(Object.entries(templateLabels) as [AppState["activeTemplate"], string][]).map(([id, label]) => (
             <button
               key={id}
               className={props.state.activeTemplate === id ? "active" : ""}
@@ -3223,7 +3372,7 @@ function WorkoutView(props: {
                   <input type="number" min="15" step="15" value={exercise.restSeconds} onChange={(event) => props.updateExerciseTarget(exercise.id, { restSeconds: Number(event.target.value) })} />
                 </label>
                 <label>
-                  <span>Superset</span>
+                  <span>Nhóm superset</span>
                   <input value={exercise.supersetGroup ?? ""} onChange={(event) => props.updateExerciseTarget(exercise.id, { supersetGroup: event.target.value.trim() || undefined })} placeholder="A1" />
                 </label>
                 <label className="wide-field">
@@ -3245,18 +3394,18 @@ function WorkoutView(props: {
       <section className="card workout-overview">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">{props.activeWorkoutDay?.name ?? "Session"} - Exercise {props.state.activeExerciseIndex + 1}/{props.sessionQueue.length}</p>
+            <p className="eyebrow">{props.activeWorkoutDay?.name ?? "Buổi"} - Bài {props.state.activeExerciseIndex + 1}/{props.sessionQueue.length}</p>
             <h1>{props.activeExercise.name}</h1>
-            <p>{props.activeExercise.muscleGroup} • Target {props.activeExercise.targetSets} x {props.activeExercise.targetRepsMin}-{props.activeExercise.targetRepsMax}</p>
+            <p>{muscleGroupLabel(props.activeExercise.muscleGroup)} • Mục tiêu {props.activeExercise.targetSets} x {props.activeExercise.targetRepsMin}-{props.activeExercise.targetRepsMax}</p>
           </div>
           <Dumbbell size={26} />
         </div>
         <div className="last-session">Lần trước: {props.activeExercise.lastSession}</div>
         {props.livePrBadges.length > 0 && (
-          <div className="live-pr-banner" role="status" aria-label="Live PR notification">
+          <div className="live-pr-banner" role="status" aria-label="Thông báo PR live">
             <Trophy size={18} />
-            <strong>New PR</strong>
-            <span>{props.livePrBadges.map((pr) => `${pr.label} ${pr.next}${pr.type === "maxReps" ? " reps" : "kg"}`).join(" | ")}</span>
+            <strong>PR mới</strong>
+            <span>{props.livePrBadges.map((pr) => `${pr.label} ${pr.next}${pr.type === "maxReps" ? " rep" : "kg"}`).join(" | ")}</span>
           </div>
         )}
       </section>
@@ -3265,7 +3414,7 @@ function WorkoutView(props: {
         <h2>Set hiện tại</h2>
         {props.activeExercise.supersetGroup && <span className="sync-pill">Superset {props.activeExercise.supersetGroup}</span>}
         {props.allSetsForActive.some((set) => (set.setType ?? "working") === "warmup") && (
-          <div className="chip-row warmup-row" aria-label="Warm-up sets completed">
+          <div className="chip-row warmup-row" aria-label="Set khởi động đã hoàn tất">
             {props.allSetsForActive
               .filter((set) => (set.setType ?? "working") === "warmup")
               .map((set) => (
@@ -3280,8 +3429,8 @@ function WorkoutView(props: {
             return (
               <div key={index} className={isCurrent ? "current" : ""}>
                 <span>{done ? setTypeLabels[done.setType ?? "working"] : `Set ${index + 1}`}</span>
-                <strong>{done ? (done.actualReps === 0 ? "Skipped" : `${done.actualWeightKg}kg x ${done.actualReps}`) : `${props.activeExercise.targetWeightKg}kg x ${props.activeExercise.targetRepsMin}`}</strong>
-                <em>{done ? (done.actualReps === 0 ? "Skipped" : `RPE ${done.rpe ?? "-"}`) : isCurrent ? "Current" : "Pending"}</em>
+                <strong>{done ? (done.actualReps === 0 ? "Đã bỏ qua" : `${done.actualWeightKg}kg x ${done.actualReps}`) : `${props.activeExercise.targetWeightKg}kg x ${props.activeExercise.targetRepsMin}`}</strong>
+                <em>{done ? (done.actualReps === 0 ? "Đã bỏ qua" : `RPE ${done.rpe ?? "-"}`) : isCurrent ? "Đang tập" : "Đang chờ"}</em>
               </div>
             );
           })}
@@ -3289,7 +3438,7 @@ function WorkoutView(props: {
       </section>
 
       <section className="control-card card">
-        <div className="template-row set-type-row" aria-label="Set type">
+        <div className="template-row set-type-row" aria-label="Loại set">
           {(["warmup", "working", "drop", "failure"] as WorkoutSetType[]).map((type) => (
             <button key={type} className={props.setType === type ? "active" : ""} onClick={() => props.setSetType(type)}>
               {setTypeLabels[type]}
@@ -3297,7 +3446,7 @@ function WorkoutView(props: {
           ))}
         </div>
         {warmUpSuggestions.length > 0 && (
-          <div className="chip-row warmup-row" aria-label="Warm-up suggestions">
+          <div className="chip-row warmup-row" aria-label="Gợi ý khởi động">
             {warmUpSuggestions.map((suggestion) => (
               <button
                 key={`${suggestion.percent}-${suggestion.weightKg}`}
@@ -3323,7 +3472,7 @@ function WorkoutView(props: {
 
       <section className="rest-card card">
         <div>
-          <p className="eyebrow">Rest timer</p>
+          <p className="eyebrow">Đồng hồ nghỉ</p>
           <strong>{props.restSeconds > 0 ? `${Math.floor(props.restSeconds / 60)}:${String(props.restSeconds % 60).padStart(2, "0")}` : "Sẵn sàng"}</strong>
           <p>{props.restPaused ? "Tạm dừng" : props.restSeconds > 0 ? "Đang đếm ngược" : "Sẵn sàng set tiếp theo"}</p>
         </div>
@@ -3339,7 +3488,7 @@ function WorkoutView(props: {
             onClick={props.restPaused ? props.resumeRestTimer : props.pauseRestTimer}
             aria-label={props.restPaused ? "Tiếp tục timer" : "Tạm dừng timer"}
           >
-            {props.restPaused ? "Resume" : "Pause"}
+            {props.restPaused ? "Tiếp tục" : "Tạm dừng"}
           </button>
           <button onClick={() => props.adjustRestTimer(15)} aria-label="Thêm 15 giây">
             +15
@@ -3349,38 +3498,38 @@ function WorkoutView(props: {
 
       <section className="card">
         <div className="split-actions">
-          <button className="secondary-button" onClick={props.skipCurrentSet}>Skip set</button>
-          <button className="secondary-button" onClick={props.skipExercise}>Skip exercise</button>
-          <button className="secondary-button" onClick={props.finishWorkout}>Finish</button>
+          <button className="secondary-button" onClick={props.skipCurrentSet}>Bỏ qua set</button>
+          <button className="secondary-button" onClick={props.skipExercise}>Bỏ qua bài</button>
+          <button className="secondary-button" onClick={props.finishWorkout}>Kết thúc</button>
         </div>
       </section>
 
       <section className="card">
         <div className="section-heading">
-          <h2>Workout queue</h2>
-          <span className="sync-pill">{props.activeWorkoutSession?.status ?? "no session"}</span>
+          <h2>Hàng đợi bài tập</h2>
+          <span className="sync-pill">{props.activeWorkoutSession ? sessionStatusLabel(props.activeWorkoutSession.status) : "Chưa có buổi"}</span>
         </div>
-        <div className="queue-summary" aria-label="Session queue status">
-          <span>{queuedCount} remaining</span>
-          <span>{completedCount} completed</span>
-          <span>{parkedCount} parked</span>
+        <div className="queue-summary" aria-label="Trạng thái hàng đợi buổi tập">
+          <span>{queuedCount} còn lại</span>
+          <span>{completedCount} hoàn tất</span>
+          <span>{parkedCount} tạm dừng</span>
         </div>
         <div className="queue-list">
           {queueExercises.map(({ item, exercise }, index) => {
             const isActive = item.exerciseId === props.activeExercise.id;
-            const statusLabel = item.status === "parked" ? "Parked" : item.status === "completed" ? "Completed" : "Remaining";
+            const statusLabel = item.status === "parked" ? "Tạm dừng" : item.status === "completed" ? "Hoàn tất" : "Còn lại";
             return (
               <div key={item.exerciseId} className={`queue-row ${isActive ? "active" : ""} ${item.status}`}>
                 <button className="queue-select" onClick={() => props.selectExercise(item.exerciseId)}>
                   <span>{index + 1}</span>
                   <strong>{exercise.name}</strong>
-                  <em>{exercise.muscleGroup} - {statusLabel}</em>
+                  <em>{muscleGroupLabel(exercise.muscleGroup)} - {statusLabel}</em>
                 </button>
                 <div className="row-actions">
-                  <button onClick={() => props.reorderSessionExercise(item.exerciseId, -1)} aria-label="Move session exercise up">
+                  <button onClick={() => props.reorderSessionExercise(item.exerciseId, -1)} aria-label="Đưa bài trong buổi lên">
                     ↑
                   </button>
-                  <button onClick={() => props.reorderSessionExercise(item.exerciseId, 1)} aria-label="Move session exercise down">
+                  <button onClick={() => props.reorderSessionExercise(item.exerciseId, 1)} aria-label="Đưa bài trong buổi xuống">
                     ↓
                   </button>
                 </div>
@@ -3389,14 +3538,14 @@ function WorkoutView(props: {
           })}
         </div>
         <button className="secondary-button" onClick={props.saveWorkoutOrderToRoutine} disabled={!props.activeWorkoutSession}>
-          Save order to routine
+          Lưu thứ tự vào lịch tập
         </button>
       </section>
 
       <section className="card">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">Workout history</p>
+            <p className="eyebrow">Lịch sử tập</p>
             <h2>Sets đã ghi</h2>
           </div>
           <Activity size={22} />
@@ -3410,7 +3559,7 @@ function WorkoutView(props: {
                 <div key={set.id}>
                   <span>{set.exerciseName}</span>
                   <strong>
-                    {set.actualReps === 0 ? "Skipped" : `${set.actualWeightKg}kg x ${set.actualReps}`}
+                    {set.actualReps === 0 ? "Đã bỏ qua" : `${set.actualWeightKg}kg x ${set.actualReps}`}
                   </strong>
                   <em>{setTypeLabels[set.setType ?? "working"]} - RPE {set.rpe ?? "-"}</em>
                   <div className="row-actions">
@@ -3440,8 +3589,8 @@ function WorkoutView(props: {
 
       <section className="card">
         <div className="section-heading">
-          <h2>Session history</h2>
-          <span className="sync-pill">{props.state.workoutSessions.length} sessions</span>
+          <h2>Lịch sử buổi tập</h2>
+          <span className="sync-pill">{props.state.workoutSessions.length} buổi</span>
         </div>
         <div className="timeline compact">
           {props.state.workoutSessions.length ? (
@@ -3453,13 +3602,13 @@ function WorkoutView(props: {
                 return (
                   <div key={session.id}>
                     <span>{session.sessionName}</span>
-                    <strong>{session.status}</strong>
-                    <em>{setCount} sets - {Math.round(session.durationSeconds / 60)}m</em>
+                    <strong>{sessionStatusLabel(session.status)}</strong>
+                    <em>{setCount} set - {Math.round(session.durationSeconds / 60)} phút</em>
                   </div>
                 );
               })
           ) : (
-            <p>No workout sessions yet.</p>
+            <p>Chưa có buổi tập nào.</p>
           )}
         </div>
       </section>
@@ -3506,14 +3655,14 @@ function PlateCalculatorReadout(props: { calculation: PlateCalculation }) {
   const { calculation } = props;
   const plateText = calculation.platesPerSide.length
     ? calculation.platesPerSide.map((plate) => `${plate.count}x${plate.weightKg}`).join(" + ")
-    : "bar only";
+    : "chỉ thanh đòn";
   return (
-    <div className="plate-readout" aria-label="Plate calculator">
-      <span>Plates / side</span>
+    <div className="plate-readout" aria-label="Bộ tính đĩa tạ">
+      <span>Đĩa mỗi bên</span>
       <strong>{plateText}</strong>
       <em>
-        Bar {calculation.barbellKg}kg
-        {calculation.remainderKg > 0 ? ` | closest ${calculation.matchedWeightKg}kg, missing ${calculation.remainderKg}kg` : ""}
+        Thanh đòn {calculation.barbellKg}kg
+        {calculation.remainderKg > 0 ? ` | gần nhất ${calculation.matchedWeightKg}kg, thiếu ${calculation.remainderKg}kg` : ""}
       </em>
     </div>
   );
@@ -3578,10 +3727,10 @@ function ProgressView(props: {
       <section className="card coach-card">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">Guarded coach</p>
+          <p className="eyebrow">Coach có kiểm soát</p>
             <h2>{props.coachRecommendation.title}</h2>
           </div>
-          <span className="sync-pill">{props.coachRecommendation.aiEligible ? props.coachRecommendation.mode : "rule-first"}</span>
+          <span className="sync-pill">{props.coachRecommendation.aiEligible ? props.coachRecommendation.mode : "ưu tiên luật"}</span>
         </div>
         <p>{props.coachRecommendation.reason}</p>
         <div className="readiness-list">
@@ -3590,48 +3739,48 @@ function ProgressView(props: {
           ))}
         </div>
         <div className="setting-row">
-          <span>Suggested action</span>
+          <span>Hành động gợi ý</span>
           <strong>{props.coachRecommendation.suggestedAction}</strong>
         </div>
         <p className="privacy-note">{props.coachRecommendation.guardrail}</p>
         {!props.coachRecommendation.aiEligible && (
-          <p className="privacy-note">AI insight is hidden until at least 3 useful working sets exist for this exercise. The rule-based coach remains available first.</p>
+          <p className="privacy-note">Gợi ý AI sẽ ẩn cho đến khi bài này có ít nhất 3 set chính hữu ích. Coach theo luật vẫn luôn khả dụng trước.</p>
         )}
         <label className="setting-row">
-          <span>Feedback</span>
-          <input value={props.coachFeedback} onChange={(event) => props.setCoachFeedback(event.target.value)} placeholder="Too heavy, accepted, not relevant..." />
+          <span>Phản hồi</span>
+          <input value={props.coachFeedback} onChange={(event) => props.setCoachFeedback(event.target.value)} placeholder="Quá nặng, đã áp dụng, chưa phù hợp..." />
         </label>
         <div className="coach-actions">
           <button className="primary-button coach-bg" onClick={() => props.decideRecommendation("accepted")}>
-            Accept
+            Chấp nhận
           </button>
           <button className="secondary-button" onClick={() => props.decideRecommendation("rejected")}>
-            Reject
+            Từ chối
           </button>
         </div>
       </section>
       <section className="card">
-        <h2>Recommendation history</h2>
+        <h2>Lịch sử gợi ý</h2>
         <div className="timeline compact">
           {props.recommendationDecisions.length ? (
             props.recommendationDecisions.slice(0, 6).map((decision) => (
               <div key={decision.id}>
                 <span>{new Date(decision.decidedAt).toLocaleDateString("vi-VN")}</span>
-                <strong>{decision.decision}</strong>
+                <strong>{recommendationDecisionLabel(decision.decision)}</strong>
                 <em>
-                  {decision.title} - {decision.action} to {decision.nextWeightKg}kg{decision.feedback ? ` - ${decision.feedback}` : ""}
+                  {decision.title} - {recommendationActionLabel(decision.action)} tới {decision.nextWeightKg}kg{decision.feedback ? ` - ${decision.feedback}` : ""}
                 </em>
               </div>
             ))
           ) : (
-            <p>No recommendation feedback yet.</p>
+            <p>Chưa có phản hồi gợi ý.</p>
           )}
         </div>
       </section>
       <section className="card">
         <div className="section-heading">
-          <h2>Private friend leaderboard</h2>
-          <span className="sync-pill">{props.socialLeaderboard.visible ? "private group" : "off"}</span>
+          <h2>Bảng xếp hạng bạn bè riêng tư</h2>
+          <span className="sync-pill">{props.socialLeaderboard.visible ? "nhóm riêng tư" : "tắt"}</span>
         </div>
         {props.socialLeaderboard.visible ? (
           <div className="leaderboard">
@@ -3639,35 +3788,35 @@ function ProgressView(props: {
               <div key={entry.displayName}>
                 <span>#{entry.rank}</span>
                 <strong>{entry.displayName}</strong>
-                <em>{entry.score} pts - streak {entry.badgeStreakMonths}</em>
+                <em>{entry.score} điểm - streak {entry.badgeStreakMonths}</em>
               </div>
             ))}
           </div>
         ) : (
-          <p className="privacy-note">Friend leaderboard is private and disabled until you opt in from Settings.</p>
+          <p className="privacy-note">Bảng xếp hạng bạn bè đang riêng tư và tắt cho đến khi bạn bật trong Cài đặt.</p>
         )}
       </section>
       <section className="card">
-        <h2>Share to friends</h2>
+        <h2>Chia sẻ với bạn bè</h2>
         <div className="settings-inline-grid">
-          <SharePreviewCard title="Badge share" preview={props.badgeSharePreview} onPublish={() => props.publishSocialShare("badge")} />
-          <SharePreviewCard title="Workout summary share" preview={props.workoutSummarySharePreview} onPublish={() => props.publishSocialShare("workout-summary")} />
+          <SharePreviewCard title="Chia sẻ huy hiệu" preview={props.badgeSharePreview} onPublish={() => props.publishSocialShare("badge")} />
+          <SharePreviewCard title="Chia sẻ tóm tắt tập luyện" preview={props.workoutSummarySharePreview} onPublish={() => props.publishSocialShare("workout-summary")} />
         </div>
-        <p className="privacy-note">Shared cards redact weight, body fat, email, and workout details unless the matching consent is enabled.</p>
+        <p className="privacy-note">Thẻ chia sẻ sẽ ẩn cân nặng, mỡ cơ thể, email và chi tiết buổi tập trừ khi quyền tương ứng được bật.</p>
         <div className="timeline compact">
           {props.sharedPosts.slice(0, 4).map((post) => (
             <div key={post.id}>
-              <span>{post.audience}</span>
+              <span>{audienceLabel(post.audience)}</span>
               <strong>{post.title}</strong>
               <em>{new Date(post.publishedAt).toLocaleDateString("vi-VN")}</em>
             </div>
           ))}
-          {!props.sharedPosts.length && <p>No shared posts yet.</p>}
+          {!props.sharedPosts.length && <p>Chưa có bài chia sẻ.</p>}
         </div>
       </section>
       <section className="stats-grid progress-summary">
         <MetricCard label="Nước hôm nay" value={`${props.totalWater}/${props.target}ml`} accent="hydration" />
-        <MetricCard icon={<Dumbbell size={19} />} label="Workouts 7d/30d" value={`${props.progress.workoutCount7}/${props.progress.workoutCount30}`} accent="training" />
+        <MetricCard icon={<Dumbbell size={19} />} label="Buổi tập 7n/30n" value={`${props.progress.workoutCount7}/${props.progress.workoutCount30}`} accent="training" />
         <MetricCard label="e1RM tốt nhất" value={oneRm ? `${oneRm}kg` : "Chưa có"} accent="coach" />
         <MetricCard label="Cân nặng" value={props.latestMetric ? `${props.latestMetric.weightKg}kg` : "Chưa có"} accent="neutral" />
       </section>
@@ -3679,48 +3828,48 @@ function ProgressView(props: {
           ))}
         </div>
       </section>
-      <section className="report-grid" aria-label="Weekly and monthly reports">
-        <ReportCard title="Weekly report" report={props.reports.weekly} onExportPdf={() => props.downloadReportPdf("weekly")} />
-        <ReportCard title="Monthly report" report={props.reports.monthly} onExportPdf={() => props.downloadReportPdf("monthly")} />
+      <section className="report-grid" aria-label="Báo cáo tuần và tháng">
+        <ReportCard title="Báo cáo tuần" report={props.reports.weekly} onExportPdf={() => props.downloadReportPdf("weekly")} />
+        <ReportCard title="Báo cáo tháng" report={props.reports.monthly} onExportPdf={() => props.downloadReportPdf("monthly")} />
       </section>
       <section className="card chart-card">
         <div className="section-heading">
-          <h2>Weekly volume</h2>
-          <span className="sync-pill">{completedExercises} exercises</span>
+          <h2>Volume theo tuần</h2>
+          <span className="sync-pill">{completedExercises} bài</span>
         </div>
         {props.progress.weeklyVolume.length ? (
-          <div className="bar-chart training-chart" aria-label="Weekly training volume chart">
+          <div className="bar-chart training-chart" aria-label="Biểu đồ volume tập luyện theo tuần">
             {props.progress.weeklyVolume.slice(-6).map((bucket) => (
               <span key={bucket.label} title={`${bucket.label}: ${bucket.volumeKg}kg`} style={{ height: `${Math.max(8, (bucket.volumeKg / maxWeeklyVolume) * 100)}%` }} />
             ))}
           </div>
         ) : (
-          <EmptyState title="No weekly volume yet" text="Complete working sets to build weekly volume." />
+          <EmptyState title="Chưa có volume tuần" text="Hoàn tất set chính để tạo volume theo tuần." />
         )}
-        <p className="chart-note">{volume ? `${Math.round(volume)}kg total working volume logged.` : "Skipped sets are excluded from volume."}</p>
+        <p className="chart-note">{volume ? `Đã ghi ${Math.round(volume)}kg tổng volume set chính.` : "Set bỏ qua không tính vào volume."}</p>
       </section>
 
       <section className="card progress-detail-card">
         <div className="section-heading">
-          <h2>Hydration trend</h2>
-          <span className="sync-pill">{props.totalWater}/{props.target}ml today</span>
+          <h2>Xu hướng nước</h2>
+          <span className="sync-pill">{props.totalWater}/{props.target}ml hôm nay</span>
         </div>
         <div className="progress-kpi-grid">
           <div>
-            <span>7-day average</span>
+              <span>Trung bình 7 ngày</span>
             <strong>{props.progress.hydration7.averageMl}ml</strong>
-            <em>{props.progress.hydration7.hitDays}/7 goal days</em>
+              <em>{props.progress.hydration7.hitDays}/7 ngày đạt mục tiêu</em>
           </div>
           <div>
-            <span>30-day average</span>
+              <span>Trung bình 30 ngày</span>
             <strong>{props.progress.hydration30.averageMl}ml</strong>
-            <em>{props.progress.hydration30.goalHitRate}% goal hit</em>
+              <em>{props.progress.hydration30.goalHitRate}% đạt mục tiêu</em>
           </div>
           {props.progress.creatineConsistency && (
             <div>
-              <span>Creatine consistency</span>
+              <span>Độ đều creatine</span>
               <strong>{props.progress.creatineConsistency.consistencyRate}%</strong>
-              <em>{props.progress.creatineConsistency.takenDays}/30 days</em>
+              <em>{props.progress.creatineConsistency.takenDays}/30 ngày</em>
             </div>
           )}
         </div>
@@ -3728,28 +3877,28 @@ function ProgressView(props: {
 
       <section className="card progress-detail-card">
         <div className="section-heading">
-          <h2>Muscle group volume</h2>
-          <span className="sync-pill">working sets only</span>
+          <h2>Volume theo nhóm cơ</h2>
+          <span className="sync-pill">chỉ set chính</span>
         </div>
         {props.progress.volumeByMuscleGroup.length ? (
           <div className="progress-list">
             {props.progress.volumeByMuscleGroup.map((bucket) => (
               <div key={bucket.label}>
-                <span>{bucket.label}</span>
+                <span>{muscleGroupLabel(bucket.label)}</span>
                 <strong>{bucket.volumeKg}kg</strong>
                 <i style={{ width: `${Math.max(8, (bucket.volumeKg / maxMuscleVolume) * 100)}%` }} />
               </div>
             ))}
           </div>
         ) : (
-          <EmptyState title="No muscle split yet" text="Log working sets from your routine to see volume by muscle group." />
+          <EmptyState title="Chưa có phân bổ nhóm cơ" text="Ghi set chính trong lịch tập để xem volume theo nhóm cơ." />
         )}
       </section>
 
       <section className="card progress-detail-card">
         <div className="section-heading">
-          <h2>e1RM trend</h2>
-          <span className="sync-pill">main lifts</span>
+          <h2>Xu hướng e1RM</h2>
+          <span className="sync-pill">bài chính</span>
         </div>
         {props.progress.e1RmTrend.length ? (
           <div className="timeline compact">
@@ -3762,35 +3911,35 @@ function ProgressView(props: {
             ))}
           </div>
         ) : (
-          <EmptyState title="No e1RM trend yet" text="Log weighted sets with reps to generate main lift e1RM points." />
+          <EmptyState title="Chưa có xu hướng e1RM" text="Ghi set có tạ và rep để tạo điểm e1RM cho bài chính." />
         )}
       </section>
 
       <section className="card progress-detail-card">
         <div className="section-heading">
-          <h2>Exercise PRs</h2>
-          <span className="sync-pill">{props.progress.prs.length} exercises</span>
+          <h2>PR theo bài tập</h2>
+          <span className="sync-pill">{props.progress.prs.length} bài</span>
         </div>
         {props.progress.prs.length ? (
           <div className="pr-grid">
             {props.progress.prs.map((pr) => (
               <div key={pr.exerciseId}>
                 <strong>{pr.exerciseName}</strong>
-                <span>Max weight {pr.maxWeightKg}kg</span>
-                <span>Max reps {pr.maxReps}</span>
+                <span>Tạ tối đa {pr.maxWeightKg}kg</span>
+                <span>Rep tối đa {pr.maxReps}</span>
                 <span>e1RM {pr.estimatedOneRepMaxKg}kg</span>
-                <span>Volume PR {pr.volumePrKg}kg</span>
+                <span>PR volume {pr.volumePrKg}kg</span>
               </div>
             ))}
           </div>
         ) : (
-          <EmptyState title="No PRs yet" text="Skipped sets do not count. Complete working sets to create PRs." />
+          <EmptyState title="Chưa có PR" text="Set bỏ qua không được tính. Hoàn tất set chính để tạo PR." />
         )}
       </section>
 
       <section className="card">
         <div className="section-heading">
-          <h2>Body metrics</h2>
+          <h2>Chỉ số cơ thể</h2>
           <span className="sync-pill">{props.weightDelta >= 0 ? "+" : ""}{formatWeight(props.weightDelta, props.unitWeight)}</span>
         </div>
         <BodyMetricCharts
@@ -3800,7 +3949,7 @@ function ProgressView(props: {
         />
         <div className="metric-goals">
           <label>
-            <span>Goal weight ({props.unitWeight})</span>
+            <span>Mục tiêu cân nặng ({props.unitWeight})</span>
             <input
               type="number"
               step="0.1"
@@ -3809,7 +3958,7 @@ function ProgressView(props: {
             />
           </label>
           <label>
-            <span>Goal body fat (%)</span>
+            <span>Mục tiêu mỡ cơ thể (%)</span>
             <input
               type="number"
               min="0"
@@ -3829,31 +3978,31 @@ function ProgressView(props: {
         )}
         <div className="metric-form">
           <label>
-            <span>Weight ({props.unitWeight})</span>
+            <span>Cân nặng ({props.unitWeight})</span>
             <input type="number" step="0.1" value={props.newMetricWeight} onChange={(event) => props.setNewMetricWeight(Number(event.target.value))} />
           </label>
           <label>
-            <span>Body fat</span>
+            <span>Mỡ cơ thể</span>
             <input type="number" step="0.1" value={props.newMetricBodyFat} onChange={(event) => props.setNewMetricBodyFat(Number(event.target.value))} />
           </label>
           <label>
-            <span>Waist</span>
+            <span>Eo</span>
             <input type="number" step="0.1" value={props.newMetricWaist} onChange={(event) => props.setNewMetricWaist(Number(event.target.value))} />
           </label>
           <label>
-            <span>Chest</span>
+            <span>Ngực</span>
             <input type="number" step="0.1" value={props.newMetricChest} onChange={(event) => props.setNewMetricChest(Number(event.target.value))} />
           </label>
           <label>
-            <span>Arm</span>
+            <span>Tay</span>
             <input type="number" step="0.1" value={props.newMetricArm} onChange={(event) => props.setNewMetricArm(Number(event.target.value))} />
           </label>
           <label>
-            <span>Thigh</span>
+            <span>Đùi</span>
             <input type="number" step="0.1" value={props.newMetricThigh} onChange={(event) => props.setNewMetricThigh(Number(event.target.value))} />
           </label>
           <label className="wide-field">
-            <span>Note</span>
+            <span>Ghi chú</span>
             <input value={props.newMetricNote} onChange={(event) => props.setNewMetricNote(event.target.value)} />
           </label>
           <button className="secondary-button" onClick={props.addBodyMetric}>
@@ -3868,7 +4017,7 @@ function ProgressView(props: {
               <div key={metric.id}>
                 <span>{new Date(metric.measuredAt).toLocaleDateString("vi-VN")}</span>
                 <strong>{formatWeight(metric.weightKg, props.unitWeight)}</strong>
-                <em>{metric.bodyFatPercent ?? "-"}% • W {metric.waistCm ?? "-"}</em>
+                <em>{metric.bodyFatPercent ?? "-"}% • Eo {metric.waistCm ?? "-"}</em>
                 <div className="row-actions">
                   <button onClick={() => props.updateBodyMetric(metric.id, { weightKg: Math.round((metric.weightKg - 0.1) * 10) / 10 })}>
                     -0.1
@@ -3886,7 +4035,7 @@ function ProgressView(props: {
       </section>
 
       <section className="card">
-        <h2>Badges</h2>
+        <h2>Huy hiệu</h2>
         <div className="badge-list">
           {props.achievements.filter((badge) => badge.status !== "disabled").map((badge) => (
             <div key={badge.code}>
@@ -3894,7 +4043,7 @@ function ProgressView(props: {
               <div>
                 <strong>{badge.name}</strong>
                 {badge.condition && <p>{badge.condition}</p>}
-                <p>{badge.progress}/{badge.target} • {badge.status} • streak {badge.streakMonths}</p>
+                <p>{badge.progress}/{badge.target} • {badgeStatusLabel(badge.status)} • streak {badge.streakMonths}</p>
               </div>
             </div>
           ))}
@@ -3902,12 +4051,12 @@ function ProgressView(props: {
         <div className="insight-card">
           <Award size={18} />
           <div>
-            <strong>Progress insight</strong>
-            <p>Consistent hydration and logged sets will unlock stronger weekly trend data.</p>
+            <strong>Gợi ý tiến độ</strong>
+            <p>Uống nước đều và ghi set tập sẽ mở khóa dữ liệu xu hướng tuần tốt hơn.</p>
           </div>
         </div>
         <button className="secondary-button export-button" onClick={props.downloadExport}>
-          Export JSON
+          Xuất JSON
         </button>
       </section>
     </div>
@@ -3925,17 +4074,17 @@ function SharePreviewCard(props: {
       {props.preview ? (
         <>
           <span>{props.preview.summary}</span>
-          <em>Visible: {props.preview.visibleFields.join(", ")}</em>
-          <em>Redacted: {props.preview.redactedFields.join(", ")}</em>
+          <em>Hiển thị: {props.preview.visibleFields.join(", ")}</em>
+          <em>Đã ẩn: {props.preview.redactedFields.join(", ")}</em>
         </>
       ) : (
         <>
-          <span>Sharing is off.</span>
-          <em>Enable opt-in controls in Settings before publishing.</em>
+          <span>Chưa bật chia sẻ.</span>
+          <em>Bật quyền chia sẻ trong Cài đặt trước khi đăng.</em>
         </>
       )}
       <button className="secondary-button" onClick={props.onPublish}>
-        Publish
+        Đăng
       </button>
     </div>
   );
@@ -3962,22 +4111,22 @@ function ReportCard(props: { title: string; report: ProgressReports[keyof Progre
           <h2>{props.title}</h2>
         </div>
         <button className="secondary-button export-button" onClick={props.onExportPdf}>
-          Export PDF
+          Xuất PDF
         </button>
       </div>
       <div className="report-kpi-grid">
         <div>
-          <span>Hydration avg</span>
+          <span>Nước trung bình</span>
           <strong>{props.report.hydrationAverageMl}ml</strong>
           <em>{trendText(trend.hydrationAverageMl, "ml")}</em>
         </div>
         <div>
-          <span>Goal hit</span>
+          <span>Đạt mục tiêu</span>
           <strong>{props.report.hydrationGoalHitRate}%</strong>
           <em>{trendText(trend.goalHitRate, "%")}</em>
         </div>
         <div>
-          <span>Workouts</span>
+          <span>Buổi tập</span>
           <strong>{props.report.workoutCount}</strong>
           <em>{trendText(trend.workoutCount)}</em>
         </div>
@@ -3988,13 +4137,13 @@ function ReportCard(props: { title: string; report: ProgressReports[keyof Progre
         </div>
       </div>
       <div className="report-list">
-        <strong>PRs</strong>
-        <span>{props.report.prs.length ? props.report.prs.slice(0, 3).map((pr) => pr.exerciseName).join(", ") : "No PRs in this period"}</span>
+        <strong>PR</strong>
+        <span>{props.report.prs.length ? props.report.prs.slice(0, 3).map((pr) => pr.exerciseName).join(", ") : "Không có PR trong kỳ này"}</span>
       </div>
       {props.report.badges.length > 0 && (
         <div className="report-list">
-          <strong>Badges</strong>
-          <span>{props.report.badges.filter((badge) => badge.status !== "disabled").map((badge) => `${badge.name}: ${badge.status}`).join(", ") || "Hidden because related module is disabled"}</span>
+          <strong>Huy hiệu</strong>
+          <span>{props.report.badges.filter((badge) => badge.status !== "disabled").map((badge) => `${badge.name}: ${badgeStatusLabel(badge.status)}`).join(", ") || "Đã ẩn vì module liên quan đang tắt"}</span>
         </div>
       )}
     </section>
@@ -4027,35 +4176,35 @@ function BodyMetricCharts(props: {
 
   return (
     <div className="body-chart-panel">
-      <div className="segmented-control" aria-label="Body metric range">
+      <div className="segmented-control" aria-label="Khoảng thời gian chỉ số cơ thể">
         {[7, 30, 90].map((range) => (
           <button key={range} className={props.range === range ? "active" : ""} onClick={() => props.setRange(range as BodyMetricRangeDays)}>
-            {range}d
+            {range}n
           </button>
         ))}
       </div>
       {props.dataset.hasWeightData ? (
         <div className="body-chart">
           <div className="section-heading">
-            <h2>Weight trend</h2>
-            <span className="sync-pill">{props.dataset.weightGoal ? `Goal ${props.dataset.weightGoal}${props.dataset.unit}` : "No goal"}</span>
+            <h2>Xu hướng cân nặng</h2>
+            <span className="sync-pill">{props.dataset.weightGoal ? `Mục tiêu ${props.dataset.weightGoal}${props.dataset.unit}` : "Chưa có mục tiêu"}</span>
           </div>
-          <div className="body-chart-bars" aria-label={`Weight chart ${props.range} days`}>
+          <div className="body-chart-bars" aria-label={`Biểu đồ cân nặng ${props.range} ngày`}>
             {props.dataset.points.map((point, index) => (
               <span key={`${point.date}-${index}`} title={`${point.date}: ${point.weight}${props.dataset.unit}`} style={{ height: heightFor(point.smoothedWeight, weightMin, weightMax) }} />
             ))}
           </div>
         </div>
       ) : (
-        <EmptyState title="No weight chart yet" text="Add body metrics to see weight over 7, 30, or 90 days." />
+        <EmptyState title="Chưa có biểu đồ cân nặng" text="Thêm chỉ số cơ thể để xem cân nặng trong 7, 30 hoặc 90 ngày." />
       )}
       {props.dataset.hasBodyFatData ? (
         <div className="body-chart">
           <div className="section-heading">
-            <h2>Body fat trend</h2>
-            <span className="sync-pill">{props.dataset.bodyFatGoal ? `Goal ${props.dataset.bodyFatGoal}%` : "No goal"}</span>
+            <h2>Xu hướng mỡ cơ thể</h2>
+            <span className="sync-pill">{props.dataset.bodyFatGoal ? `Mục tiêu ${props.dataset.bodyFatGoal}%` : "Chưa có mục tiêu"}</span>
           </div>
-          <div className="body-chart-bars body-fat-chart" aria-label={`Body fat chart ${props.range} days`}>
+          <div className="body-chart-bars body-fat-chart" aria-label={`Biểu đồ mỡ cơ thể ${props.range} ngày`}>
             {props.dataset.points
               .filter((point) => point.smoothedBodyFatPercent !== undefined)
               .map((point, index) => (
@@ -4064,7 +4213,7 @@ function BodyMetricCharts(props: {
           </div>
         </div>
       ) : (
-        <EmptyState title="No body fat chart yet" text="Add body fat percentage to at least one metric to show this chart." />
+        <EmptyState title="Chưa có biểu đồ mỡ cơ thể" text="Thêm phần trăm mỡ cơ thể vào ít nhất một chỉ số để hiển thị biểu đồ này." />
       )}
     </div>
   );
@@ -4082,7 +4231,7 @@ function CoachView(props: {
   return (
     <div className="stack">
       <section className="card coach-card">
-        <p className="eyebrow">Coach recommendation</p>
+        <p className="eyebrow">Gợi ý coach</p>
         <h1>{props.recommendation.title}</h1>
         <p>{props.recommendation.reason}</p>
         <div className="coach-actions">
@@ -4095,49 +4244,49 @@ function CoachView(props: {
         </div>
       </section>
       <section className="card">
-        <h2>Readiness</h2>
+        <h2>Độ sẵn sàng</h2>
         <div className="readiness-score">
           <strong>{readinessScore(props.recovery)}</strong>
           <span>{props.recovery.note}</span>
         </div>
         <div className="recovery-controls">
           <label>
-            Energy
+            Năng lượng
             <input type="range" min="1" max="5" value={props.recovery.energy} onChange={(event) => props.updateRecovery({ energy: Number(event.target.value) })} />
           </label>
           <label>
-            Sleep
+            Giấc ngủ
             <input type="range" min="1" max="5" value={props.recovery.sleepQuality} onChange={(event) => props.updateRecovery({ sleepQuality: Number(event.target.value) })} />
           </label>
           <label>
-            Soreness
+            Đau mỏi
             <input type="range" min="1" max="5" value={props.recovery.soreness} onChange={(event) => props.updateRecovery({ soreness: Number(event.target.value) })} />
           </label>
           <label>
-            Stress
+            Căng thẳng
             <input type="range" min="1" max="5" value={props.recovery.stress} onChange={(event) => props.updateRecovery({ stress: Number(event.target.value) })} />
           </label>
-          <input value={props.recovery.note} onChange={(event) => props.updateRecovery({ note: event.target.value })} aria-label="Recovery note" />
+          <input value={props.recovery.note} onChange={(event) => props.updateRecovery({ note: event.target.value })} aria-label="Ghi chú phục hồi" />
         </div>
       </section>
       <section className="card">
-        <h2>Recommendation audit</h2>
+        <h2>Audit gợi ý</h2>
         <div className="timeline compact">
           {props.decisions.length ? (
             props.decisions.map((decision) => (
               <div key={decision.id}>
                 <span>{new Date(decision.decidedAt).toLocaleDateString("vi-VN")}</span>
-                <strong>{decision.decision}</strong>
+                <strong>{recommendationDecisionLabel(decision.decision)}</strong>
                 <em>{decision.title}</em>
               </div>
             ))
           ) : (
-            <p>Chưa có recommendation nào được áp dụng hoặc từ chối.</p>
+            <p>Chưa có gợi ý nào được áp dụng hoặc từ chối.</p>
           )}
         </div>
       </section>
       <section className="card">
-        <h2>Leaderboard preview</h2>
+        <h2>Xem trước bảng xếp hạng</h2>
         <div className="leaderboard">
           {["Minh", "Phúc", "An"].map((name, index) => (
             <div key={name}>
@@ -4252,14 +4401,14 @@ function SettingsView(props: {
         <div className="settings-profile-head">
           <div className="settings-avatar">{(props.state.profile.name || "A").slice(0, 1).toUpperCase()}</div>
           <div>
-            <strong>{props.state.profile.name || "Athlete"}</strong>
-            <p>{props.state.profile.email || "Local profile"} - goal: stronger every day</p>
+            <strong>{props.state.profile.name || "Người tập"}</strong>
+            <p>{props.state.profile.email || "Hồ sơ local"} - mục tiêu: mạnh hơn mỗi ngày</p>
           </div>
           <ChevronRight size={18} />
         </div>
-        <h2>Profile</h2>
+        <h2>Hồ sơ</h2>
         <div className="setting-row">
-          <span>Session</span>
+          <span>Phiên</span>
           <strong>{props.state.profile.authMode}</strong>
         </div>
         <label className="setting-row">
@@ -4271,7 +4420,7 @@ function SettingsView(props: {
           />
         </label>
         <label className="setting-row">
-          <span>Password</span>
+          <span>Mật khẩu</span>
           <input
             type="password"
             value={props.authPassword}
@@ -4281,16 +4430,16 @@ function SettingsView(props: {
         </label>
         <div className="split-actions">
           <button className="secondary-button" onClick={() => props.authenticateEmail("sign-up")}>
-            Sign up email
+            Đăng ký bằng email
           </button>
           <button className="secondary-button" onClick={() => props.authenticateEmail("sign-in")}>
-            Sign in email
+            Đăng nhập bằng email
           </button>
           <button className="secondary-button" onClick={props.startGoogleOAuth}>
             Google OAuth
           </button>
           <button className="secondary-button" onClick={() => props.signInLocal("local")}>
-            Local mode
+            Chế độ local
           </button>
         </div>
         <button className="secondary-button export-button" onClick={props.reopenOnboarding}>
@@ -4333,7 +4482,7 @@ function SettingsView(props: {
               <label className="toggle-row">
                 <span>
                   {module.name}
-                  <em>{module.id === "water" ? "Primary" : module.category}</em>
+                  <em>{module.id === "water" ? "Chính" : module.category === "drink" ? "Thức uống" : "Supplement"}</em>
                 </span>
                 <input
                   type="checkbox"
@@ -4349,7 +4498,7 @@ function SettingsView(props: {
                 </label>
                 {module.category === "drink" && (
                   <label>
-                    <span>Hydration factor</span>
+                    <span>Hệ số tính nước</span>
                     <input
                       type="number"
                       min="0"
@@ -4362,7 +4511,7 @@ function SettingsView(props: {
                   </label>
                 )}
                 <label className="toggle-row compact-toggle">
-                  <span>Reminder</span>
+                  <span>Nhắc</span>
                   <input
                     type="checkbox"
                     checked={module.reminderEnabled}
@@ -4374,24 +4523,24 @@ function SettingsView(props: {
             </div>
           ))}
         </div>
-        <p className="privacy-note">Water luôn là thức uống chính; module tắt sẽ rời khỏi UI hằng ngày nhưng dữ liệu cũ vẫn nằm trong export.</p>
+        <p className="privacy-note">Nước luôn là thức uống chính; module tắt sẽ rời khỏi UI hằng ngày nhưng dữ liệu cũ vẫn nằm trong bản xuất.</p>
       </section>
       <section className="card">
-        <h2>Plate calculator</h2>
+        <h2>Bộ tính đĩa tạ</h2>
         <div className="settings-inline-grid">
           <label>
-            <span>Barbell</span>
+            <span>Thanh đòn</span>
             <select
               value={props.state.plateSettings.barbellDefault}
               onChange={(event) => props.updatePlateSettings({ barbellDefault: event.target.value as PlateSettings["barbellDefault"] })}
             >
               <option value="20kg">20kg</option>
               <option value="15kg">15kg</option>
-              <option value="custom">Custom</option>
+              <option value="custom">Tùy chỉnh</option>
             </select>
           </label>
           <label>
-            <span>Custom bar kg</span>
+            <span>Thanh tùy chỉnh kg</span>
             <input
               type="number"
               min="0"
@@ -4402,18 +4551,18 @@ function SettingsView(props: {
             />
           </label>
           <label className="wide-field">
-            <span>Plate inventory kg</span>
+            <span>Đĩa tạ hiện có kg</span>
             <input
               value={props.state.plateSettings.plateInventoryKg.join(", ")}
               onChange={(event) => props.updatePlateSettings({ plateInventoryKg: parsePlateInventory(event.target.value) })}
-              aria-label="Plate inventory kg"
+              aria-label="Đĩa tạ hiện có kg"
             />
           </label>
         </div>
-        <p className="privacy-note">Live Workout dùng cấu hình này để hiển thị đĩa mỗi bên từ target weight hoặc tạ đang log.</p>
+        <p className="privacy-note">Buổi tập live dùng cấu hình này để hiển thị đĩa mỗi bên từ tạ mục tiêu hoặc tạ đang ghi.</p>
       </section>
       <section className="card">
-        <h2>Privacy</h2>
+        <h2>Quyền riêng tư</h2>
         <label className="toggle-row">
           <span>Tham gia leaderboard</span>
           <input
@@ -4425,15 +4574,15 @@ function SettingsView(props: {
         <p className="privacy-note">Mặc định riêng tư. Leaderboard chỉ hiển thị tên, avatar, rank và badge streak.</p>
       </section>
       <section className="card">
-        <h2>Social privacy</h2>
-        <p className="privacy-note">Private by default. Sharing requires opt-in and never includes weight, body fat, email, or exercise details unless that exact permission is enabled.</p>
-        <div className="restore-section-grid" aria-label="Social privacy controls">
+        <h2>Quyền riêng tư xã hội</h2>
+        <p className="privacy-note">Mặc định riêng tư. Chia sẻ cần bật quyền trước và không bao giờ gồm cân nặng, mỡ cơ thể, email hoặc chi tiết bài tập trừ khi đúng quyền đó được bật.</p>
+        <div className="restore-section-grid" aria-label="Điều khiển quyền riêng tư xã hội">
           {[
-            ["friendLeaderboardEnabled", "Friend leaderboard"],
-            ["shareBadges", "Share badges"],
-            ["shareWorkoutSummaries", "Share workout summaries"],
-            ["shareWorkoutDetails", "Workout details consent"],
-            ["shareBodyMetrics", "Body metrics consent"]
+            ["friendLeaderboardEnabled", "Bảng xếp hạng bạn bè"],
+            ["shareBadges", "Chia sẻ huy hiệu"],
+            ["shareWorkoutSummaries", "Chia sẻ tóm tắt tập luyện"],
+            ["shareWorkoutDetails", "Đồng ý chia sẻ chi tiết tập"],
+            ["shareBodyMetrics", "Đồng ý chia sẻ chỉ số cơ thể"]
           ].map(([key, label]) => (
             <label key={key} className="toggle-row compact-toggle">
               <span>{label}</span>
@@ -4446,29 +4595,29 @@ function SettingsView(props: {
           ))}
         </div>
         <div className="section-heading">
-          <h3>Friends</h3>
-          <button className="secondary-button" onClick={props.addFriend}>Add friend</button>
+          <h3>Bạn bè</h3>
+          <button className="secondary-button" onClick={props.addFriend}>Thêm bạn</button>
         </div>
         <div className="leaderboard">
           {props.state.friends.map((friend) => (
             <div key={friend.id}>
-              <span>{friend.status}</span>
+              <span>{friendStatusLabels[friend.status]}</span>
               <strong>{friend.displayName}</strong>
-              <em>{friend.handle} - {friend.score} pts</em>
+              <em>{friend.handle} - {friend.score} điểm</em>
               <div className="split-actions">
-                <button className="secondary-button" onClick={() => props.updateFriend(friend.id, { status: "accepted" })}>Accept</button>
-                <button className="secondary-button danger-button" onClick={() => props.updateFriend(friend.id, { status: "blocked" })}>Block</button>
+                <button className="secondary-button" onClick={() => props.updateFriend(friend.id, { status: "accepted" })}>Chấp nhận</button>
+                <button className="secondary-button danger-button" onClick={() => props.updateFriend(friend.id, { status: "blocked" })}>Chặn</button>
               </div>
             </div>
           ))}
         </div>
       </section>
       <section className="card">
-        <h2>Health platform permissions</h2>
+        <h2>Quyền nền tảng sức khỏe</h2>
         <p className="privacy-note">{healthPrivacyCopy}</p>
         <div className="settings-inline-grid">
           <label>
-            <span>Platform</span>
+            <span>Nền tảng</span>
             <select
               value={props.state.healthIntegration.provider}
               onChange={(event) => props.updateHealthIntegration({ provider: event.target.value as HealthProvider, permissionStatus: "not_requested" })}
@@ -4478,7 +4627,7 @@ function SettingsView(props: {
             </select>
           </label>
           <label>
-            <span>Weight unit</span>
+            <span>Đơn vị cân nặng</span>
             <select
               value={props.state.healthIntegration.unitMapping.weight}
               onChange={(event) =>
@@ -4492,7 +4641,7 @@ function SettingsView(props: {
             </select>
           </label>
           <label>
-            <span>Hydration unit</span>
+            <span>Đơn vị nước</span>
             <select
               value={props.state.healthIntegration.unitMapping.hydration}
               onChange={(event) =>
@@ -4506,7 +4655,7 @@ function SettingsView(props: {
             </select>
           </label>
           <label>
-            <span>Workout distance</span>
+            <span>Quãng đường tập luyện</span>
             <select
               value={props.state.healthIntegration.unitMapping.workoutDistance}
               onChange={(event) =>
@@ -4520,10 +4669,10 @@ function SettingsView(props: {
             </select>
           </label>
         </div>
-        <div className="restore-section-grid" aria-label="Health data type controls">
+        <div className="restore-section-grid" aria-label="Điều khiển loại dữ liệu sức khỏe">
           {healthSyncDataTypes.map((dataType) => (
             <label key={dataType} className="toggle-row compact-toggle">
-              <span>{dataType === "weight" ? "Sync weight" : dataType === "workout" ? "Sync workout" : "Sync hydration"}</span>
+              <span>Đồng bộ {healthDataTypeLabels[dataType].toLowerCase()}</span>
               <input
                 type="checkbox"
                 checked={props.state.healthIntegration.selectedDataTypes.includes(dataType)}
@@ -4532,7 +4681,7 @@ function SettingsView(props: {
             </label>
           ))}
           <label className="toggle-row compact-toggle">
-            <span>Health privacy consent</span>
+            <span>Đồng ý quyền riêng tư sức khỏe</span>
             <input
               type="checkbox"
               checked={props.state.healthIntegration.privacyAccepted}
@@ -4541,50 +4690,50 @@ function SettingsView(props: {
           </label>
         </div>
         <div className="readiness-list">
-          <span>Permission: {props.state.healthIntegration.permissionStatus}</span>
-          <span>Native bridge: {props.state.healthIntegration.nativeBridgeAvailable ? "available" : "required"}</span>
+          <span>Quyền: {healthPermissionStatusLabel(props.state.healthIntegration.permissionStatus)}</span>
+          <span>Cầu nối native: {props.state.healthIntegration.nativeBridgeAvailable ? "khả dụng" : "cần thiết"}</span>
           {healthSyncDataTypes.map((dataType) => (
             <span key={dataType}>
-              {dataType}: {canSyncHealthData(props.state.healthIntegration, dataType) ? "Allowed by contract" : "Not syncing"}
+              {healthDataTypeLabels[dataType]}: {healthSyncContractLabel(props.state.healthIntegration, dataType)}
             </span>
           ))}
         </div>
         <div className="split-actions">
           <button className="secondary-button" onClick={props.requestHealthPermission} disabled={!props.state.healthIntegration.selectedDataTypes.length}>
-            Request health permission
+            Yêu cầu quyền sức khỏe
           </button>
           <button className="secondary-button danger-button" onClick={props.revokeHealthPermission}>
-            Revoke health permission
+            Thu hồi quyền sức khỏe
           </button>
         </div>
       </section>
       <section className="card">
-        <h2>Notifications</h2>
+        <h2>Thông báo</h2>
         <div className="setting-row">
           <span>Quyền trình duyệt</span>
-          <strong>{props.notificationPermission}</strong>
+          <strong>{notificationPermissionLabel(props.notificationPermission)}</strong>
         </div>
         <button className="secondary-button export-button" onClick={props.requestNotifications}>
           Bật thông báo
         </button>
         <div className="setting-row">
-          <span>Web Push env</span>
-          <strong>{props.pushConfigured ? "configured" : "fallback"}</strong>
+          <span>Môi trường Web Push</span>
+          <strong>{props.pushConfigured ? "đã cấu hình" : "dùng fallback"}</strong>
         </div>
         <div className="setting-row">
-          <span>Subscription</span>
-          <strong>{props.pushSubscriptionStatus}</strong>
+          <span>Đăng ký push</span>
+          <strong>{pushSubscriptionStatusLabel(props.pushSubscriptionStatus)}</strong>
         </div>
         <div className="split-actions">
           <button className="secondary-button" onClick={props.subscribeWebPush} disabled={props.notificationPermission !== "granted" || props.pushSubscriptionStatus === "subscribed"}>
-            Subscribe push
+            Đăng ký push
           </button>
           <button className="secondary-button" onClick={props.unsubscribeWebPush} disabled={props.pushSubscriptionStatus !== "subscribed"}>
-            Unsubscribe push
+            Hủy đăng ký push
           </button>
         </div>
         <button className="secondary-button export-button" onClick={props.sendTestPushNotification}>
-          Send test notification
+          Gửi thông báo thử
         </button>
         <label className="toggle-row">
           <span>Nhắc uống nước</span>
@@ -4596,25 +4745,25 @@ function SettingsView(props: {
         </label>
         <div className="settings-inline-grid">
           <label>
-            <span>Water mode</span>
+            <span>Chế độ nhắc nước</span>
             <select
               value={props.state.notificationSettings.hydrationMode}
               onChange={(event) => props.updateNotificationSettings({ hydrationMode: event.target.value as AppState["notificationSettings"]["hydrationMode"] })}
             >
-              <option value="interval">Interval</option>
-              <option value="fixed">Fixed times</option>
+              <option value="interval">Theo khoảng cách</option>
+              <option value="fixed">Giờ cố định</option>
             </select>
           </label>
           <label>
-            <span>Fixed hours</span>
+            <span>Giờ cố định</span>
             <input
               value={props.state.notificationSettings.hydrationTimes.join(", ")}
               onChange={(event) => props.updateNotificationSettings({ hydrationTimes: parseHours(event.target.value) })}
-              aria-label="Water fixed reminder hours"
+              aria-label="Giờ nhắc nước cố định"
             />
           </label>
           <label>
-            <span>Interval hours</span>
+            <span>Khoảng cách giờ</span>
             <input
               type="number"
               min="1"
@@ -4636,27 +4785,27 @@ function SettingsView(props: {
         </label>
         <div className="settings-inline-grid">
           <label>
-            <span>Creatine mode</span>
+            <span>Chế độ nhắc creatine</span>
             <select
               value={props.state.notificationSettings.creatineMode}
               disabled={!creatineActive}
               onChange={(event) => props.updateNotificationSettings({ creatineMode: event.target.value as AppState["notificationSettings"]["creatineMode"] })}
             >
-              <option value="fixed">Fixed times</option>
-              <option value="interval">Interval</option>
+              <option value="fixed">Giờ cố định</option>
+              <option value="interval">Theo khoảng cách</option>
             </select>
           </label>
           <label>
-            <span>Fixed hours</span>
+            <span>Giờ cố định</span>
             <input
               value={props.state.notificationSettings.creatineTimes.join(", ")}
               disabled={!creatineActive}
               onChange={(event) => props.updateNotificationSettings({ creatineTimes: parseHours(event.target.value) })}
-              aria-label="Creatine fixed reminder hours"
+              aria-label="Giờ nhắc creatine cố định"
             />
           </label>
           <label>
-            <span>Interval hours</span>
+            <span>Khoảng cách giờ</span>
             <input
               type="number"
               min="1"
@@ -4668,7 +4817,7 @@ function SettingsView(props: {
           </label>
         </div>
         <label className="toggle-row">
-          <span>Quiet hours</span>
+          <span>Giờ yên lặng</span>
           <input
             type="checkbox"
             checked={props.state.notificationSettings.quietHoursEnabled}
@@ -4677,7 +4826,7 @@ function SettingsView(props: {
         </label>
         <div className="settings-inline-grid">
           <label>
-            <span>Quiet start</span>
+            <span>Bắt đầu yên lặng</span>
             <input
               type="number"
               min="0"
@@ -4687,7 +4836,7 @@ function SettingsView(props: {
             />
           </label>
           <label>
-            <span>Quiet end</span>
+            <span>Kết thúc yên lặng</span>
             <input
               type="number"
               min="0"
@@ -4697,7 +4846,7 @@ function SettingsView(props: {
             />
           </label>
           <label className="toggle-row compact-toggle">
-            <span>In-app fallback</span>
+            <span>Fallback trong app</span>
             <input
               type="checkbox"
               checked={props.state.notificationSettings.inAppFallbackEnabled}
@@ -4707,83 +4856,83 @@ function SettingsView(props: {
         </div>
         <div className="split-actions">
           <button className="secondary-button" onClick={() => snooze(30)}>
-            Snooze 30m
+            Tạm hoãn 30 phút
           </button>
           <button className="secondary-button" onClick={() => snooze(120)}>
-            Snooze 2h
+            Tạm hoãn 2 giờ
           </button>
         </div>
         <button className="secondary-button export-button" onClick={() => props.updateNotificationSettings({ snoozeUntil: undefined })}>
-          Clear snooze {props.state.notificationSettings.snoozeUntil ? `(${new Date(props.state.notificationSettings.snoozeUntil).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })})` : ""}
+          Xóa tạm hoãn {props.state.notificationSettings.snoozeUntil ? `(${new Date(props.state.notificationSettings.snoozeUntil).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })})` : ""}
         </button>
         <p className="privacy-note">Web Push thật cần VAPID/FCM credentials; app hiện đã có service worker action handler và API subscription contract.</p>
       </section>
       <section className="card">
-        <h2>Backend readiness</h2>
+        <h2>Sẵn sàng backend</h2>
         <div className="readiness-list">
-          <span>Storage: {props.healthDashboard?.storageAdapter ?? "checking"}</span>
-          <span>Request id: {props.healthDashboard?.requestId ?? "checking"}</span>
-          <span>Checked: {props.healthDashboard?.checkedAt ? new Date(props.healthDashboard.checkedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "checking"}</span>
+          <span>Lưu trữ: {props.healthDashboard?.storageAdapter ?? "đang kiểm tra"}</span>
+          <span>Mã yêu cầu: {props.healthDashboard?.requestId ?? "đang kiểm tra"}</span>
+          <span>Đã kiểm tra: {props.healthDashboard?.checkedAt ? new Date(props.healthDashboard.checkedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "đang kiểm tra"}</span>
           {Object.entries(props.healthDashboard?.integrations ?? {}).map(([name, status]) => (
             <span key={name}>
-              {name}: {status}
+              {name}: {integrationStatusLabel(status)}
             </span>
           ))}
         </div>
       </section>
       <section className="card">
-        <h2>Offline sync queue</h2>
+        <h2>Queue đồng bộ ngoại tuyến</h2>
         <div className="readiness-list">
-          <span>{pendingQueue} pending</span>
-          <span>{syncedQueue} synced</span>
-          <span>{failedQueue} failed</span>
+          <span>{pendingQueue} đang chờ</span>
+          <span>{syncedQueue} đã đồng bộ</span>
+          <span>{failedQueue} lỗi</span>
         </div>
         <div className="split-actions">
           <button className="secondary-button" onClick={() => props.markQueue("synced")} disabled={!pendingQueue}>
-            Retry / mark synced
+            Thử lại / đánh dấu đã đồng bộ
           </button>
           <button className="secondary-button" onClick={() => props.markQueue("failed")} disabled={!pendingQueue}>
-            Mark failed
+            Đánh dấu lỗi
           </button>
         </div>
         <div className="split-actions">
           <button className="secondary-button" onClick={() => props.clearQueue("synced")} disabled={!syncedQueue}>
-            Clear synced
+            Xóa mục đã đồng bộ
           </button>
           <button className="secondary-button" onClick={() => props.clearQueue("failed")} disabled={!failedQueue}>
-            Clear failed
+            Xóa mục lỗi
           </button>
           <button className="secondary-button" onClick={() => props.clearQueue("conflict")} disabled={!props.state.syncQueue.some((item) => item.status === "conflict")}>
-            Clear conflicts
+            Xóa xung đột
           </button>
         </div>
         <div className="sync-preview">
           {props.state.syncQueue.map((item) => (
             <div key={item.id}>
-              <span>{item.status}</span>
+              <span>{syncQueueStatusLabel(item.status)}</span>
               <strong>{item.type}</strong>
               <em>
-                {item.attempts ?? 0} tries
-                {item.nextRetryAt ? ` - retry ${new Date(item.nextRetryAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}` : ""}
+                {item.attempts ?? 0} lần thử
+                {item.nextRetryAt ? ` - thử lại ${new Date(item.nextRetryAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}` : ""}
               </em>
               {item.lastError && <small>{item.lastError}</small>}
               {item.conflict && (
                 <small>
-                  Conflict: {item.conflict.message}. Remote preview: {JSON.stringify(item.conflict.remote).slice(0, 140)}
+                  Xung đột: {item.conflict.message}. Bản xem trước từ server: {JSON.stringify(item.conflict.remote).slice(0, 140)}
                 </small>
               )}
               <small>{JSON.stringify(item.payload).slice(0, 180)}</small>
               <div className="split-actions">
                 <button className="secondary-button" onClick={() => props.retryQueueItem(item.id)} disabled={item.status === "pending" || item.status === "syncing"}>
-                  Retry
+                  Thử lại
                 </button>
                 <button className="secondary-button" onClick={() => props.confirmRoutineConflict(item.id)} disabled={item.status !== "conflict"}>
-                  Confirm routine
+                  Xác nhận lịch tập
                 </button>
               </div>
             </div>
           ))}
-          {!props.state.syncQueue.length && <div>No queued mutations</div>}
+          {!props.state.syncQueue.length && <div>Không có thay đổi nào trong queue</div>}
         </div>
         <p className="privacy-note">Queue hiện lưu local-first để chuẩn bị sync backend và xử lý retry/conflict ở bước production.</p>
       </section>
@@ -4792,11 +4941,11 @@ function SettingsView(props: {
         <p className="privacy-note">Export JSON gồm metadata appVersion, exportedAt, schemaVersion và local profile id. Import JSON được kiểm tra schema trước khi restore nên file sai không ghi đè dữ liệu hiện tại.</p>
         <div className="restore-section-grid" aria-label="Chọn nhóm dữ liệu restore">
           {[
-            ["profile", "Profile"],
-            ["hydration", "Hydration"],
-            ["workouts", "Workouts"],
-            ["bodyMetrics", "Body metrics"],
-            ["settings", "Settings"]
+            ["profile", restoreSectionLabels.profile],
+            ["hydration", restoreSectionLabels.hydration],
+            ["workouts", restoreSectionLabels.workouts],
+            ["bodyMetrics", restoreSectionLabels.bodyMetrics],
+            ["settings", restoreSectionLabels.settings]
           ].map(([section, label]) => (
             <label key={section} className="toggle-row compact-toggle">
               <span>{label}</span>
@@ -4810,29 +4959,29 @@ function SettingsView(props: {
         </div>
         <div className="settings-actions">
           <button className="secondary-button" onClick={props.downloadExport}>
-            Export JSON
+            Xuất JSON
           </button>
           <button className="secondary-button" onClick={() => props.downloadCsvExport()}>
-            Export all CSV
+            Xuất tất cả CSV
           </button>
           <label className="secondary-button import-button">
-            Import JSON
+            Nhập JSON
             <input type="file" accept="application/json" onChange={(event) => event.target.files?.[0] && props.importJsonExport(event.target.files[0])} />
           </label>
           <button className="secondary-button danger-button" onClick={() => window.confirm("Xóa dữ liệu cá nhân local? Leaderboard sẽ tắt và dữ liệu profile, hydration, workout, body metrics, queue local sẽ bị xóa.") && props.deletePersonalData()}>
-            Delete personal data
+            Xóa dữ liệu cá nhân
           </button>
-          <button className="secondary-button danger-button" onClick={() => window.confirm("Reset demo data? Flow này khôi phục dữ liệu mẫu và tách riêng khỏi xóa dữ liệu cá nhân.") && props.reset()}>
-            Reset demo data
+          <button className="secondary-button danger-button" onClick={() => window.confirm("Đặt lại dữ liệu demo? Luồng này khôi phục dữ liệu mẫu và tách riêng khỏi xóa dữ liệu cá nhân.") && props.reset()}>
+            Đặt lại dữ liệu demo
           </button>
         </div>
         <p className="privacy-note">Leaderboard mặc định tắt; khi bật chỉ gửi trạng thái public cho hồ sơ xếp hạng. Dữ liệu cá nhân như email, số đo cơ thể, lịch sử uống nước và workout chỉ nằm trong local/export JSON cho đến khi bạn restore hoặc xóa.</p>
         <div className="dataset-export-grid" aria-label="Export CSV theo dataset">
           {[
-            ["hydration", "Hydration"],
-            ["creatine", "Creatine"],
-            ["workouts", "Workouts"],
-            ["body-metrics", "Body metrics"]
+            ["hydration", csvDatasetLabels.hydration],
+            ["creatine", csvDatasetLabels.creatine],
+            ["workouts", csvDatasetLabels.workouts],
+            ["body-metrics", csvDatasetLabels["body-metrics"]]
           ].map(([dataset, label]) => (
             <button key={dataset} onClick={() => props.downloadCsvExport(dataset as CsvDataset)}>
               <span>{label}</span>

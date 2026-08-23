@@ -10,7 +10,7 @@ export default function GlobalError({ error }: { error: Error & { digest?: strin
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        message: error.message || "Critical error",
+        message: error.message || "Lỗi nghiêm trọng",
         digest: error.digest,
         stack: error.stack,
         path: window.location.pathname,
@@ -26,9 +26,9 @@ export default function GlobalError({ error }: { error: Error & { digest?: strin
           <section className="card state-card">
             <AlertTriangle size={28} />
             <div>
-              <p className="eyebrow">Critical error</p>
-              <h1>Ung dung dang gap loi</h1>
-              <p>{error.digest ? `Ma loi: ${error.digest}` : "Kiem tra log server va endpoint /api/health de khoanh vung nguyen nhan."}</p>
+              <p className="eyebrow">Lỗi nghiêm trọng</p>
+              <h1>Ứng dụng đang gặp lỗi</h1>
+              <p>{error.digest ? `Mã lỗi: ${error.digest}` : "Kiểm tra log server và endpoint /api/health để khoanh vùng nguyên nhân."}</p>
             </div>
           </section>
         </main>

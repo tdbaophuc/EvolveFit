@@ -119,7 +119,7 @@ describe("api service layer", () => {
     if (!result.ok) return;
     expect(result.data.recommendation).toHaveProperty("mode");
     expect(["rule-fallback", "gemini", "openai"]).toContain(result.data.recommendation.mode);
-    expect(result.data.recommendation.guardrail).toContain("Training guidance only");
+    expect(result.data.recommendation.guardrail).toContain("Chỉ là gợi ý tập luyện");
     const feedback = coachRecommendationFeedback({ recommendationId: result.data.recommendation.id, decision: "accepted", feedback: "reasonable" });
     expect(feedback.ok && feedback.data.decision.feedback).toBe("reasonable");
   });

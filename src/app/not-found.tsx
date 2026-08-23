@@ -8,11 +8,11 @@ export default function NotFound() {
         <Home size={28} />
         <div>
           <p className="eyebrow">404</p>
-          <h1>Khong tim thay trang</h1>
-          <p>Duong dan nay khong ton tai hoac da duoc doi.</p>
+          <h1>Không tìm thấy trang</h1>
+          <p>Đường dẫn này không tồn tại hoặc đã được đổi.</p>
         </div>
         <Link className="primary-button training-bg link-button" href="/">
-          Ve Today
+          Về Hôm nay
         </Link>
       </section>
     </main>
