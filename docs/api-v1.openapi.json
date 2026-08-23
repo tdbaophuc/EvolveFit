@@ -1,0 +1,175 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "EvolveFit API V1",
+    "version": "1.0.0",
+    "description": "Local-first EvolveFit API contract for hydration, supplements, routines, workouts, sync, auth, and observability."
+  },
+  "servers": [{ "url": "/" }],
+  "components": {
+    "headers": {
+      "RequestId": {
+        "description": "Stable request id for correlating responses and structured logs.",
+        "schema": { "type": "string" }
+      }
+    },
+    "schemas": {
+      "ApiError": {
+        "type": "object",
+        "required": ["ok", "error", "requestId"],
+        "properties": {
+          "ok": { "const": false },
+          "error": { "type": "string" },
+          "requestId": { "type": "string" }
+        }
+      },
+      "ApiOk": {
+        "type": "object",
+        "required": ["ok", "data"],
+        "properties": {
+          "ok": { "const": true },
+          "data": {},
+          "requestId": { "type": "string" }
+        }
+      },
+      "HydrationLog": {
+        "type": "object",
+        "required": ["id", "amountMl", "drinkType", "loggedAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "amountMl": { "type": "number" },
+          "drinkType": { "type": "string" },
+          "loggedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ExerciseDefinition": {
+        "type": "object",
+        "required": ["id", "name", "muscleGroup", "equipment", "movementPattern", "builtIn"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "muscleGroup": { "type": "string" },
+          "equipment": { "enum": ["barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "other"] },
+          "movementPattern": { "enum": ["push", "pull", "squat", "hinge", "lunge", "carry", "isolation", "core"] },
+          "builtIn": { "type": "boolean" },
+          "notes": { "type": "string" }
+        }
+      },
+      "Routine": {
+        "type": "object",
+        "required": ["id", "name", "daysPerWeek", "days", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "daysPerWeek": { "type": "integer" },
+          "days": { "type": "array", "items": { "type": "object" } },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "WorkoutSession": {
+        "type": "object",
+        "required": ["id", "routineId", "workoutDayId", "sessionName", "startedAt", "durationSeconds", "status", "sessionExerciseOrder", "exerciseQueue"],
+        "properties": {
+          "id": { "type": "string" },
+          "routineId": { "type": "string" },
+          "workoutDayId": { "type": "string" },
+          "sessionName": { "type": "string" },
+          "startedAt": { "type": "string", "format": "date-time" },
+          "endedAt": { "type": "string", "format": "date-time" },
+          "durationSeconds": { "type": "integer" },
+          "status": { "enum": ["active", "paused", "finished", "cancelled"] },
+          "sessionExerciseOrder": { "type": "array", "items": { "type": "string" } },
+          "exerciseQueue": { "type": "array", "items": { "$ref": "#/components/schemas/SessionExerciseQueueItem" } }
+        }
+      },
+      "SessionExerciseQueueItem": {
+        "type": "object",
+        "required": ["exerciseId", "status"],
+        "properties": {
+          "exerciseId": { "type": "string" },
+          "status": { "enum": ["queued", "completed", "parked"] }
+        }
+      },
+      "WorkoutSet": {
+        "type": "object",
+        "required": ["id", "exerciseId", "exerciseName", "targetWeightKg", "targetReps", "actualWeightKg", "actualReps"],
+        "properties": {
+          "id": { "type": "string" },
+          "sessionId": { "type": "string" },
+          "exerciseId": { "type": "string" },
+          "exerciseName": { "type": "string" },
+          "setType": { "enum": ["warmup", "working", "drop", "failure"] },
+          "targetWeightKg": { "type": "number" },
+          "targetReps": { "type": "integer" },
+          "actualWeightKg": { "type": "number" },
+          "actualReps": { "type": "integer" },
+          "rpe": { "type": "number" },
+          "completedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "SyncBatchItem": {
+        "type": "object",
+        "required": ["type", "payload"],
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string" },
+          "payload": {},
+          "idempotencyKey": { "type": "string" }
+        }
+      },
+      "ClientErrorReport": {
+        "type": "object",
+        "required": ["message"],
+        "properties": {
+          "requestId": { "type": "string" },
+          "message": { "type": "string" },
+          "digest": { "type": "string" },
+          "stack": { "type": "string" },
+          "path": { "type": "string" },
+          "userAgent": { "type": "string" }
+        }
+      }
+    },
+    "responses": {
+      "Ok": {
+        "description": "Successful API result.",
+        "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiOk" } } }
+      },
+      "Error": {
+        "description": "Failed API result.",
+        "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+      }
+    }
+  },
+  "paths": {
+    "/api/health": { "get": { "summary": "Health and integration readiness", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
+    "/api/integrations/status": { "get": { "summary": "Integration status", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
+    "/api/docs/openapi": { "get": { "summary": "OpenAPI V1 spec", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
+    "/api/observability/logs": { "get": { "summary": "Recent structured logs, optionally filtered by requestId", "parameters": [{ "name": "requestId", "in": "query", "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
+    "/api/client-errors": { "post": { "summary": "Report client error", "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ClientErrorReport" } } } }, "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" } } } },
+    "/api/auth/session": { "get": { "summary": "Current auth session", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
+    "/api/auth/sign-in": { "post": { "summary": "Sign in", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "401": { "$ref": "#/components/responses/Error" }, "429": { "$ref": "#/components/responses/Error" } } } },
+    "/api/auth/sign-up": { "post": { "summary": "Sign up", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" }, "429": { "$ref": "#/components/responses/Error" } } } },
+    "/api/auth/sign-out": { "post": { "summary": "Sign out", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
+    "/api/hydration/today": { "get": { "summary": "Hydration summary for today", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
+    "/api/hydration/log": { "post": { "summary": "Create hydration log", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" } } } },
+    "/api/hydration/log/{id}": { "patch": { "summary": "Update hydration log", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "404": { "$ref": "#/components/responses/Error" } } }, "delete": { "summary": "Delete hydration log", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "404": { "$ref": "#/components/responses/Error" } } } },
+    "/api/supplements": { "get": { "summary": "List supplements", "responses": { "200": { "$ref": "#/components/responses/Ok" } } }, "post": { "summary": "Create supplement", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" } } } },
+    "/api/supplements/log": { "post": { "summary": "Create supplement log", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" } } } },
+    "/api/routines": { "get": { "summary": "List routines", "responses": { "200": { "$ref": "#/components/responses/Ok" } } }, "post": { "summary": "Create routine", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" }, "429": { "$ref": "#/components/responses/Error" } } } },
+    "/api/routines/{id}": { "patch": { "summary": "Update routine, may return conflict preview", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" } } }, "delete": { "summary": "Delete routine", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "404": { "$ref": "#/components/responses/Error" } } } },
+    "/api/exercises": { "get": { "summary": "List exercise definitions", "responses": { "200": { "$ref": "#/components/responses/Ok" } } }, "post": { "summary": "Create exercise definition", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" }, "429": { "$ref": "#/components/responses/Error" } } } },
+    "/api/exercises/{id}": { "patch": { "summary": "Update exercise definition", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" } } }, "delete": { "summary": "Delete exercise definition", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "404": { "$ref": "#/components/responses/Error" } } } },
+    "/api/workouts/sessions": { "post": { "summary": "Start workout session", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" }, "429": { "$ref": "#/components/responses/Error" } } } },
+    "/api/workouts/sessions/{id}/finish": { "post": { "summary": "Finish workout session", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "404": { "$ref": "#/components/responses/Error" } } } },
+    "/api/workouts/sessions/{id}/pause": { "post": { "summary": "Pause workout session", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "404": { "$ref": "#/components/responses/Error" } } } },
+    "/api/workouts/sessions/{id}/resume": { "post": { "summary": "Resume workout session", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "404": { "$ref": "#/components/responses/Error" } } } },
+    "/api/workouts/sessions/{id}/reorder": { "post": { "summary": "Reorder session exercise queue", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" } } } },
+    "/api/workouts/sets": { "post": { "summary": "Create workout set", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" }, "429": { "$ref": "#/components/responses/Error" } } } },
+    "/api/workouts/sets/{id}": { "patch": { "summary": "Update workout set", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "404": { "$ref": "#/components/responses/Error" } } }, "delete": { "summary": "Delete workout set", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "404": { "$ref": "#/components/responses/Error" } } } },
+    "/api/sync/batch": { "post": { "summary": "Sync queued local mutations with idempotency keys", "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "idempotencyKey": { "type": "string" }, "items": { "type": "array", "items": { "$ref": "#/components/schemas/SyncBatchItem" } } } } } } }, "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" }, "429": { "$ref": "#/components/responses/Error" } } } }
+  }
+}

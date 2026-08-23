@@ -7,6 +7,8 @@ const routes = [
   "/hydration",
   "/api/health",
   "/api/integrations/status",
+  "/api/docs/openapi",
+  "/api/observability/logs",
   "/api/notifications/config",
   "/api/auth/session",
   "/api/hydration/today"
@@ -37,6 +39,13 @@ try {
     }
     console.log(`${route} => ${response.status}`);
   }
+  const errorResponse = await fetch(`${baseUrl}/api/client-errors`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ requestId: "req_smoke", message: "Smoke client error", path: "/smoke" })
+  });
+  if (!errorResponse.ok) throw new Error(`/api/client-errors returned ${errorResponse.status}`);
+  console.log(`/api/client-errors => ${errorResponse.status}`);
 } catch (error) {
   exitCode = 1;
   console.error(error);

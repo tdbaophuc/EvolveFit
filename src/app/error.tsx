@@ -1,8 +1,13 @@
 "use client";
 
 import { AlertTriangle, RotateCcw } from "lucide-react";
+import { useEffect } from "react";
 
 export default function AppError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  useEffect(() => {
+    reportClientError(error);
+  }, [error]);
+
   return (
     <main className="app-shell error-shell">
       <section className="card state-card">
@@ -18,4 +23,18 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
       </section>
     </main>
   );
+}
+
+function reportClientError(error: Error & { digest?: string }) {
+  fetch("/api/client-errors", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: error.message || "App error",
+      digest: error.digest,
+      stack: error.stack,
+      path: window.location.pathname,
+      userAgent: navigator.userAgent
+    })
+  }).catch(() => undefined);
 }

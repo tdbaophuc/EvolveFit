@@ -1,18 +1,29 @@
 import { NextResponse } from "next/server";
+import {
+  normalizeErrorCode,
+  recordRequestLog,
+  requestIdFromHeaders,
+  requestIdResponseHeader,
+  type StructuredRequestLog
+} from "./observability";
 
 export type ApiHandlerContext = {
   method: string;
   path: string;
+  request?: Request;
+  requestId?: string;
 };
 
 export function jsonOk<T>(context: ApiHandlerContext, data: T, init?: ResponseInit) {
+  const requestId = resolveRequestId(context);
   logApi(context, init?.status ?? 200);
-  return NextResponse.json({ ok: true, data }, init);
+  return NextResponse.json({ ok: true, data, requestId }, withRequestIdHeader(init, requestId));
 }
 
 export function jsonFail(context: ApiHandlerContext, error: string, status = 400) {
+  const requestId = resolveRequestId(context);
   logApi(context, status, error);
-  return NextResponse.json({ ok: false, error }, { status });
+  return NextResponse.json({ ok: false, error, requestId }, withRequestIdHeader({ status }, requestId));
 }
 
 export async function withApiErrorHandling<T>(
@@ -24,37 +35,36 @@ export async function withApiErrorHandling<T>(
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected server error";
     logApi(context, 500, message);
-    return NextResponse.json({ ok: false, error: "Internal server error" }, { status: 500 });
+    const requestId = resolveRequestId(context);
+    return NextResponse.json({ ok: false, error: "Internal server error", requestId }, withRequestIdHeader({ status: 500 }, requestId));
   }
 }
 
 function logApi(context: ApiHandlerContext, status: number, error?: string) {
   const level = status >= 500 ? "error" : status >= 400 ? "warn" : "info";
-  const payload = {
+  const payload: StructuredRequestLog = {
+    requestId: resolveRequestId(context),
     at: new Date().toISOString(),
+    level,
     method: context.method,
     path: context.path,
     status,
+    source: "api",
     errorCode: error ? normalizeErrorCode(error) : undefined
   };
-
-  if (level === "error") {
-    console.error("[api]", payload);
-    return;
-  }
-
-  if (level === "warn") {
-    console.warn("[api]", payload);
-    return;
-  }
-
-  console.info("[api]", payload);
+  recordRequestLog(payload);
 }
 
-function normalizeErrorCode(message: string) {
-  return message
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 64);
+function resolveRequestId(context: ApiHandlerContext): string {
+  return context.requestId ?? (context.request ? requestIdFromHeaders(context.request.headers) : "req_local");
+}
+
+function withRequestIdHeader(init: ResponseInit | undefined, requestId: string): ResponseInit {
+  return {
+    ...init,
+    headers: {
+      ...(init?.headers ?? {}),
+      [requestIdResponseHeader()]: requestId
+    }
+  };
 }

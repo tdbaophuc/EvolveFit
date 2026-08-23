@@ -114,6 +114,14 @@ type Tab = "today" | "hydration" | "workout" | "progress" | "settings";
 type SyncStatus = "offline" | "pending" | "failed" | "synced";
 type CsvDataset = "hydration" | "creatine" | "workouts" | "body-metrics";
 type PushSubscriptionStatus = "unsupported" | "missing-env" | "unsubscribed" | "subscribed";
+type HealthDashboard = {
+  requestId?: string;
+  app?: string;
+  version?: string;
+  checkedAt?: string;
+  storageAdapter?: string;
+  integrations?: Record<string, string>;
+};
 type WakeLockSentinelLike = { release: () => Promise<void> };
 type NavigatorWithWakeLock = Navigator & {
   wakeLock?: { request: (type: "screen") => Promise<WakeLockSentinelLike> };
@@ -178,6 +186,7 @@ export default function AppPage() {
   const [nowMs, setNowMs] = useState(Date.now());
   const [restPausedSeconds, setRestPausedSeconds] = useState<number | null>(null);
   const [restNotifiedFor, setRestNotifiedFor] = useState<string | null>(null);
+  const [healthDashboard, setHealthDashboard] = useState<HealthDashboard | null>(null);
 
   useEffect(() => {
     setState(loadState());
@@ -196,6 +205,16 @@ export default function AppPage() {
     refreshPushStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted, state.profile.email]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    fetch("/api/health")
+      .then(async (response) => {
+        const body = (await response.json()) as { ok?: boolean; data?: HealthDashboard; requestId?: string };
+        if (body.ok && body.data) setHealthDashboard({ ...body.data, requestId: body.requestId ?? response.headers.get("x-request-id") ?? undefined });
+      })
+      .catch(() => undefined);
+  }, [mounted]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -2046,6 +2065,7 @@ export default function AppPage() {
             notificationPermission={notificationPermission}
             pushConfigured={pushConfigured}
             pushSubscriptionStatus={pushSubscriptionStatus}
+            healthDashboard={healthDashboard}
             requestNotifications={requestNotifications}
             subscribeWebPush={subscribeWebPush}
             unsubscribeWebPush={unsubscribeWebPush}
@@ -3880,6 +3900,7 @@ function SettingsView(props: {
   notificationPermission: NotificationPermission;
   pushConfigured: boolean;
   pushSubscriptionStatus: PushSubscriptionStatus;
+  healthDashboard: HealthDashboard | null;
   requestNotifications: () => void;
   subscribeWebPush: () => void;
   unsubscribeWebPush: () => void;
@@ -4287,10 +4308,14 @@ function SettingsView(props: {
       <section className="card">
         <h2>Backend readiness</h2>
         <div className="readiness-list">
-          <span>Supabase adapter: env-ready contract</span>
-          <span>AI coach: Gemini/OpenAI fallback contract</span>
-          <span>Vercel Cron: configured</span>
-          <span>Push actions: Log 250ml / Snooze</span>
+          <span>Storage: {props.healthDashboard?.storageAdapter ?? "checking"}</span>
+          <span>Request id: {props.healthDashboard?.requestId ?? "checking"}</span>
+          <span>Checked: {props.healthDashboard?.checkedAt ? new Date(props.healthDashboard.checkedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "checking"}</span>
+          {Object.entries(props.healthDashboard?.integrations ?? {}).map(([name, status]) => (
+            <span key={name}>
+              {name}: {status}
+            </span>
+          ))}
         </div>
       </section>
       <section className="card">

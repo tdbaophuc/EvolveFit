@@ -8,6 +8,7 @@
     "dev:5173": "next dev -p 5173",
     "build": "next build",
     "start": "next start",
+    "openapi": "node scripts/openapi.mjs",
     "lint": "eslint .",
     "test": "vitest run",
     "smoke": "node scripts/smoke.mjs",
