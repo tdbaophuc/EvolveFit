@@ -34,7 +34,7 @@ describe("integration contracts", () => {
 
   it("builds Supabase service-role requests", () => {
     const request = createSupabaseServiceRoleRequest("profiles?select=id", { method: "GET" }, {
-      NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
+      NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co/rest/v1",
       SUPABASE_SERVICE_ROLE_KEY: "service"
     });
 

@@ -1,3 +1,5 @@
+import { normalizeSupabaseProjectUrl } from "./supabase-url";
+
 export type AuthMode = "local" | "email" | "google";
 
 export type AuthSession = {
@@ -40,7 +42,8 @@ export async function signIn(input: {
   }
 
   if (env.NEXT_PUBLIC_SUPABASE_URL && env.NEXT_PUBLIC_SUPABASE_ANON_KEY && input.password) {
-    const response = await fetchImpl(`${env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/$/, "")}/auth/v1/token?grant_type=password`, {
+    const supabaseUrl = normalizeSupabaseProjectUrl(env.NEXT_PUBLIC_SUPABASE_URL);
+    const response = await fetchImpl(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
       method: "POST",
       headers: {
         apikey: env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
@@ -74,7 +77,8 @@ export async function signUp(input: {
     return localSession;
   }
 
-  const response = await fetchImpl(`${env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/$/, "")}/auth/v1/signup`, {
+  const supabaseUrl = normalizeSupabaseProjectUrl(env.NEXT_PUBLIC_SUPABASE_URL);
+  const response = await fetchImpl(`${supabaseUrl}/auth/v1/signup`, {
     method: "POST",
     headers: {
       apikey: env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
@@ -176,7 +180,7 @@ export function createSupabaseOAuthUrl(
   options: { codeChallenge?: string; state?: string } = {}
 ): string | undefined {
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.NEXT_PUBLIC_SUPABASE_ANON_KEY) return undefined;
-  const url = new URL(`${env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/$/, "")}/auth/v1/authorize`);
+  const url = new URL(`${normalizeSupabaseProjectUrl(env.NEXT_PUBLIC_SUPABASE_URL)}/auth/v1/authorize`);
   url.searchParams.set("provider", provider);
   url.searchParams.set("redirect_to", redirectTo);
   if (options.codeChallenge) {
@@ -199,7 +203,8 @@ export async function exchangeSupabaseOAuthCode(input: {
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     throw new Error("Supabase env is missing");
   }
-  const response = await fetchImpl(`${env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/$/, "")}/auth/v1/token?grant_type=pkce`, {
+  const supabaseUrl = normalizeSupabaseProjectUrl(env.NEXT_PUBLIC_SUPABASE_URL);
+  const response = await fetchImpl(`${supabaseUrl}/auth/v1/token?grant_type=pkce`, {
     method: "POST",
     headers: {
       apikey: env.NEXT_PUBLIC_SUPABASE_ANON_KEY,

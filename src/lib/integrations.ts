@@ -1,5 +1,6 @@
 import { progressiveOverloadRecommendation, type Recommendation, type WorkoutSet } from "./core";
 import { isWebPushConfigured } from "./push";
+import { normalizeSupabaseProjectUrl } from "./supabase-url";
 
 export type IntegrationStatus = {
   supabase: "configured" | "missing-env";
@@ -29,7 +30,7 @@ export function createSupabaseRestRequest(
   const anonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anonKey) throw new Error("Supabase env is missing");
 
-  return new Request(`${url.replace(/\/$/, "")}/rest/v1/${path.replace(/^\//, "")}`, {
+  return new Request(`${normalizeSupabaseProjectUrl(url)}/rest/v1/${path.replace(/^\//, "")}`, {
     ...init,
     headers: {
       apikey: anonKey,
@@ -46,7 +47,7 @@ export function createSupabaseServiceRoleRequest(path: string, init: RequestInit
   const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceRoleKey) throw new Error("Supabase service-role env is missing");
 
-  return new Request(`${url.replace(/\/$/, "")}/rest/v1/${path.replace(/^\//, "")}`, {
+  return new Request(`${normalizeSupabaseProjectUrl(url)}/rest/v1/${path.replace(/^\//, "")}`, {
     ...init,
     headers: {
       apikey: serviceRoleKey,

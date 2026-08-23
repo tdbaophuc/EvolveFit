@@ -45,13 +45,38 @@ describe("auth adapter", () => {
     vi.unstubAllGlobals();
   });
 
+  it("normalizes Supabase REST URLs before auth requests", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        access_token: "access",
+        refresh_token: "refresh",
+        user: { email: "user@example.com" }
+      })
+    );
+
+    await signIn({
+      email: "user@example.com",
+      password: "secret",
+      fetchImpl: fetchMock as typeof fetch,
+      env: {
+        NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co/rest/v1",
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon"
+      }
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://project.supabase.co/auth/v1/token?grant_type=password",
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
   it("creates OAuth URL and signs out", () => {
     expect(
       createSupabaseOAuthUrl("google", "https://app.test/auth/callback", {
-        NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
+        NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co/auth/v1",
         NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon"
       })
-    ).toContain("provider=google");
+    ).toContain("https://project.supabase.co/auth/v1/authorize");
     expect(signOut().mode).toBe("local");
   });
 
