@@ -809,7 +809,7 @@ export default function AppPage() {
     };
     updateActiveWorkoutDay(
       (day) => ({ ...day, exercises: [...day.exercises, routineExerciseFromWorkout(exercise, day.exercises.length)] }),
-      `?? th?m ${exercise.name}`
+      `Đã thêm ${exercise.name}`
     );
   }
 
@@ -908,7 +908,7 @@ export default function AppPage() {
         ...day,
         exercises: day.exercises.filter((exercise) => exercise.id !== id).map((exercise, index) => ({ ...exercise, order: index }))
       }),
-      "?? x?a b?i t?p"
+      "Đã xóa bài tập"
     );
   }
 
@@ -918,7 +918,7 @@ export default function AppPage() {
         ...day,
         exercises: day.exercises.map((exercise) => (exercise.id === id ? { ...exercise, ...patch } : exercise))
       }),
-      "?? c?p nh?t b?i t?p"
+      "Đã cập nhật bài tập"
     );
   }
 
@@ -932,7 +932,7 @@ export default function AppPage() {
     ordered.splice(nextIndex, 0, item);
     updateActiveWorkoutDay(
       (day) => ({ ...day, exercises: ordered.map((exercise, order) => ({ ...exercise, order })) }),
-      "?? s?p x?p routine"
+      "Đã sắp xếp routine"
     );
   }
 
@@ -986,7 +986,7 @@ export default function AppPage() {
 
   function applyTemplate(template: AppState["activeTemplate"]) {
     if (template === "custom") {
-      commit({ ...state, activeTemplate: "custom" }, "?? chuy?n sang Custom");
+      commit({ ...state, activeTemplate: "custom" }, "Đã chuyển sang Custom");
       return;
     }
     const routine = routineFromTemplate(template);
@@ -1002,7 +1002,7 @@ export default function AppPage() {
       }),
       "routine.create",
       routine,
-      `?? ?p d?ng template ${template}`
+      `Đã áp dụng template ${template}`
     );
   }
 
@@ -1552,7 +1552,7 @@ export default function AppPage() {
       rpe: setRpe,
       completedAt: new Date().toISOString()
     };
-    commitWorkoutSet(completed, "set", `Ho?n th?nh ${setType} set ${completedSetsForActive.length + 1}`);
+    commitWorkoutSet(completed, "set", `Hoàn thành ${setType} set ${completedSetsForActive.length + 1}`);
   }
 
   function skipCurrentSet() {
@@ -1573,7 +1573,7 @@ export default function AppPage() {
       actualReps: 0,
       completedAt: new Date().toISOString()
     };
-    commitWorkoutSet(skipped, "skip set", `?? b? qua set ${completedSetsForActive.length + 1}`);
+    commitWorkoutSet(skipped, "skip set", `Đã bỏ qua set ${completedSetsForActive.length + 1}`);
   }
 
   function updateWorkoutSet(id: string, patch: Partial<WorkoutSet>) {
@@ -1581,7 +1581,7 @@ export default function AppPage() {
     withUndo(
       { ...state, workoutSets, syncQueue: enqueueSync(state.syncQueue, { type: "workout.set.patch", payload: { id, patch } }) },
       "edit set",
-      "?? c?p nh?t set"
+      "Đã cập nhật set"
     );
   }
 
@@ -1589,7 +1589,7 @@ export default function AppPage() {
     withUndo(
       { ...state, workoutSets: state.workoutSets.filter((set) => set.id !== id), syncQueue: enqueueSync(state.syncQueue, { type: "workout.set.delete", payload: { id } }) },
       "delete set",
-      "?? x?a set"
+      "Đã xóa set"
     );
   }
 
@@ -2468,21 +2468,21 @@ function TodayOverview(props: Parameters<typeof TodayView>[0] & { latestMetric?:
           <div className="section-heading">
             <div>
               <p className="eyebrow">Creatine</p>
-              <h2>{props.creatineLogged ? "?? log h?m nay" : "Ch?a log h?m nay"}</h2>
+              <h2>{props.creatineLogged ? "Đã log hôm nay" : "Chưa log hôm nay"}</h2>
             </div>
             <button className="icon-button" onClick={() => props.logCreatine(props.creatineAmount)}>
               {props.creatineLogged ? <Check size={18} /> : <Plus size={18} />}
             </button>
           </div>
-          <p>M?c ti?u {props.creatineAmount}g m?i ng?y, nh?c trong Settings.</p>
+          <p>Mục tiêu {props.creatineAmount}g mỗi ngày, nhắc trong Settings.</p>
         </section>
       )}
 
       <section className="stats-grid">
-        <MetricCard label="N??c" value={`${props.percent}%`} accent="hydration" />
+        <MetricCard label="Nước" value={`${props.percent}%`} accent="hydration" />
         {props.creatineActive && <MetricCard label="Creatine" value={props.creatineLogged ? "Done" : "Open"} accent="neutral" />}
-        <MetricCard label="Set h?m nay" value={`${props.workoutExerciseCount ?? 0} b?i`} accent="training" />
-        <MetricCard label="C?n n?ng" value={props.latestMetric ? `${props.latestMetric.weightKg}kg` : "Ch?a c?"} accent="coach" />
+        <MetricCard label="Set hôm nay" value={`${props.workoutExerciseCount ?? 0} bài`} accent="training" />
+        <MetricCard label="Cân nặng" value={props.latestMetric ? `${props.latestMetric.weightKg}kg` : "Chưa có"} accent="coach" />
       </section>
 
       <section className="card chart-card">
@@ -2666,7 +2666,7 @@ function TodayView(props: {
         <div className="hydration-setting-row">
           <div>
             <p>Nhắc uống nước</p>
-            <span>{props.waterReminderEnabled ? props.waterReminderLabel : "?ang t?t"}</span>
+            <span>{props.waterReminderEnabled ? props.waterReminderLabel : "Đang tắt"}</span>
           </div>
           <button
             className={props.waterReminderEnabled ? "toggle-switch active" : "toggle-switch"}
@@ -2698,7 +2698,7 @@ function TodayView(props: {
               <strong>{props.waterAmount}</strong>
               <span>ml</span>
             </div>
-            <div className="segmented-control" aria-label="Lo?i ?? u?ng">
+            <div className="segmented-control" aria-label="Loại đồ uống">
               {drinkOptions.map(({ id, label }) => (
                 <button key={id} className={props.drinkType === id ? "active" : ""} onClick={() => props.setDrinkType(id)}>
                   {label}
@@ -3245,7 +3245,7 @@ function WorkoutView(props: {
       <section className="card workout-overview">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">{props.activeWorkoutDay?.name ?? "Session"} ? Exercise {props.state.activeExerciseIndex + 1}/{props.sessionQueue.length}</p>
+            <p className="eyebrow">{props.activeWorkoutDay?.name ?? "Session"} - Exercise {props.state.activeExerciseIndex + 1}/{props.sessionQueue.length}</p>
             <h1>{props.activeExercise.name}</h1>
             <p>{props.activeExercise.muscleGroup} • Target {props.activeExercise.targetSets} x {props.activeExercise.targetRepsMin}-{props.activeExercise.targetRepsMax}</p>
           </div>
@@ -4587,7 +4587,7 @@ function SettingsView(props: {
           Send test notification
         </button>
         <label className="toggle-row">
-          <span>Nh?c u?ng n??c</span>
+          <span>Nhắc uống nước</span>
           <input
             type="checkbox"
             checked={props.state.notificationSettings.hydrationEnabled}
@@ -4626,7 +4626,7 @@ function SettingsView(props: {
           </label>
         </div>
         <label className="toggle-row">
-          <span>Nh?c creatine</span>
+          <span>Nhắc creatine</span>
           <input
             type="checkbox"
             checked={creatineActive && props.state.notificationSettings.creatineEnabled}
