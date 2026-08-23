@@ -1674,25 +1674,79 @@ export function readinessScore(input: { energy: number; sleepQuality: number; so
 export type SyncQueueItem = {
   id: string;
   type: string;
-  status: "pending" | "synced" | "failed";
+  status: "pending" | "syncing" | "synced" | "failed" | "conflict";
   createdAt: string;
+  updatedAt?: string;
+  attempts?: number;
+  nextRetryAt?: string;
+  lastError?: string;
+  idempotencyKey?: string;
+  conflict?: {
+    kind: "routine";
+    local: unknown;
+    remote: unknown;
+    message: string;
+  };
   payload: unknown;
 };
 
 export function enqueueSync(queue: SyncQueueItem[], item: Omit<SyncQueueItem, "id" | "status" | "createdAt">): SyncQueueItem[] {
+  const id = cryptoSafeId();
   return [
     {
       ...item,
-      id: cryptoSafeId(),
+      id,
       status: "pending",
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      attempts: item.attempts ?? 0,
+      idempotencyKey: item.idempotencyKey ?? id
     },
     ...queue
   ];
 }
 
 export function markSyncQueue(queue: SyncQueueItem[], status: SyncQueueItem["status"]): SyncQueueItem[] {
-  return queue.map((item) => (item.status === "pending" ? { ...item, status } : item));
+  return queue.map((item) =>
+    item.status === "pending" || item.status === "failed" || item.status === "syncing"
+      ? { ...item, status, updatedAt: new Date().toISOString(), lastError: status === "synced" ? undefined : item.lastError }
+      : item
+  );
+}
+
+export function syncRetryDelayMs(attempts: number): number {
+  return Math.min(60_000, 1000 * 2 ** Math.max(0, attempts));
+}
+
+export function markSyncItemSyncing(queue: SyncQueueItem[], id: string): SyncQueueItem[] {
+  return queue.map((item) => (item.id === id ? { ...item, status: "syncing", updatedAt: new Date().toISOString() } : item));
+}
+
+export function markSyncItemSynced(queue: SyncQueueItem[], id: string): SyncQueueItem[] {
+  return queue.map((item) =>
+    item.id === id ? { ...item, status: "synced", updatedAt: new Date().toISOString(), lastError: undefined, nextRetryAt: undefined } : item
+  );
+}
+
+export function markSyncItemFailed(queue: SyncQueueItem[], id: string, error: string, now = new Date()): SyncQueueItem[] {
+  return queue.map((item) => {
+    if (item.id !== id) return item;
+    const attempts = (item.attempts ?? 0) + 1;
+    return {
+      ...item,
+      status: "failed",
+      attempts,
+      lastError: error,
+      updatedAt: now.toISOString(),
+      nextRetryAt: new Date(now.getTime() + syncRetryDelayMs(attempts)).toISOString()
+    };
+  });
+}
+
+export function markSyncItemConflict(queue: SyncQueueItem[], id: string, conflict: NonNullable<SyncQueueItem["conflict"]>): SyncQueueItem[] {
+  return queue.map((item) =>
+    item.id === id ? { ...item, status: "conflict", conflict, lastError: conflict.message, updatedAt: new Date().toISOString() } : item
+  );
 }
 
 export function monthlyAchievements(params: {

@@ -1,6 +1,7 @@
-import type { HydrationLog, Supplement, SupplementLog, WorkoutSet } from "./core";
+import type { ExerciseDefinition, HydrationLog, Routine, SessionExerciseQueueItem, Supplement, SupplementLog, WorkoutSession, WorkoutSet } from "./core";
 import type { AuthMode, AuthSession } from "./auth";
 import type { IntegrationStatus } from "./integrations";
+import type { SyncBatchItem, SyncBatchResult } from "./api";
 
 type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -73,8 +74,80 @@ export class EvolveFitApiClient {
     return this.get("/api/workouts/today");
   }
 
+  async routines(): Promise<ApiResult<Routine[]>> {
+    return this.get("/api/routines");
+  }
+
+  async createRoutine(input: Partial<Routine>): Promise<ApiResult<Routine>> {
+    return this.post("/api/routines", input);
+  }
+
+  async updateRoutine(
+    id: string,
+    input: Partial<Routine> & { baseUpdatedAt?: string; conflictResolution?: "confirm" }
+  ): Promise<ApiResult<Routine | { conflict: true; local: Partial<Routine>; remote: Routine; message: string }>> {
+    return this.patch(`/api/routines/${id}`, input);
+  }
+
+  async deleteRoutine(id: string): Promise<ApiResult<{ id: string }>> {
+    return this.delete(`/api/routines/${id}`);
+  }
+
+  async exercises(): Promise<ApiResult<ExerciseDefinition[]>> {
+    return this.get("/api/exercises");
+  }
+
+  async createExercise(input: Partial<ExerciseDefinition>): Promise<ApiResult<ExerciseDefinition>> {
+    return this.post("/api/exercises", input);
+  }
+
+  async updateExercise(id: string, input: Partial<ExerciseDefinition>): Promise<ApiResult<ExerciseDefinition>> {
+    return this.patch(`/api/exercises/${id}`, input);
+  }
+
+  async deleteExercise(id: string): Promise<ApiResult<{ id: string }>> {
+    return this.delete(`/api/exercises/${id}`);
+  }
+
+  async startWorkoutSession(input: {
+    routineId?: string;
+    workoutDayId?: string;
+    sessionName?: string;
+    sessionExerciseOrder?: string[];
+  }): Promise<ApiResult<WorkoutSession>> {
+    return this.post("/api/workouts/sessions", input);
+  }
+
+  async finishWorkoutSession(id: string): Promise<ApiResult<WorkoutSession>> {
+    return this.post(`/api/workouts/sessions/${id}/finish`, {});
+  }
+
+  async pauseWorkoutSession(id: string): Promise<ApiResult<WorkoutSession>> {
+    return this.post(`/api/workouts/sessions/${id}/pause`, {});
+  }
+
+  async resumeWorkoutSession(id: string): Promise<ApiResult<WorkoutSession>> {
+    return this.post(`/api/workouts/sessions/${id}/resume`, {});
+  }
+
+  async reorderWorkoutSession(id: string, queue: SessionExerciseQueueItem[]): Promise<ApiResult<WorkoutSession>> {
+    return this.post(`/api/workouts/sessions/${id}/reorder`, { queue });
+  }
+
   async logWorkoutSet(input: Omit<WorkoutSet, "id" | "completedAt">): Promise<ApiResult<WorkoutSet>> {
     return this.post("/api/workouts/sets", input);
+  }
+
+  async updateWorkoutSet(id: string, input: Partial<WorkoutSet>): Promise<ApiResult<WorkoutSet>> {
+    return this.patch(`/api/workouts/sets/${id}`, input);
+  }
+
+  async deleteWorkoutSet(id: string): Promise<ApiResult<{ id: string }>> {
+    return this.delete(`/api/workouts/sets/${id}`);
+  }
+
+  async syncBatch(input: { items: SyncBatchItem[]; idempotencyKey?: string }): Promise<ApiResult<{ results: SyncBatchResult[] }>> {
+    return this.post("/api/sync/batch", input);
   }
 
   async coachRecommend(): Promise<ApiResult<unknown>> {

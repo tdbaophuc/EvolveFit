@@ -39,6 +39,10 @@ import {
   exercisePersonalRecords,
   detectWorkoutSetPrs,
   saveSessionExerciseOrderToRoutine,
+  markSyncItemConflict,
+  markSyncItemFailed,
+  markSyncItemSynced,
+  markSyncItemSyncing,
   markSyncQueue,
   progressiveOverloadRecommendation,
   shouldSendCreatineReminder,
@@ -1282,6 +1286,24 @@ describe("offline sync queue", () => {
   it("enqueues pending work and marks it synced", () => {
     const queue = enqueueSync([], { type: "hydration.log", payload: { amountMl: 250 } });
     expect(queue[0]).toMatchObject({ type: "hydration.log", status: "pending" });
+    expect(queue[0].idempotencyKey).toBe(queue[0].id);
     expect(markSyncQueue(queue, "synced")[0].status).toBe("synced");
+  });
+
+  it("tracks per-item retry attempts, backoff, and routine conflicts", () => {
+    const queue = enqueueSync([], { type: "routine.update", payload: { routineId: "r1" } });
+    const syncing = markSyncItemSyncing(queue, queue[0].id);
+    expect(syncing[0].status).toBe("syncing");
+    const failed = markSyncItemFailed(syncing, queue[0].id, "network", new Date("2026-08-23T00:00:00.000Z"));
+    expect(failed[0]).toMatchObject({ status: "failed", attempts: 1, lastError: "network" });
+    expect(failed[0].nextRetryAt).toBe("2026-08-23T00:00:02.000Z");
+    const conflicted = markSyncItemConflict(failed, queue[0].id, {
+      kind: "routine",
+      local: { name: "Local" },
+      remote: { name: "Remote" },
+      message: "Routine changed"
+    });
+    expect(conflicted[0].status).toBe("conflict");
+    expect(markSyncItemSynced(conflicted, queue[0].id)[0].status).toBe("synced");
   });
 });

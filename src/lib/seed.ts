@@ -13,6 +13,7 @@ import {
   type Routine,
   type Supplement,
   type SupplementLog,
+  type SyncQueueItem,
   type WorkoutExercise,
   type WorkoutSession,
   type WorkoutSet
@@ -88,13 +89,7 @@ export type AppState = {
     reason?: string;
     decidedAt: string;
   }[];
-  syncQueue: {
-    id: string;
-    type: string;
-    status: "pending" | "synced" | "failed";
-    createdAt: string;
-    payload: unknown;
-  }[];
+  syncQueue: SyncQueueItem[];
   restEndsAt?: string;
   undo?: {
     label: string;

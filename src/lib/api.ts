@@ -1,15 +1,23 @@
 import {
-  cryptoSafeId,
   buildProgressReports,
+  createWorkoutSession,
+  cryptoSafeId,
+  finishWorkoutSession,
   hydrationTotal,
   normalizeDrinkModules,
+  pauseWorkoutSession,
   progressiveOverloadRecommendation,
+  resumeWorkoutSession,
   shouldSendCreatineReminder,
   shouldSendHydrationReminder,
   expectedHydrationByNow,
   isWorkingVolumeSet,
   type HydrationLog,
+  type ExerciseDefinition,
+  type Routine,
+  type SessionExerciseQueueItem,
   type SupplementLog,
+  type WorkoutSession,
   type WorkoutSet
 } from "./core";
 import { aiCoachRecommendation } from "./integrations";
@@ -31,6 +39,7 @@ type StoredNotificationSubscription = {
 
 const notificationSubscriptions: StoredNotificationSubscription[] = [];
 let leaderboardVisible = serverState.profile.leaderboardPublic;
+const idempotencyResults = new Map<string, ApiResult<unknown>>();
 
 export function ok<T>(data: T): ApiResult<T> {
   return { ok: true, data };
@@ -172,11 +181,304 @@ export function getWorkoutToday() {
   });
 }
 
+export function listRoutines() {
+  return ok(serverState.routines);
+}
+
+export function createRoutine(input: Partial<Routine>): ApiResult<Routine> {
+  if (!input.name?.trim()) return fail("name is required");
+  const now = new Date().toISOString();
+  const routine: Routine = {
+    id: input.id ?? cryptoSafeId(),
+    name: input.name.trim(),
+    daysPerWeek: input.daysPerWeek ?? input.days?.length ?? 1,
+    days: input.days ?? [],
+    createdAt: input.createdAt ?? now,
+    updatedAt: now
+  };
+  serverState.routines.push(routine);
+  return ok(routine);
+}
+
+export function updateRoutine(
+  id: string,
+  input: Partial<Routine> & { baseUpdatedAt?: string; conflictResolution?: "confirm" }
+): ApiResult<Routine | { conflict: true; local: Partial<Routine>; remote: Routine; message: string }> {
+  const routine = serverState.routines.find((item) => item.id === id);
+  if (!routine) return fail("routine not found");
+  if (input.baseUpdatedAt && routine.updatedAt !== input.baseUpdatedAt && input.conflictResolution !== "confirm") {
+    return ok({ conflict: true, local: input, remote: routine, message: "Routine changed on server. Preview and confirm before overwriting." });
+  }
+  if (input.name !== undefined && !input.name.trim()) return fail("name is required");
+  Object.assign(routine, {
+    ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+    ...(input.daysPerWeek !== undefined ? { daysPerWeek: input.daysPerWeek } : {}),
+    ...(input.days !== undefined ? { days: input.days } : {}),
+    updatedAt: nextUpdatedAt(routine.updatedAt)
+  });
+  return ok(routine);
+}
+
+function nextUpdatedAt(previous?: string): string {
+  const now = Date.now();
+  const previousMs = previous ? new Date(previous).getTime() : 0;
+  return new Date(Math.max(now, previousMs + 1)).toISOString();
+}
+
+export function deleteRoutine(id: string): ApiResult<{ id: string }> {
+  const index = serverState.routines.findIndex((item) => item.id === id);
+  if (index < 0) return fail("routine not found");
+  serverState.routines.splice(index, 1);
+  if (serverState.activeRoutineId === id) serverState.activeRoutineId = serverState.routines[0]?.id ?? "";
+  return ok({ id });
+}
+
+export function listExercises() {
+  return ok(serverState.exerciseLibrary);
+}
+
+export function createExercise(input: Partial<ExerciseDefinition>): ApiResult<ExerciseDefinition> {
+  if (!input.name?.trim()) return fail("name is required");
+  const exercise: ExerciseDefinition = {
+    id: input.id ?? cryptoSafeId(),
+    name: input.name.trim(),
+    muscleGroup: input.muscleGroup?.trim() || "General",
+    equipment: input.equipment ?? "other",
+    movementPattern: input.movementPattern ?? "isolation",
+    builtIn: input.builtIn ?? false,
+    notes: input.notes
+  };
+  serverState.exerciseLibrary.push(exercise);
+  return ok(exercise);
+}
+
+export function updateExercise(id: string, input: Partial<ExerciseDefinition>): ApiResult<ExerciseDefinition> {
+  const exercise = serverState.exerciseLibrary.find((item) => item.id === id);
+  if (!exercise) return fail("exercise not found");
+  if (input.name !== undefined && !input.name.trim()) return fail("name is required");
+  Object.assign(exercise, {
+    ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+    ...(input.muscleGroup !== undefined ? { muscleGroup: input.muscleGroup.trim() || exercise.muscleGroup } : {}),
+    ...(input.equipment !== undefined ? { equipment: input.equipment } : {}),
+    ...(input.movementPattern !== undefined ? { movementPattern: input.movementPattern } : {}),
+    ...(input.builtIn !== undefined ? { builtIn: input.builtIn } : {}),
+    ...(input.notes !== undefined ? { notes: input.notes } : {})
+  });
+  return ok(exercise);
+}
+
+export function deleteExercise(id: string): ApiResult<{ id: string }> {
+  const index = serverState.exerciseLibrary.findIndex((item) => item.id === id);
+  if (index < 0) return fail("exercise not found");
+  serverState.exerciseLibrary.splice(index, 1);
+  return ok({ id });
+}
+
+export function startWorkoutSession(input: {
+  routineId?: string;
+  workoutDayId?: string;
+  sessionName?: string;
+  sessionExerciseOrder?: string[];
+}): ApiResult<WorkoutSession> {
+  const routine = serverState.routines.find((item) => item.id === input.routineId) ?? serverState.routines[0];
+  const day = routine?.days.find((item) => item.id === input.workoutDayId) ?? routine?.days[0];
+  const order = input.sessionExerciseOrder?.length
+    ? input.sessionExerciseOrder
+    : day?.exercises.map((exercise) => exercise.id) ?? serverState.workoutExercises.map((exercise) => exercise.id);
+  const session = createWorkoutSession({
+    routineId: routine?.id ?? input.routineId ?? serverState.activeRoutineId,
+    workoutDayId: day?.id ?? input.workoutDayId ?? serverState.selectedWorkoutDayId,
+    sessionName: input.sessionName ?? day?.name ?? "Workout Session",
+    sessionExerciseOrder: order
+  });
+  serverState.workoutSessions.push(session);
+  serverState.activeWorkoutSessionId = session.id;
+  return ok(session);
+}
+
+export function finishWorkoutSessionById(id: string) {
+  return updateWorkoutSessionStatus(id, "finish");
+}
+
+export function pauseWorkoutSessionById(id: string) {
+  return updateWorkoutSessionStatus(id, "pause");
+}
+
+export function resumeWorkoutSessionById(id: string) {
+  return updateWorkoutSessionStatus(id, "resume");
+}
+
+function updateWorkoutSessionStatus(id: string, action: "finish" | "pause" | "resume"): ApiResult<WorkoutSession> {
+  const index = serverState.workoutSessions.findIndex((item) => item.id === id);
+  if (index < 0) return fail("workout session not found");
+  const current = serverState.workoutSessions[index];
+  const next =
+    action === "finish"
+      ? finishWorkoutSession(current)
+      : action === "pause"
+        ? pauseWorkoutSession(current)
+        : resumeWorkoutSession(current);
+  serverState.workoutSessions[index] = next;
+  if (action === "finish") serverState.activeWorkoutSessionId = undefined;
+  if (action === "resume") serverState.activeWorkoutSessionId = id;
+  return ok(next);
+}
+
 export function logWorkoutSet(input: Omit<WorkoutSet, "id" | "completedAt">): ApiResult<WorkoutSet> {
   if (!input.exerciseId || !input.exerciseName) return fail("exercise is required");
   const set: WorkoutSet = { ...input, id: cryptoSafeId(), completedAt: new Date().toISOString() };
   serverState.workoutSets.push(set);
   return ok(set);
+}
+
+export function createWorkoutSet(input: WorkoutSet | Omit<WorkoutSet, "id" | "completedAt">): ApiResult<WorkoutSet> {
+  if (!input.exerciseId || !input.exerciseName) return fail("exercise is required");
+  const set: WorkoutSet = {
+    ...input,
+    id: "id" in input && input.id ? input.id : cryptoSafeId(),
+    completedAt: "completedAt" in input && input.completedAt ? input.completedAt : new Date().toISOString()
+  };
+  const existingIndex = serverState.workoutSets.findIndex((item) => item.id === set.id);
+  if (existingIndex >= 0) serverState.workoutSets[existingIndex] = lastWriteWinsWorkoutSet(serverState.workoutSets[existingIndex], set);
+  else serverState.workoutSets.push(set);
+  return ok(serverState.workoutSets.find((item) => item.id === set.id) ?? set);
+}
+
+export function updateWorkoutSet(id: string, patch: Partial<WorkoutSet>): ApiResult<WorkoutSet> {
+  const index = serverState.workoutSets.findIndex((item) => item.id === id);
+  if (index < 0) return fail("workout set not found");
+  const next = { ...serverState.workoutSets[index], ...patch, id };
+  serverState.workoutSets[index] = lastWriteWinsWorkoutSet(serverState.workoutSets[index], next);
+  return ok(serverState.workoutSets[index]);
+}
+
+export function deleteWorkoutSet(id: string): ApiResult<{ id: string }> {
+  const index = serverState.workoutSets.findIndex((item) => item.id === id);
+  if (index < 0) return fail("workout set not found");
+  serverState.workoutSets.splice(index, 1);
+  return ok({ id });
+}
+
+export function reorderWorkoutSession(id: string, queue: SessionExerciseQueueItem[]): ApiResult<WorkoutSession> {
+  const index = serverState.workoutSessions.findIndex((item) => item.id === id);
+  if (index < 0) return fail("workout session not found");
+  if (!Array.isArray(queue) || queue.some((item) => !item.exerciseId || !["queued", "completed", "parked"].includes(item.status))) {
+    return fail("queue must contain valid exercise items");
+  }
+  const next = { ...serverState.workoutSessions[index], exerciseQueue: queue, sessionExerciseOrder: queue.map((item) => item.exerciseId) };
+  serverState.workoutSessions[index] = next;
+  return ok(next);
+}
+
+export type SyncBatchItem = {
+  id?: string;
+  type: string;
+  payload: unknown;
+  idempotencyKey?: string;
+};
+
+export type SyncBatchResult = {
+  id: string;
+  type: string;
+  status: "synced" | "conflict" | "failed";
+  data?: unknown;
+  error?: string;
+  conflict?: { kind: "routine"; local: unknown; remote: unknown; message: string };
+};
+
+export function syncBatch(input: { items?: SyncBatchItem[]; idempotencyKey?: string }): ApiResult<{ results: SyncBatchResult[] }> {
+  if (!Array.isArray(input.items)) return fail("items must be an array");
+  const results = input.items.map((item, index) => {
+    const key = item.idempotencyKey ?? `${input.idempotencyKey ?? "batch"}:${item.id ?? index}:${item.type}`;
+    const cached = idempotencyResults.get(key);
+    if (cached && !isConfirmingConflict(item.payload)) return syncResultFromApiResult(item, cached);
+    const result = applySyncItem(item);
+    idempotencyResults.set(key, result);
+    return syncResultFromApiResult(item, result);
+  });
+  return ok({ results });
+}
+
+function isConfirmingConflict(payload: unknown): boolean {
+  return Boolean(payload && typeof payload === "object" && (payload as { conflictResolution?: string }).conflictResolution === "confirm");
+}
+
+function syncResultFromApiResult(item: SyncBatchItem, result: ApiResult<unknown>): SyncBatchResult {
+  if (!result.ok) return { id: item.id ?? item.idempotencyKey ?? item.type, type: item.type, status: "failed", error: result.error };
+  const data = result.data as { conflict?: true; local?: unknown; remote?: unknown; message?: string };
+  if (data && data.conflict) {
+    return {
+      id: item.id ?? item.idempotencyKey ?? item.type,
+      type: item.type,
+      status: "conflict",
+      conflict: { kind: "routine", local: data.local, remote: data.remote, message: data.message ?? "Routine conflict" }
+    };
+  }
+  return { id: item.id ?? item.idempotencyKey ?? item.type, type: item.type, status: "synced", data: result.data };
+}
+
+function applySyncItem(item: SyncBatchItem): ApiResult<unknown> {
+  const payload = item.payload as Record<string, unknown>;
+  if (item.type === "hydration.log") return upsertHydrationLog(payload as HydrationLog);
+  if (item.type === "hydration.patch") {
+    if (payload.amountMl !== undefined) return upsertHydrationLog(payload as HydrationLog);
+    const current = serverState.hydrationLogs.find((log) => log.id === payload.id);
+    if (!current) return fail("hydration log not found");
+    return upsertHydrationLog({
+      ...current,
+      amountMl: Math.max(50, current.amountMl + Number(payload.deltaMl ?? 0)),
+      loggedAt: new Date().toISOString()
+    });
+  }
+  if (item.type === "hydration.delete") return deleteHydrationLog(String(payload.id ?? ""));
+  if (item.type === "supplement.log" || item.type === "supplement.skip") return upsertSupplementLog(payload as SupplementLog);
+  if (item.type === "workout.set.create" || item.type === "workout.set.skip") return createWorkoutSet(payload as WorkoutSet);
+  if (item.type === "workout.set.patch") return updateWorkoutSet(String(payload.id ?? ""), payload.patch as Partial<WorkoutSet>);
+  if (item.type === "workout.set.delete") return deleteWorkoutSet(String(payload.id ?? ""));
+  if (item.type === "workout.session.start") {
+    const session = payload as WorkoutSession;
+    if (serverState.workoutSessions.some((existing) => existing.id === session.id)) return ok(session);
+    serverState.workoutSessions.push(session);
+    return ok(session);
+  }
+  if (item.type === "workout.session.finish") return finishWorkoutSessionById(String(payload.id ?? ""));
+  if (item.type === "workout.session.pause") return pauseWorkoutSessionById(String(payload.id ?? ""));
+  if (item.type === "workout.session.resume") return resumeWorkoutSessionById(String(payload.id ?? ""));
+  if (item.type === "workout.session.reorder") return reorderWorkoutSession(String(payload.sessionId ?? ""), payload.queue as SessionExerciseQueueItem[]);
+  if (item.type === "routine.create") return createRoutine(payload as Partial<Routine>);
+  if (item.type === "routine.update" || item.type === "routine.saveSessionOrder") {
+    return updateRoutine(String(payload.routineId ?? payload.id ?? ""), {
+      ...(payload.routine as Partial<Routine> | undefined),
+      ...(payload.patch as Partial<Routine> | undefined),
+      baseUpdatedAt: payload.baseUpdatedAt as string | undefined,
+      conflictResolution: payload.conflictResolution as "confirm" | undefined
+    });
+  }
+  if (item.type === "routine.delete") return deleteRoutine(String(payload.id ?? payload.routineId ?? ""));
+  if (item.type === "exercise.create") return createExercise(payload as Partial<ExerciseDefinition>);
+  if (item.type === "exercise.update") return updateExercise(String(payload.id ?? ""), payload.patch as Partial<ExerciseDefinition>);
+  if (item.type === "exercise.delete") return deleteExercise(String(payload.id ?? ""));
+  return fail(`unsupported sync type: ${item.type}`);
+}
+
+function upsertHydrationLog(log: HydrationLog): ApiResult<HydrationLog> {
+  if (!log.id || !Number.isFinite(log.amountMl) || log.amountMl <= 0) return fail("hydration log is invalid");
+  const index = serverState.hydrationLogs.findIndex((item) => item.id === log.id);
+  if (index < 0) serverState.hydrationLogs.push(log);
+  else if ((log.loggedAt ?? "") >= (serverState.hydrationLogs[index].loggedAt ?? "")) serverState.hydrationLogs[index] = log;
+  return ok(serverState.hydrationLogs.find((item) => item.id === log.id) ?? log);
+}
+
+function upsertSupplementLog(log: SupplementLog): ApiResult<SupplementLog> {
+  if (!log.id || !log.name) return fail("supplement log is invalid");
+  const index = serverState.supplementLogs.findIndex((item) => item.id === log.id);
+  if (index < 0) serverState.supplementLogs.push(log);
+  else if ((log.loggedAt ?? "") >= (serverState.supplementLogs[index].loggedAt ?? "")) serverState.supplementLogs[index] = log;
+  return ok(serverState.supplementLogs.find((item) => item.id === log.id) ?? log);
+}
+
+function lastWriteWinsWorkoutSet(current: WorkoutSet, next: WorkoutSet): WorkoutSet {
+  return (next.completedAt ?? "") >= (current.completedAt ?? "") ? next : current;
 }
 
 export function recalculateProgression(exerciseId: string) {

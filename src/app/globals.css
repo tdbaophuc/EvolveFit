@@ -1168,7 +1168,7 @@ button:disabled {
   margin-top: 12px;
 }
 
-.sync-preview div {
+.sync-preview > div {
   display: grid;
   grid-template-columns: 72px 1fr auto;
   gap: 8px;
@@ -1184,6 +1184,17 @@ button:disabled {
   color: var(--muted);
   font-size: 12px;
   font-style: normal;
+}
+
+.sync-preview small,
+.sync-preview .split-actions {
+  grid-column: 1 / -1;
+}
+
+.sync-preview small {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .readiness-row span {

@@ -60,6 +60,10 @@ import {
   selectedWorkoutDay,
   rowsToRoutineCsv,
   enqueueSync,
+  markSyncItemConflict,
+  markSyncItemFailed,
+  markSyncItemSynced,
+  markSyncItemSyncing,
   markSyncQueue,
   shouldSendCreatineReminder,
   shouldSendHydrationReminder,
@@ -88,6 +92,7 @@ import {
   type Supplement,
   type ProgressDashboard,
   type ProgressReports,
+  type SyncQueueItem,
   type WorkoutSession,
   type WorkoutSetPr,
   type WorkoutExercise,
@@ -226,7 +231,66 @@ export default function AppPage() {
   }, []);
 
   useEffect(() => {
-    if (!mounted || !isOnline || !state.syncQueue.some((item) => item.status === "pending")) return;
+    if (!mounted || !isOnline) return;
+    const nowTime = Date.now();
+    const nextItem = state.syncQueue
+      .filter((item) => item.status === "pending" || item.status === "failed")
+      .find((item) => !item.nextRetryAt || new Date(item.nextRetryAt).getTime() <= nowTime);
+    if (!nextItem) return;
+
+    let cancelled = false;
+    setState((current) => ({ ...current, syncQueue: markSyncItemSyncing(current.syncQueue, nextItem.id) }));
+
+    fetch("/api/sync/batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        idempotencyKey: nextItem.idempotencyKey ?? nextItem.id,
+        items: [{ id: nextItem.id, type: nextItem.type, payload: nextItem.payload, idempotencyKey: nextItem.idempotencyKey ?? nextItem.id }]
+      })
+    })
+      .then(async (response) => {
+        const body = (await response.json()) as {
+          ok?: boolean;
+          data?: {
+            results?: {
+              id: string;
+              status: "synced" | "failed" | "conflict";
+              error?: string;
+              conflict?: NonNullable<SyncQueueItem["conflict"]>;
+            }[];
+          };
+          error?: string;
+        };
+        if (!response.ok || !body.ok) throw new Error(body.error ?? "sync request failed");
+        return body.data?.results?.[0];
+      })
+      .then((result) => {
+        if (cancelled || !result) return;
+        if (result.status === "synced") {
+          setState((current) => ({ ...current, syncQueue: markSyncItemSynced(current.syncQueue, nextItem.id) }));
+          return;
+        }
+        if (result.status === "conflict" && result.conflict) {
+          const conflict = result.conflict;
+          setState((current) => ({ ...current, syncQueue: markSyncItemConflict(current.syncQueue, nextItem.id, conflict) }));
+          setToast("Routine conflict needs preview and confirm");
+          return;
+        }
+        setState((current) => ({ ...current, syncQueue: markSyncItemFailed(current.syncQueue, nextItem.id, result.error ?? "sync failed") }));
+      })
+      .catch((error: Error) => {
+        if (cancelled) return;
+        setState((current) => ({ ...current, syncQueue: markSyncItemFailed(current.syncQueue, nextItem.id, error.message) }));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, isOnline, state.syncQueue]);
+
+  useEffect(() => {
+    if (!mounted || !isOnline || !state.syncQueue.some((item) => item.status === "pending" && item.type === "__legacy_disabled__")) return;
     const id = window.setTimeout(() => {
       setState((current) => ({ ...current, syncQueue: markSyncQueue(current.syncQueue, "synced") }));
       setToast("Offline queue đã retry local và đánh dấu synced");
@@ -437,9 +501,9 @@ export default function AppPage() {
   });
   const syncStatus: SyncStatus = !isOnline
     ? "offline"
-    : state.syncQueue.some((item) => item.status === "failed")
+    : state.syncQueue.some((item) => item.status === "failed" || item.status === "conflict")
       ? "failed"
-      : state.syncQueue.some((item) => item.status === "pending")
+      : state.syncQueue.some((item) => item.status === "pending" || item.status === "syncing")
         ? "pending"
         : "synced";
 
@@ -642,7 +706,7 @@ export default function AppPage() {
         routines: state.routines.map((routine) => (routine.id === updatedRoutine.id ? { ...updatedRoutine, updatedAt: new Date().toISOString() } : routine))
       }),
       "routine.update",
-      { routineId: updatedRoutine.id },
+      { routineId: updatedRoutine.id, routine: updatedRoutine, baseUpdatedAt: activeRoutine.updatedAt },
       label
     );
   }
@@ -761,8 +825,8 @@ export default function AppPage() {
         workoutSets: [],
         activeExerciseIndex: 0
       }),
-      "routine.import",
-      { fileName: routineImportPreview.fileName, mode, count: routineImportPreview.rows.length },
+      "routine.update",
+      { routineId: updatedRoutine.id, routine: updatedRoutine, baseUpdatedAt: nextRoutine.updatedAt, fileName: routineImportPreview.fileName, mode },
       `Imported ${routineImportPreview.rows.length} exercises`
     );
     setRoutineImportPreview(null);
@@ -856,7 +920,7 @@ export default function AppPage() {
       return;
     }
     const routine = routineFromTemplate(template);
-    commit(
+    commitSynced(
       syncSelectedDay({
         ...state,
         activeTemplate: template,
@@ -866,6 +930,8 @@ export default function AppPage() {
         workoutSets: [],
         activeExerciseIndex: 0
       }),
+      "routine.create",
+      routine,
       `?? ?p d?ng template ${template}`
     );
   }
@@ -959,7 +1025,7 @@ export default function AppPage() {
     });
     commitSynced(
       { ...state, exerciseLibrary: [...state.exerciseLibrary, exercise] },
-      "exerciseLibrary.create",
+      "exercise.create",
       exercise,
       `Created ${exercise.name}`
     );
@@ -970,7 +1036,7 @@ export default function AppPage() {
     if (!target || target.builtIn) return;
     commitSynced(
       { ...state, exerciseLibrary: state.exerciseLibrary.map((exercise) => (exercise.id === id ? { ...exercise, ...patch, builtIn: false } : exercise)) },
-      "exerciseLibrary.update",
+      "exercise.update",
       { id, patch },
       "Updated custom exercise"
     );
@@ -981,7 +1047,7 @@ export default function AppPage() {
     if (!target || target.builtIn) return;
     commitSynced(
       { ...state, exerciseLibrary: state.exerciseLibrary.filter((exercise) => exercise.id !== id) },
-      "exerciseLibrary.delete",
+      "exercise.delete",
       { id },
       "Deleted custom exercise"
     );
@@ -1563,7 +1629,12 @@ export default function AppPage() {
     }
     if (activeWorkoutSession) {
       const paused = pauseWorkoutSession(activeWorkoutSession);
-      commit({ ...state, workoutSessions: state.workoutSessions.map((session) => (session.id === paused.id ? paused : session)) }, "Pause workout session");
+      commitSynced(
+        { ...state, workoutSessions: state.workoutSessions.map((session) => (session.id === paused.id ? paused : session)) },
+        "workout.session.pause",
+        paused,
+        "Pause workout session"
+      );
     }
   }
 
@@ -1573,14 +1644,16 @@ export default function AppPage() {
     const resumedSessions = activeWorkoutSession
       ? state.workoutSessions.map((session) => (session.id === activeWorkoutSession.id ? resumeWorkoutSession(session) : session))
       : state.workoutSessions;
-    commit(
-      {
-        ...state,
-        workoutSessions: resumedSessions,
-        restEndsAt: restPausedSeconds !== null ? new Date(Date.now() + restPausedSeconds * 1000).toISOString() : state.restEndsAt
-      },
-      "Resume workout session"
-    );
+    const nextState = {
+      ...state,
+      workoutSessions: resumedSessions,
+      restEndsAt: restPausedSeconds !== null ? new Date(Date.now() + restPausedSeconds * 1000).toISOString() : state.restEndsAt
+    };
+    if (activeWorkoutSession) {
+      commitSynced(nextState, "workout.session.resume", resumeWorkoutSession(activeWorkoutSession), "Resume workout session");
+    } else {
+      commit(nextState, "Resume rest timer");
+    }
     setRestPausedSeconds(null);
     setNowMs(Date.now());
   }
@@ -1631,7 +1704,41 @@ export default function AppPage() {
     commit({ ...state, syncQueue: markSyncQueue(state.syncQueue, status) }, status === "synced" ? "Đã đánh dấu sync xong" : "Đã đánh dấu sync lỗi");
   }
 
-  function clearQueue(status?: "synced" | "failed") {
+  function retryQueueItem(id: string) {
+    commit(
+      {
+        ...state,
+        syncQueue: state.syncQueue.map((item) =>
+          item.id === id ? { ...item, status: "pending", nextRetryAt: undefined, lastError: undefined, updatedAt: new Date().toISOString() } : item
+        )
+      },
+      "Queued item for retry"
+    );
+  }
+
+  function confirmRoutineConflict(id: string) {
+    commit(
+      {
+        ...state,
+        syncQueue: state.syncQueue.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                status: "pending",
+                payload: { ...(item.payload as Record<string, unknown>), conflictResolution: "confirm" },
+                conflict: undefined,
+                lastError: undefined,
+                nextRetryAt: undefined,
+                updatedAt: new Date().toISOString()
+              }
+            : item
+        )
+      },
+      "Routine conflict confirmed for sync"
+    );
+  }
+
+  function clearQueue(status?: SyncQueueItem["status"]) {
     commit(
       { ...state, syncQueue: status ? state.syncQueue.filter((item) => item.status !== status) : [] },
       status ? `Đã xóa queue ${status}` : "Đã xóa toàn bộ sync queue"
@@ -1944,6 +2051,8 @@ export default function AppPage() {
             unsubscribeWebPush={unsubscribeWebPush}
             sendTestPushNotification={sendTestPushNotification}
             markQueue={markQueue}
+            retryQueueItem={retryQueueItem}
+            confirmRoutineConflict={confirmRoutineConflict}
             clearQueue={clearQueue}
             downloadExport={downloadExport}
             downloadCsvExport={downloadCsvExport}
@@ -3776,7 +3885,9 @@ function SettingsView(props: {
   unsubscribeWebPush: () => void;
   sendTestPushNotification: () => void;
   markQueue: (status: "synced" | "failed") => void;
-  clearQueue: (status?: "synced" | "failed") => void;
+  retryQueueItem: (id: string) => void;
+  confirmRoutineConflict: (id: string) => void;
+  clearQueue: (status?: SyncQueueItem["status"]) => void;
   downloadExport: () => void;
   downloadCsvExport: (dataset?: CsvDataset) => void;
   importJsonExport: (file: File) => void;
@@ -3788,9 +3899,9 @@ function SettingsView(props: {
   updateDrinkModule: (id: DrinkModule["id"], patch: Partial<DrinkModule>) => void;
   reopenOnboarding: () => void;
 }) {
-  const pendingQueue = props.state.syncQueue.filter((item) => item.status === "pending").length;
+  const pendingQueue = props.state.syncQueue.filter((item) => item.status === "pending" || item.status === "syncing").length;
   const syncedQueue = props.state.syncQueue.filter((item) => item.status === "synced").length;
-  const failedQueue = props.state.syncQueue.filter((item) => item.status === "failed").length;
+  const failedQueue = props.state.syncQueue.filter((item) => item.status === "failed" || item.status === "conflict").length;
   const creatineActive = isDrinkModuleActive(props.drinkModules, "creatine");
 
   function updateModuleGoal(module: DrinkModule, goal: number) {
@@ -4204,15 +4315,37 @@ function SettingsView(props: {
           <button className="secondary-button" onClick={() => props.clearQueue("failed")} disabled={!failedQueue}>
             Clear failed
           </button>
+          <button className="secondary-button" onClick={() => props.clearQueue("conflict")} disabled={!props.state.syncQueue.some((item) => item.status === "conflict")}>
+            Clear conflicts
+          </button>
         </div>
         <div className="sync-preview">
-          {props.state.syncQueue.slice(0, 4).map((item) => (
+          {props.state.syncQueue.map((item) => (
             <div key={item.id}>
               <span>{item.status}</span>
               <strong>{item.type}</strong>
-              <em>{new Date(item.createdAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</em>
+              <em>
+                {item.attempts ?? 0} tries
+                {item.nextRetryAt ? ` - retry ${new Date(item.nextRetryAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}` : ""}
+              </em>
+              {item.lastError && <small>{item.lastError}</small>}
+              {item.conflict && (
+                <small>
+                  Conflict: {item.conflict.message}. Remote preview: {JSON.stringify(item.conflict.remote).slice(0, 140)}
+                </small>
+              )}
+              <small>{JSON.stringify(item.payload).slice(0, 180)}</small>
+              <div className="split-actions">
+                <button className="secondary-button" onClick={() => props.retryQueueItem(item.id)} disabled={item.status === "pending" || item.status === "syncing"}>
+                  Retry
+                </button>
+                <button className="secondary-button" onClick={() => props.confirmRoutineConflict(item.id)} disabled={item.status !== "conflict"}>
+                  Confirm routine
+                </button>
+              </div>
             </div>
           ))}
+          {!props.state.syncQueue.length && <div>No queued mutations</div>}
         </div>
         <p className="privacy-note">Queue hiện lưu local-first để chuẩn bị sync backend và xử lý retry/conflict ở bước production.</p>
       </section>
