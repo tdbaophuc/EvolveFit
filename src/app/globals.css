@@ -1197,6 +1197,24 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.share-preview-card {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.share-preview-card span,
+.share-preview-card em {
+  color: var(--muted);
+  font-size: 13px;
+  font-style: normal;
+  overflow-wrap: anywhere;
+}
+
 .readiness-row span {
   color: #5b21b6;
   background: #f5f3ff;
@@ -1231,7 +1249,7 @@ button:disabled {
 }
 
 .timeline div,
-.leaderboard div,
+.leaderboard > div,
 .badge-list > div {
   display: flex;
   align-items: center;

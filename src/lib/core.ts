@@ -236,6 +236,39 @@ export type RecommendationHistoryItem = Recommendation & {
   feedback?: string;
 };
 
+export type Friend = {
+  id: string;
+  displayName: string;
+  handle: string;
+  status: "pending" | "accepted" | "blocked";
+  badgeStreakMonths: number;
+  score: number;
+  addedAt: string;
+};
+
+export type SocialPrivacySettings = {
+  friendLeaderboardEnabled: boolean;
+  shareBadges: boolean;
+  shareWorkoutSummaries: boolean;
+  shareBodyMetrics: boolean;
+  shareWorkoutDetails: boolean;
+};
+
+export type SharePreview = {
+  id: string;
+  kind: "badge" | "workout-summary";
+  title: string;
+  summary: string;
+  visibleFields: string[];
+  redactedFields: string[];
+  createdAt: string;
+};
+
+export type SharedPost = SharePreview & {
+  publishedAt: string;
+  audience: "private-friends";
+};
+
 export type AchievementStatus = {
   code: string;
   name: string;
@@ -1239,6 +1272,86 @@ export function coachDataBasis(params: {
     `Target: ${params.targetWeightKg}kg x ${params.targetRepsMax} reps`,
     `Recent sets: ${recentSetText}`
   ];
+}
+
+export function defaultSocialPrivacySettings(): SocialPrivacySettings {
+  return {
+    friendLeaderboardEnabled: false,
+    shareBadges: false,
+    shareWorkoutSummaries: false,
+    shareBodyMetrics: false,
+    shareWorkoutDetails: false
+  };
+}
+
+export function privateFriendLeaderboard(input: {
+  profileName: string;
+  friends: Friend[];
+  enabled: boolean;
+  myScore: number;
+  myBadgeStreakMonths: number;
+}): { visible: boolean; entries: { rank: number; displayName: string; score: number; badgeStreakMonths: number }[] } {
+  if (!input.enabled) return { visible: false, entries: [] };
+  const acceptedFriends = input.friends.filter((friend) => friend.status === "accepted");
+  const entries = [
+    { displayName: input.profileName || "You", score: input.myScore, badgeStreakMonths: input.myBadgeStreakMonths },
+    ...acceptedFriends.map((friend) => ({
+      displayName: friend.displayName,
+      score: friend.score,
+      badgeStreakMonths: friend.badgeStreakMonths
+    }))
+  ]
+    .sort((a, b) => b.score - a.score || b.badgeStreakMonths - a.badgeStreakMonths || a.displayName.localeCompare(b.displayName))
+    .map((entry, index) => ({ ...entry, rank: index + 1 }));
+  return { visible: true, entries };
+}
+
+export function buildBadgeSharePreview(input: {
+  badge: Pick<AchievementStatus, "name" | "status" | "streakMonths" | "progress" | "target">;
+  privacy: SocialPrivacySettings;
+  now?: Date;
+}): SharePreview | null {
+  if (!input.privacy.shareBadges) return null;
+  return {
+    id: `share-${cryptoSafeId()}`,
+    kind: "badge",
+    title: `${input.badge.name} badge`,
+    summary: `${input.badge.status} badge, streak ${input.badge.streakMonths} months, progress ${input.badge.progress}/${input.badge.target}.`,
+    visibleFields: ["badge name", "badge status", "badge streak", "badge progress"],
+    redactedFields: ["weight", "body fat", "exercise details", "email"],
+    createdAt: (input.now ?? new Date()).toISOString()
+  };
+}
+
+export function buildWorkoutSummarySharePreview(input: {
+  session: Pick<WorkoutSession, "sessionName" | "durationSeconds" | "status">;
+  setCount: number;
+  totalVolumeKg: number;
+  privacy: SocialPrivacySettings;
+  now?: Date;
+}): SharePreview | null {
+  if (!input.privacy.shareWorkoutSummaries) return null;
+  return {
+    id: `share-${cryptoSafeId()}`,
+    kind: "workout-summary",
+    title: `${input.session.sessionName} summary`,
+    summary: `${input.session.status} workout, ${Math.round(input.session.durationSeconds / 60)} minutes, ${input.setCount} sets, ${input.totalVolumeKg}kg volume.`,
+    visibleFields: ["session name", "duration", "set count", "total volume"],
+    redactedFields: [
+      "weight",
+      "body fat",
+      "email",
+      ...(input.privacy.shareWorkoutDetails ? [] : ["exercise names", "set weights", "set reps", "RPE"])
+    ],
+    createdAt: (input.now ?? new Date()).toISOString()
+  };
+}
+
+export function publishSharePreview(preview: SharePreview | null, privacy: SocialPrivacySettings, now = new Date()): SharedPost | null {
+  if (!preview) return null;
+  if (preview.kind === "badge" && !privacy.shareBadges) return null;
+  if (preview.kind === "workout-summary" && !privacy.shareWorkoutSummaries) return null;
+  return { ...preview, audience: "private-friends", publishedAt: now.toISOString() };
 }
 
 export function estimatedOneRepMax(weightKg: number, reps: number): number {

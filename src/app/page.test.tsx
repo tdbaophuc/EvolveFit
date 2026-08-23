@@ -158,4 +158,41 @@ describe("Settings import and privacy", () => {
     expect(screen.getByRole("button", { name: "Delete personal data" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reset demo data" })).toBeInTheDocument();
   });
+
+  it("keeps social sharing private by default and requires opt-in before publishing", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      "evolvefit-state-v1",
+      JSON.stringify({
+        ...initialState,
+        profile: { ...initialState.profile, onboardingCompleted: true }
+      })
+    );
+
+    render(<AppPage />);
+
+    await user.click(screen.getByRole("button", { name: "Progress" }));
+
+    expect(screen.getByText(/Friend leaderboard is private and disabled/i)).toBeInTheDocument();
+    expect(screen.getAllByText("Sharing is off.").length).toBeGreaterThan(0);
+    expect(screen.getByText(/redact weight, body fat, email, and workout details/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Bench Press.*RPE/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "Publish" })[0]);
+    expect(await screen.findByText(/Turn on the matching share permission/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByText("Social privacy")).toBeInTheDocument();
+    await user.click(screen.getByLabelText("Share badges"));
+    await user.click(screen.getByLabelText("Friend leaderboard"));
+
+    await user.click(screen.getByRole("button", { name: "Progress" }));
+    expect(screen.getByText("Private friend leaderboard")).toBeInTheDocument();
+    expect(screen.getByText("Badge share")).toBeInTheDocument();
+    expect(screen.getByText(/Redacted: weight, body fat, exercise details, email/i)).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "Publish" })[0]);
+    expect(await screen.findByText(/Shared to private friends/i)).toBeInTheDocument();
+    expect(screen.getByText("private-friends")).toBeInTheDocument();
+  });
 });

@@ -4,10 +4,13 @@ import { join } from "node:path";
 import {
   defaultDrinkModules,
   defaultPlateSettings,
+  defaultSocialPrivacySettings,
   builtInExerciseDefinitions,
+  buildBadgeSharePreview,
   buildBodyMetricChartDataset,
   buildProgressDashboard,
   buildProgressReports,
+  buildWorkoutSummarySharePreview,
   calculatePlatesPerSide,
   completeSessionExercise,
   createCustomExerciseDefinition,
@@ -28,6 +31,8 @@ import {
   normalizeDrinkModules,
   parseRoutineCsv,
   parkSessionExercise,
+  privateFriendLeaderboard,
+  publishSharePreview,
   filterExerciseLibrary,
   migrateWorkoutExercisesToRoutine,
   migrateLegacyWorkoutSession,
@@ -1310,5 +1315,65 @@ describe("offline sync queue", () => {
     });
     expect(conflicted[0].status).toBe("conflict");
     expect(markSyncItemSynced(conflicted, queue[0].id)[0].status).toBe("synced");
+  });
+});
+
+describe("social privacy sharing", () => {
+  it("keeps leaderboard and sharing disabled by default", () => {
+    const privacy = defaultSocialPrivacySettings();
+    expect(privacy).toMatchObject({
+      friendLeaderboardEnabled: false,
+      shareBadges: false,
+      shareWorkoutSummaries: false,
+      shareBodyMetrics: false,
+      shareWorkoutDetails: false
+    });
+    expect(buildBadgeSharePreview({ badge: { name: "Hydration", status: "active", streakMonths: 2, progress: 20, target: 20 }, privacy })).toBeNull();
+    expect(
+      buildWorkoutSummarySharePreview({
+        session: { sessionName: "Push Day", durationSeconds: 3600, status: "finished" },
+        setCount: 9,
+        totalVolumeKg: 4500,
+        privacy
+      })
+    ).toBeNull();
+  });
+
+  it("redacts sensitive data unless the user explicitly opts in", () => {
+    const privacy = { ...defaultSocialPrivacySettings(), shareBadges: true, shareWorkoutSummaries: true };
+    const badge = buildBadgeSharePreview({
+      badge: { name: "Workout consistency", status: "active", streakMonths: 3, progress: 12, target: 12 },
+      privacy,
+      now: new Date("2026-08-23T00:00:00.000Z")
+    });
+    const workout = buildWorkoutSummarySharePreview({
+      session: { sessionName: "Push Day", durationSeconds: 4200, status: "finished" },
+      setCount: 10,
+      totalVolumeKg: 5000,
+      privacy,
+      now: new Date("2026-08-23T00:00:00.000Z")
+    });
+
+    expect(badge?.redactedFields).toEqual(expect.arrayContaining(["weight", "body fat", "exercise details", "email"]));
+    expect(workout?.redactedFields).toEqual(expect.arrayContaining(["weight", "body fat", "exercise names", "set weights", "set reps", "RPE"]));
+    expect(workout?.summary).not.toContain("Bench");
+    const post = publishSharePreview(workout, privacy, new Date("2026-08-23T01:00:00.000Z"));
+    expect(post).toMatchObject({ audience: "private-friends", kind: "workout-summary" });
+  });
+
+  it("shows only accepted friends in the private leaderboard after opt-in", () => {
+    const leaderboard = privateFriendLeaderboard({
+      profileName: "Phuc",
+      enabled: true,
+      myScore: 91,
+      myBadgeStreakMonths: 3,
+      friends: [
+        { id: "1", displayName: "Minh", handle: "@minh", status: "accepted", score: 96, badgeStreakMonths: 4, addedAt: "2026-08-23T00:00:00.000Z" },
+        { id: "2", displayName: "Blocked", handle: "@blocked", status: "blocked", score: 99, badgeStreakMonths: 9, addedAt: "2026-08-23T00:00:00.000Z" }
+      ]
+    });
+
+    expect(leaderboard.visible).toBe(true);
+    expect(leaderboard.entries.map((entry) => entry.displayName)).toEqual(["Minh", "Phuc"]);
   });
 });

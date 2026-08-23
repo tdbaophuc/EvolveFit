@@ -1,5 +1,6 @@
 import {
   builtInExerciseDefinitions,
+  defaultSocialPrivacySettings,
   migrateLegacyWorkoutSession,
   migrateWorkoutExercisesToRoutine,
   normalizeDrinkModules,
@@ -107,6 +108,9 @@ export function applySelectiveRestore(current: AppState, imported: AppState, sec
     activeExerciseIndex: selected.has("workouts") ? imported.activeExerciseIndex : current.activeExerciseIndex,
     recommendationHistory: selected.has("workouts") ? imported.recommendationHistory : current.recommendationHistory,
     recommendationDecisions: selected.has("workouts") ? imported.recommendationDecisions : current.recommendationDecisions,
+    friends: selected.has("settings") ? imported.friends : current.friends,
+    socialPrivacy: selected.has("settings") ? imported.socialPrivacy : current.socialPrivacy,
+    sharedPosts: selected.has("settings") ? imported.sharedPosts : current.sharedPosts,
     syncQueue: current.syncQueue,
     restEndsAt: undefined,
     undo: undefined
@@ -134,6 +138,9 @@ export function deletePersonalData(state: AppState): AppState {
     bodyMetrics: [],
     recommendationHistory: [],
     recommendationDecisions: [],
+    friends: [],
+    socialPrivacy: defaultSocialPrivacySettings(),
+    sharedPosts: [],
     syncQueue: [],
     restEndsAt: undefined,
     undo: undefined
@@ -195,6 +202,9 @@ function normalizeImportedState(parsed: Partial<AppState>): AppState {
     activeTemplate: parsed.activeTemplate ?? initialState.activeTemplate,
     recommendationHistory: parsed.recommendationHistory ?? initialState.recommendationHistory,
     recommendationDecisions: parsed.recommendationDecisions ?? initialState.recommendationDecisions,
+    friends: parsed.friends ?? initialState.friends,
+    socialPrivacy: { ...defaultSocialPrivacySettings(), ...parsed.socialPrivacy },
+    sharedPosts: parsed.sharedPosts ?? initialState.sharedPosts,
     syncQueue: parsed.syncQueue ?? initialState.syncQueue,
     undo: undefined
   };

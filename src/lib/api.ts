@@ -14,11 +14,14 @@ import {
   isWorkingVolumeSet,
   type HydrationLog,
   type ExerciseDefinition,
+  type Friend,
   type RecommendationDecision,
   type RecommendationHistoryItem,
   type Routine,
   type SessionExerciseQueueItem,
   type SupplementLog,
+  type SocialPrivacySettings,
+  type SharedPost,
   type WorkoutSession,
   type WorkoutSet
 } from "./core";
@@ -460,6 +463,26 @@ function applySyncItem(item: SyncBatchItem): ApiResult<unknown> {
   if (item.type === "exercise.create") return createExercise(payload as Partial<ExerciseDefinition>);
   if (item.type === "exercise.update") return updateExercise(String(payload.id ?? ""), payload.patch as Partial<ExerciseDefinition>);
   if (item.type === "exercise.delete") return deleteExercise(String(payload.id ?? ""));
+  if (item.type === "social.privacy.update") {
+    serverState.socialPrivacy = { ...serverState.socialPrivacy, ...(payload as Partial<SocialPrivacySettings>) };
+    return ok(serverState.socialPrivacy);
+  }
+  if (item.type === "social.friend.add") {
+    const friend = payload as Friend;
+    if (!serverState.friends.some((item) => item.id === friend.id)) serverState.friends.push(friend);
+    return ok(friend);
+  }
+  if (item.type === "social.friend.update") {
+    const index = serverState.friends.findIndex((friend) => friend.id === payload.id);
+    if (index < 0) return fail("friend not found");
+    serverState.friends[index] = { ...serverState.friends[index], ...(payload.patch as Partial<Friend>) };
+    return ok(serverState.friends[index]);
+  }
+  if (item.type === "social.share.publish") {
+    const post = payload as SharedPost;
+    if (!serverState.sharedPosts.some((item) => item.id === post.id)) serverState.sharedPosts.unshift(post);
+    return ok(post);
+  }
   return fail(`unsupported sync type: ${item.type}`);
 }
 

@@ -1,11 +1,13 @@
 import {
   builtInExerciseDefinitions,
+  defaultSocialPrivacySettings,
   defaultDrinkModules,
   defaultPlateSettings,
   migrateWorkoutExercisesToRoutine,
   type BodyMetric,
   type DrinkModule,
   type ExerciseDefinition,
+  type Friend,
   type HydrationLog,
   type QuickAmount,
   type PlateSettings,
@@ -13,6 +15,8 @@ import {
   type Routine,
   type RecommendationDecision,
   type RecommendationHistoryItem,
+  type SharedPost,
+  type SocialPrivacySettings,
   type Supplement,
   type SupplementLog,
   type SyncQueueItem,
@@ -86,6 +90,9 @@ export type AppState = {
   activeExerciseIndex: number;
   recommendationHistory: RecommendationHistoryItem[];
   recommendationDecisions: RecommendationDecision[];
+  friends: Friend[];
+  socialPrivacy: SocialPrivacySettings;
+  sharedPosts: SharedPost[];
   syncQueue: SyncQueueItem[];
   restEndsAt?: string;
   undo?: {
@@ -296,5 +303,12 @@ export const initialState: AppState = {
   activeExerciseIndex: 0,
   recommendationHistory: [],
   recommendationDecisions: [],
+  friends: [
+    { id: "friend-minh", displayName: "Minh", handle: "@minh", status: "accepted", badgeStreakMonths: 4, score: 96, addedAt: now.toISOString() },
+    { id: "friend-an", displayName: "An", handle: "@an", status: "accepted", badgeStreakMonths: 2, score: 88, addedAt: now.toISOString() },
+    { id: "friend-linh", displayName: "Linh", handle: "@linh", status: "pending", badgeStreakMonths: 1, score: 72, addedAt: now.toISOString() }
+  ],
+  socialPrivacy: defaultSocialPrivacySettings(),
+  sharedPosts: [],
   syncQueue: []
 };

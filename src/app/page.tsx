@@ -26,6 +26,8 @@ import {
   cryptoSafeId,
   completeSessionExercise,
   buildBodyMetricChartDataset,
+  buildBadgeSharePreview,
+  buildWorkoutSummarySharePreview,
   buildProgressDashboard,
   buildProgressReports,
   calculatePlatesPerSide,
@@ -48,6 +50,8 @@ import {
   nextSupersetExerciseIndex,
   parseRoutineCsv,
   parkSessionExercise,
+  privateFriendLeaderboard,
+  publishSharePreview,
   progressiveOverloadRecommendation,
   readinessScore,
   filterExerciseLibrary,
@@ -83,6 +87,7 @@ import {
   type DrinkModule,
   type EquipmentType,
   type ExerciseDefinition,
+  type Friend,
   type HydrationLog,
   type MovementPattern,
   type PlateCalculation,
@@ -95,6 +100,8 @@ import {
   type ProgressReports,
   type RecommendationDecision,
   type RecommendationHistoryItem,
+  type SharedPost,
+  type SocialPrivacySettings,
   type SyncQueueItem,
   type WorkoutSession,
   type WorkoutSetPr,
@@ -517,6 +524,24 @@ export default function AppPage() {
     now
   });
   const achievements = progressReports.monthly.badges.filter((badge) => badge.status !== "disabled");
+  const topBadge = achievements.find((badge) => badge.status === "active") ?? achievements[0];
+  const socialLeaderboard = privateFriendLeaderboard({
+    profileName: state.profile.name,
+    friends: state.friends,
+    enabled: state.socialPrivacy.friendLeaderboardEnabled,
+    myScore: progressDashboard.hydration30.goalHitRate + progressDashboard.workoutCount30 * 5,
+    myBadgeStreakMonths: Math.max(0, ...achievements.map((badge) => badge.streakMonths))
+  });
+  const latestWorkoutSession = state.workoutSessions.filter((session) => session.status === "finished").at(-1);
+  const badgeSharePreview = topBadge ? buildBadgeSharePreview({ badge: topBadge, privacy: state.socialPrivacy }) : null;
+  const workoutSummarySharePreview = latestWorkoutSession
+    ? buildWorkoutSummarySharePreview({
+        session: latestWorkoutSession,
+        setCount: state.workoutSets.filter((set) => set.sessionId === latestWorkoutSession.id).length,
+        totalVolumeKg: workingSetVolumeKg(state.workoutSets.filter((set) => set.sessionId === latestWorkoutSession.id)),
+        privacy: state.socialPrivacy
+      })
+    : null;
   const latestMetric = latestBodyMetric(state.bodyMetrics);
   const weightDelta = bodyWeightDelta(state.bodyMetrics);
   const bodyMetricChart = buildBodyMetricChartDataset({
@@ -1728,6 +1753,43 @@ export default function AppPage() {
     commit({ ...state, notificationSettings: { ...state.notificationSettings, ...next } });
   }
 
+  function updateSocialPrivacy(next: Partial<SocialPrivacySettings>) {
+    const socialPrivacy = { ...state.socialPrivacy, ...next };
+    commitSynced({ ...state, socialPrivacy }, "social.privacy.update", socialPrivacy, "Updated social privacy");
+  }
+
+  function addFriend() {
+    const friend: Friend = {
+      id: cryptoSafeId(),
+      displayName: "New friend",
+      handle: `@friend${state.friends.length + 1}`,
+      status: "pending",
+      badgeStreakMonths: 0,
+      score: 0,
+      addedAt: new Date().toISOString()
+    };
+    commitSynced({ ...state, friends: [friend, ...state.friends] }, "social.friend.add", friend, "Added friend invite");
+  }
+
+  function updateFriend(id: string, patch: Partial<Friend>) {
+    commitSynced(
+      { ...state, friends: state.friends.map((friend) => (friend.id === id ? { ...friend, ...patch } : friend)) },
+      "social.friend.update",
+      { id, patch },
+      "Updated friend"
+    );
+  }
+
+  function publishSocialShare(kind: SharedPost["kind"]) {
+    const preview = kind === "badge" ? badgeSharePreview : workoutSummarySharePreview;
+    const post = publishSharePreview(preview, state.socialPrivacy);
+    if (!post) {
+      setToast("Turn on the matching share permission before publishing.");
+      return;
+    }
+    commitSynced({ ...state, sharedPosts: [post, ...state.sharedPosts] }, "social.share.publish", post, "Shared to private friends");
+  }
+
   function updatePlateSettings(next: Partial<PlateSettings>) {
     const plateSettings = {
       ...state.plateSettings,
@@ -2084,6 +2146,11 @@ export default function AppPage() {
             recommendationHistory={state.recommendationHistory}
             recommendationDecisions={state.recommendationDecisions}
             decideRecommendation={decideRecommendation}
+            socialLeaderboard={socialLeaderboard}
+            badgeSharePreview={badgeSharePreview}
+            workoutSummarySharePreview={workoutSummarySharePreview}
+            sharedPosts={state.sharedPosts}
+            publishSocialShare={publishSocialShare}
             downloadExport={downloadExport}
             downloadReportPdf={downloadReportPdf}
           />
@@ -2119,6 +2186,9 @@ export default function AppPage() {
             setRestoreSections={setRestoreSections}
             updateNotificationSettings={updateNotificationSettings}
             updatePlateSettings={updatePlateSettings}
+            updateSocialPrivacy={updateSocialPrivacy}
+            addFriend={addFriend}
+            updateFriend={updateFriend}
             drinkModules={drinkModules}
             updateDrinkModule={updateDrinkModule}
             reopenOnboarding={() => {
@@ -3460,6 +3530,11 @@ function ProgressView(props: {
   recommendationHistory: RecommendationHistoryItem[];
   recommendationDecisions: RecommendationDecision[];
   decideRecommendation: (decision: "accepted" | "rejected") => void;
+  socialLeaderboard: { visible: boolean; entries: { rank: number; displayName: string; score: number; badgeStreakMonths: number }[] };
+  badgeSharePreview: ReturnType<typeof buildBadgeSharePreview>;
+  workoutSummarySharePreview: ReturnType<typeof buildWorkoutSummarySharePreview>;
+  sharedPosts: SharedPost[];
+  publishSocialShare: (kind: SharedPost["kind"]) => void;
   downloadExport: () => void;
   downloadReportPdf: (period: keyof ProgressReports) => void;
 }) {
@@ -3522,6 +3597,43 @@ function ProgressView(props: {
           ) : (
             <p>No recommendation feedback yet.</p>
           )}
+        </div>
+      </section>
+      <section className="card">
+        <div className="section-heading">
+          <h2>Private friend leaderboard</h2>
+          <span className="sync-pill">{props.socialLeaderboard.visible ? "private group" : "off"}</span>
+        </div>
+        {props.socialLeaderboard.visible ? (
+          <div className="leaderboard">
+            {props.socialLeaderboard.entries.map((entry) => (
+              <div key={entry.displayName}>
+                <span>#{entry.rank}</span>
+                <strong>{entry.displayName}</strong>
+                <em>{entry.score} pts - streak {entry.badgeStreakMonths}</em>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="privacy-note">Friend leaderboard is private and disabled until you opt in from Settings.</p>
+        )}
+      </section>
+      <section className="card">
+        <h2>Share to friends</h2>
+        <div className="settings-inline-grid">
+          <SharePreviewCard title="Badge share" preview={props.badgeSharePreview} onPublish={() => props.publishSocialShare("badge")} />
+          <SharePreviewCard title="Workout summary share" preview={props.workoutSummarySharePreview} onPublish={() => props.publishSocialShare("workout-summary")} />
+        </div>
+        <p className="privacy-note">Shared cards redact weight, body fat, email, and workout details unless the matching consent is enabled.</p>
+        <div className="timeline compact">
+          {props.sharedPosts.slice(0, 4).map((post) => (
+            <div key={post.id}>
+              <span>{post.audience}</span>
+              <strong>{post.title}</strong>
+              <em>{new Date(post.publishedAt).toLocaleDateString("vi-VN")}</em>
+            </div>
+          ))}
+          {!props.sharedPosts.length && <p>No shared posts yet.</p>}
         </div>
       </section>
       <section className="stats-grid progress-summary">
@@ -3773,6 +3885,33 @@ function ProgressView(props: {
   );
 }
 
+function SharePreviewCard(props: {
+  title: string;
+  preview: ReturnType<typeof buildBadgeSharePreview> | ReturnType<typeof buildWorkoutSummarySharePreview>;
+  onPublish: () => void;
+}) {
+  return (
+    <div className="share-preview-card">
+      <strong>{props.title}</strong>
+      {props.preview ? (
+        <>
+          <span>{props.preview.summary}</span>
+          <em>Visible: {props.preview.visibleFields.join(", ")}</em>
+          <em>Redacted: {props.preview.redactedFields.join(", ")}</em>
+        </>
+      ) : (
+        <>
+          <span>Sharing is off.</span>
+          <em>Enable opt-in controls in Settings before publishing.</em>
+        </>
+      )}
+      <button className="secondary-button" onClick={props.onPublish}>
+        Publish
+      </button>
+    </div>
+  );
+}
+
 function MetricCard(props: { label: string; value: string; accent: "hydration" | "training" | "coach" | "neutral"; icon?: React.ReactNode }) {
   return (
     <div className={`metric-card ${props.accent}`}>
@@ -4013,6 +4152,9 @@ function SettingsView(props: {
   setRestoreSections: (sections: RestoreSection[]) => void;
   updateNotificationSettings: (next: Partial<AppState["notificationSettings"]>) => void;
   updatePlateSettings: (next: Partial<PlateSettings>) => void;
+  updateSocialPrivacy: (next: Partial<SocialPrivacySettings>) => void;
+  addFriend: () => void;
+  updateFriend: (id: string, patch: Partial<Friend>) => void;
   drinkModules: DrinkModule[];
   updateDrinkModule: (id: DrinkModule["id"], patch: Partial<DrinkModule>) => void;
   reopenOnboarding: () => void;
@@ -4241,6 +4383,45 @@ function SettingsView(props: {
           />
         </label>
         <p className="privacy-note">Mặc định riêng tư. Leaderboard chỉ hiển thị tên, avatar, rank và badge streak.</p>
+      </section>
+      <section className="card">
+        <h2>Social privacy</h2>
+        <p className="privacy-note">Private by default. Sharing requires opt-in and never includes weight, body fat, email, or exercise details unless that exact permission is enabled.</p>
+        <div className="restore-section-grid" aria-label="Social privacy controls">
+          {[
+            ["friendLeaderboardEnabled", "Friend leaderboard"],
+            ["shareBadges", "Share badges"],
+            ["shareWorkoutSummaries", "Share workout summaries"],
+            ["shareWorkoutDetails", "Workout details consent"],
+            ["shareBodyMetrics", "Body metrics consent"]
+          ].map(([key, label]) => (
+            <label key={key} className="toggle-row compact-toggle">
+              <span>{label}</span>
+              <input
+                type="checkbox"
+                checked={Boolean(props.state.socialPrivacy[key as keyof SocialPrivacySettings])}
+                onChange={(event) => props.updateSocialPrivacy({ [key]: event.target.checked } as Partial<SocialPrivacySettings>)}
+              />
+            </label>
+          ))}
+        </div>
+        <div className="section-heading">
+          <h3>Friends</h3>
+          <button className="secondary-button" onClick={props.addFriend}>Add friend</button>
+        </div>
+        <div className="leaderboard">
+          {props.state.friends.map((friend) => (
+            <div key={friend.id}>
+              <span>{friend.status}</span>
+              <strong>{friend.displayName}</strong>
+              <em>{friend.handle} - {friend.score} pts</em>
+              <div className="split-actions">
+                <button className="secondary-button" onClick={() => props.updateFriend(friend.id, { status: "accepted" })}>Accept</button>
+                <button className="secondary-button danger-button" onClick={() => props.updateFriend(friend.id, { status: "blocked" })}>Block</button>
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
       <section className="card">
         <h2>Notifications</h2>
