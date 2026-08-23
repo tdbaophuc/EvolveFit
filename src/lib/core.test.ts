@@ -18,6 +18,7 @@ import {
   hydrationPaceStatus,
   hydrationPercent,
   hydrationTotal,
+  isWorkingVolumeSet,
   isDrinkModuleActive,
   monthlyAchievements,
   latestBodyMetric,
@@ -29,6 +30,7 @@ import {
   filterExerciseLibrary,
   migrateWorkoutExercisesToRoutine,
   migrateLegacyWorkoutSession,
+  nextSupersetExerciseIndex,
   reorderSessionExerciseQueue,
   readinessScore,
   validateBodyMetric,
@@ -47,7 +49,9 @@ import {
   toCsv,
   upsertQuickAmount,
   visibleHydrationLogs,
-  visibleQuickAmounts
+  visibleQuickAmounts,
+  warmUpSetSuggestions,
+  workingSetVolumeKg
 } from "./core";
 
 describe("hydration logic", () => {
@@ -211,6 +215,8 @@ describe("routine import parser", () => {
       targetWeightKg: 42.5,
       restSeconds: 90
     });
+    expect(preview.rows[1]).toMatchObject({ name: "Seated Shoulder Press", supersetGroup: "A1" });
+    expect(preview.rows[2]).toMatchObject({ name: "Cable Triceps Pushdown", supersetGroup: "A1" });
   });
 
   it("supports Vietnamese and English column aliases", () => {
@@ -508,6 +514,166 @@ describe("workout session model", () => {
 });
 
 describe("progress dashboard aggregation", () => {
+  it("counts working, drop and failure sets for volume while excluding warm-up and skipped sets", () => {
+    const sets = [
+      {
+        id: "warm",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        setType: "warmup" as const,
+        targetWeightKg: 60,
+        targetReps: 8,
+        actualWeightKg: 30,
+        actualReps: 6
+      },
+      {
+        id: "legacy-working",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        targetWeightKg: 60,
+        targetReps: 8,
+        actualWeightKg: 60,
+        actualReps: 8
+      },
+      {
+        id: "drop",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        setType: "drop" as const,
+        targetWeightKg: 60,
+        targetReps: 8,
+        actualWeightKg: 45,
+        actualReps: 10
+      },
+      {
+        id: "failure",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        setType: "failure" as const,
+        targetWeightKg: 60,
+        targetReps: 8,
+        actualWeightKg: 50,
+        actualReps: 9
+      },
+      {
+        id: "skip",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        setType: "working" as const,
+        targetWeightKg: 60,
+        targetReps: 8,
+        actualWeightKg: 60,
+        actualReps: 0
+      }
+    ];
+
+    expect(sets.map(isWorkingVolumeSet)).toEqual([false, true, true, true, false]);
+    expect(workingSetVolumeKg(sets)).toBe(1380);
+    expect(exercisePersonalRecords(sets)).toEqual([
+      {
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        maxWeightKg: 60,
+        maxReps: 10,
+        estimatedOneRepMaxKg: 76,
+        volumePrKg: 480
+      }
+    ]);
+  });
+
+  it("suggests warm-up sets below working weight rounded to plate increments", () => {
+    expect(warmUpSetSuggestions({ workingWeightKg: 100, workingReps: 8 })).toEqual([
+      { setType: "warmup", weightKg: 40, reps: 8, percent: 40 },
+      { setType: "warmup", weightKg: 60, reps: 5, percent: 60 },
+      { setType: "warmup", weightKg: 80, reps: 3, percent: 80 }
+    ]);
+    expect(warmUpSetSuggestions({ workingWeightKg: 0, workingReps: 10 })).toEqual([]);
+  });
+
+  it("alternates through a superset group until each exercise reaches target sets", () => {
+    const exercises = [
+      {
+        id: "curl",
+        name: "Curl",
+        muscleGroup: "Arms",
+        supersetGroup: "A1",
+        targetSets: 2,
+        targetRepsMin: 10,
+        targetRepsMax: 12,
+        targetWeightKg: 12,
+        restSeconds: 45,
+        lastSession: ""
+      },
+      {
+        id: "pressdown",
+        name: "Pressdown",
+        muscleGroup: "Arms",
+        supersetGroup: "A1",
+        targetSets: 2,
+        targetRepsMin: 10,
+        targetRepsMax: 12,
+        targetWeightKg: 25,
+        restSeconds: 45,
+        lastSession: ""
+      },
+      {
+        id: "plank",
+        name: "Plank",
+        muscleGroup: "Core",
+        targetSets: 2,
+        targetRepsMin: 1,
+        targetRepsMax: 1,
+        targetWeightKg: 0,
+        restSeconds: 45,
+        lastSession: ""
+      }
+    ];
+
+    expect(
+      nextSupersetExerciseIndex({
+        exercises,
+        currentIndex: 0,
+        sets: [
+          {
+            id: "curl-1",
+            exerciseId: "curl",
+            exerciseName: "Curl",
+            targetWeightKg: 12,
+            targetReps: 10,
+            actualWeightKg: 12,
+            actualReps: 10
+          }
+        ]
+      })
+    ).toBe(1);
+    expect(
+      nextSupersetExerciseIndex({
+        exercises,
+        currentIndex: 1,
+        sets: [
+          {
+            id: "curl-1",
+            exerciseId: "curl",
+            exerciseName: "Curl",
+            targetWeightKg: 12,
+            targetReps: 10,
+            actualWeightKg: 12,
+            actualReps: 10
+          },
+          {
+            id: "pressdown-1",
+            exerciseId: "pressdown",
+            exerciseName: "Pressdown",
+            targetWeightKg: 25,
+            targetReps: 10,
+            actualWeightKg: 25,
+            actualReps: 10
+          }
+        ]
+      })
+    ).toBe(0);
+  });
+
   it("aggregates hydration, creatine, workout count, weekly volume and muscle volume", () => {
     const now = new Date("2026-08-20T12:00:00.000Z");
     const dashboard = buildProgressDashboard({
@@ -568,6 +734,18 @@ describe("progress dashboard aggregation", () => {
           actualWeightKg: 60,
           actualReps: 0,
           completedAt: "2026-08-20T09:12:00.000Z"
+        },
+        {
+          id: "set-warm",
+          sessionId: "s1",
+          exerciseId: "bench",
+          exerciseName: "Bench Press",
+          setType: "warmup",
+          targetWeightKg: 60,
+          targetReps: 8,
+          actualWeightKg: 40,
+          actualReps: 5,
+          completedAt: "2026-08-20T09:08:00.000Z"
         },
         {
           id: "set-2",
@@ -651,6 +829,17 @@ describe("progress dashboard aggregation", () => {
         actualWeightKg: 100,
         actualReps: 0,
         completedAt: "2026-08-20T09:05:00.000Z"
+      },
+      {
+        id: "set-warm",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        setType: "warmup" as const,
+        targetWeightKg: 80,
+        targetReps: 3,
+        actualWeightKg: 80,
+        actualReps: 3,
+        completedAt: "2026-08-20T08:55:00.000Z"
       }
     ];
 
@@ -687,6 +876,17 @@ describe("progress dashboard aggregation", () => {
         actualWeightKg: 100,
         actualReps: 0,
         completedAt: "2026-08-19T09:00:00.000Z"
+      },
+      {
+        id: "old-warm",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        setType: "warmup" as const,
+        targetWeightKg: 90,
+        targetReps: 2,
+        actualWeightKg: 90,
+        actualReps: 2,
+        completedAt: "2026-08-19T08:55:00.000Z"
       }
     ];
 

@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 const port = process.env.PORT ?? "5173";
 const baseUrl = `http://127.0.0.1:${port}`;
@@ -12,11 +12,9 @@ const routes = [
   "/api/hydration/today"
 ];
 
-const command = process.platform === "win32" ? ".\\node_modules\\.bin\\next.cmd" : "./node_modules/.bin/next";
-const server = spawn(command, ["dev", "-p", port], {
+const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "dev", "-p", port], {
   cwd: process.cwd(),
   env: normalizedEnv({ ...process.env, PORT: port }),
-  shell: process.platform === "win32",
   stdio: ["ignore", "pipe", "pipe"]
 });
 
@@ -44,7 +42,7 @@ try {
   console.error(error);
 } finally {
   stopServer();
-  setTimeout(() => process.exit(exitCode), 250);
+  process.exit(exitCode);
 }
 
 async function waitForReady() {
@@ -74,13 +72,10 @@ function normalizedEnv(env) {
 function stopServer() {
   server.stdout.destroy();
   server.stderr.destroy();
-  server.unref();
   if (server.exitCode !== null) return;
 
+  server.kill(process.platform === "win32" ? "SIGTERM" : "SIGTERM");
   if (process.platform === "win32") {
-    const killer = spawn("taskkill", ["/pid", String(server.pid), "/T", "/F"], { stdio: "ignore" });
-    killer.unref();
-  } else {
-    server.kill("SIGTERM");
+    spawnSync("taskkill", ["/pid", String(server.pid), "/T", "/F"], { stdio: "ignore", timeout: 2_000 });
   }
 }

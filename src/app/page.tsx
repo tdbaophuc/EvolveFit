@@ -39,11 +39,13 @@ import {
   hydrationPercent,
   hydrationTotal,
   inputWeightToKg,
+  isWorkingVolumeSet,
   isDrinkModuleActive,
   monthlyAchievements,
   normalizeDrinkModules,
   normalizePlateInventory,
   normalizeWorkoutSessionQueue,
+  nextSupersetExerciseIndex,
   parseRoutineCsv,
   parkSessionExercise,
   readinessScore,
@@ -68,6 +70,8 @@ import {
   validateBodyMetric,
   visibleHydrationLogs,
   visibleQuickAmounts,
+  warmUpSetSuggestions,
+  workingSetVolumeKg,
   type BodyMetric,
   type BodyMetricChartDataset,
   type BodyMetricRangeDays,
@@ -86,7 +90,8 @@ import {
   type WorkoutSession,
   type WorkoutSetPr,
   type WorkoutExercise,
-  type WorkoutSet
+  type WorkoutSet,
+  type WorkoutSetType
 } from "@/lib/core";
 import {
   allRestoreSections,
@@ -151,6 +156,7 @@ export default function AppPage() {
   const [setWeight, setSetWeight] = useState(42.5);
   const [setReps, setSetReps] = useState(8);
   const [setRpe, setSetRpe] = useState(8);
+  const [setType, setSetType] = useState<WorkoutSetType>("working");
   const [livePrBadges, setLivePrBadges] = useState<WorkoutSetPr[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
@@ -364,6 +370,10 @@ export default function AppPage() {
   const activeSessionQueue = activeWorkoutSession
     ? normalizeWorkoutSessionQueue(activeWorkoutSession).exerciseQueue
     : state.workoutExercises.map((exercise) => ({ exerciseId: exercise.id, status: "queued" as const }));
+  const activeSessionExercises = activeSessionQueue.flatMap((item) => {
+    const exercise = state.workoutExercises.find((entry) => entry.id === item.exerciseId);
+    return exercise ? [exercise] : [];
+  });
   const filteredExerciseLibrary = filterExerciseLibrary(state.exerciseLibrary, {
     query: librarySearch,
     muscleGroup: libraryMuscleFilter,
@@ -376,7 +386,8 @@ export default function AppPage() {
       : state.workoutExercises[state.activeExerciseIndex]) ??
     state.workoutExercises[0] ??
     emptyExercise;
-  const completedSetsForActive = currentSessionSets.filter((set) => set.exerciseId === activeExercise.id);
+  const completedSetsForActive = currentSessionSets.filter((set) => set.exerciseId === activeExercise.id && (set.setType ?? "working") !== "warmup");
+  const allSetsForActive = currentSessionSets.filter((set) => set.exerciseId === activeExercise.id);
   const achievements = monthlyAchievements({
     hydrationGoalDays: 18,
     hydrationTargetDays: 24,
@@ -384,7 +395,7 @@ export default function AppPage() {
     previousHydrationStreak: 2,
     previousVolumeStreak: 1
   });
-  const bestSet = state.workoutSets.filter((set) => set.actualReps > 0).reduce<WorkoutSet | undefined>(
+  const bestSet = state.workoutSets.filter(isWorkingVolumeSet).reduce<WorkoutSet | undefined>(
     (best, set) => (!best || estimatedOneRepMax(set.actualWeightKg, set.actualReps) > estimatedOneRepMax(best.actualWeightKg, best.actualReps) ? set : best),
     undefined
   );
@@ -1242,13 +1253,23 @@ export default function AppPage() {
   function commitWorkoutSet(completed: WorkoutSet, label: string, message: string) {
     const prs = detectWorkoutSetPrs(state.workoutSets, completed);
     const commitMessage = prs.length ? `New PR: ${prs.map((pr) => pr.label).join(", ")}` : message;
-    const finishedExercise = completedSetsForActive.length + 1 >= activeExercise.targetSets;
+    const countsTowardTarget = (completed.setType ?? "working") !== "warmup";
+    const finishedExercise = countsTowardTarget && completedSetsForActive.length + 1 >= activeExercise.targetSets;
     const completedSession =
       activeWorkoutSession && finishedExercise ? completeSessionExercise(activeWorkoutSession, activeExercise.id) : activeWorkoutSession;
+    const nextWorkoutSets = [...state.workoutSets, completed];
+    const supersetIndex =
+      countsTowardTarget && !finishedExercise
+        ? nextSupersetExerciseIndex({
+            exercises: activeWorkoutSession ? activeSessionExercises : state.workoutExercises,
+            currentIndex: state.activeExerciseIndex,
+            sets: currentSessionSets.concat(completed)
+          })
+        : undefined;
     const nextExerciseIndex =
       completedSession && finishedExercise
         ? nextOpenQueueIndex(completedSession.exerciseQueue, state.activeExerciseIndex)
-        : state.activeExerciseIndex;
+        : supersetIndex ?? state.activeExerciseIndex;
     const shouldFinishSession = Boolean(completedSession && finishedExercise && nextExerciseIndex < 0);
     const restEndsAt = new Date(Date.now() + activeExercise.restSeconds * 1000).toISOString();
     if (shouldFinishSession) {
@@ -1263,7 +1284,7 @@ export default function AppPage() {
     withUndo(
       {
         ...state,
-        workoutSets: [...state.workoutSets, completed],
+        workoutSets: nextWorkoutSets,
         workoutSessions: finishedSession
           ? replaceWorkoutSession(finishedSession)
           : completedSession
@@ -1295,12 +1316,13 @@ export default function AppPage() {
       exerciseName: activeExercise.name,
       targetWeightKg: activeExercise.targetWeightKg,
       targetReps: activeExercise.targetRepsMin,
+      setType,
       actualWeightKg: setWeight,
       actualReps: setReps,
       rpe: setRpe,
       completedAt: new Date().toISOString()
     };
-    commitWorkoutSet(completed, "set", `Ho?n th?nh set ${completedSetsForActive.length + 1}`);
+    commitWorkoutSet(completed, "set", `Ho?n th?nh ${setType} set ${completedSetsForActive.length + 1}`);
   }
 
   function skipCurrentSet() {
@@ -1316,6 +1338,7 @@ export default function AppPage() {
       exerciseName: activeExercise.name,
       targetWeightKg: activeExercise.targetWeightKg,
       targetReps: activeExercise.targetRepsMin,
+      setType: "working",
       actualWeightKg: activeExercise.targetWeightKg,
       actualReps: 0,
       completedAt: new Date().toISOString()
@@ -1701,6 +1724,7 @@ export default function AppPage() {
             filteredExerciseLibrary={filteredExerciseLibrary}
             activeExercise={activeExercise}
             completedSets={completedSetsForActive}
+            allSetsForActive={allSetsForActive}
             livePrBadges={livePrBadges}
             plateSettings={state.plateSettings}
             setWeight={setWeight}
@@ -1709,6 +1733,8 @@ export default function AppPage() {
             setSetReps={setSetReps}
             setRpe={setRpe}
             setSetRpe={setSetRpe}
+            setType={setType}
+            setSetType={setSetType}
             mode={workoutMode}
             startWorkout={startWorkout}
             finishWorkout={finishWorkout}
@@ -2394,6 +2420,7 @@ function WorkoutView(props: {
   filteredExerciseLibrary: ExerciseDefinition[];
   activeExercise: AppState["workoutExercises"][number];
   completedSets: WorkoutSet[];
+  allSetsForActive: WorkoutSet[];
   livePrBadges: WorkoutSetPr[];
   plateSettings: PlateSettings;
   setWeight: number;
@@ -2402,6 +2429,8 @@ function WorkoutView(props: {
   setSetReps: (value: number) => void;
   setRpe: number;
   setSetRpe: (value: number) => void;
+  setType: WorkoutSetType;
+  setSetType: (value: WorkoutSetType) => void;
   mode: "plan" | "live" | "finished";
   startWorkout: () => void;
   finishWorkout: () => void;
@@ -2456,7 +2485,7 @@ function WorkoutView(props: {
   updateExerciseDefinition: (id: string, patch: Partial<ExerciseDefinition>) => void;
   deleteExerciseDefinition: (id: string) => void;
 }) {
-  const totalVolume = props.currentSessionSets.reduce((sum, set) => sum + set.actualWeightKg * set.actualReps, 0);
+  const totalVolume = workingSetVolumeKg(props.currentSessionSets);
   const completedExerciseCount = new Set(props.currentSessionSets.map((set) => set.exerciseId)).size;
   const queueExercises = props.sessionQueue.flatMap((item) => {
     const exercise = props.state.workoutExercises.find((entry) => entry.id === item.exerciseId);
@@ -2466,6 +2495,16 @@ function WorkoutView(props: {
   const completedCount = props.sessionQueue.filter((item) => item.status === "completed").length;
   const parkedCount = props.sessionQueue.filter((item) => item.status === "parked").length;
   const plateCalculation = calculatePlatesPerSide(props.setWeight, props.plateSettings);
+  const warmUpSuggestions = warmUpSetSuggestions({
+    workingWeightKg: props.activeExercise.targetWeightKg,
+    workingReps: props.activeExercise.targetRepsMin
+  });
+  const setTypeLabels: Record<WorkoutSetType, string> = {
+    warmup: "Warm-up",
+    working: "Working",
+    drop: "Drop",
+    failure: "Failure"
+  };
 
   if (props.mode === "finished") {
     return (
@@ -2587,6 +2626,7 @@ function WorkoutView(props: {
                   <label><span>Reps max</span><input type="number" min="1" max="50" value={exercise.targetRepsMax} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetRepsMax: Number(event.target.value) })} /></label>
                   <label><span>Kg</span><input type="number" min="0" step="0.5" value={exercise.targetWeightKg} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetWeightKg: Number(event.target.value) })} /></label>
                   <label><span>Rest</span><input type="number" min="15" step="15" value={exercise.restSeconds} onChange={(event) => props.updateExerciseTarget(exercise.id, { restSeconds: Number(event.target.value) })} /></label>
+                  <label><span>Superset</span><input value={exercise.supersetGroup ?? ""} onChange={(event) => props.updateExerciseTarget(exercise.id, { supersetGroup: event.target.value.trim() || undefined })} placeholder="A1" /></label>
                   <label className="wide-field"><span>Last session</span><input value={exercise.lastSession} onChange={(event) => props.updateExerciseTarget(exercise.id, { lastSession: event.target.value })} /></label>
                 </div>
               </div>
@@ -2816,6 +2856,10 @@ function WorkoutView(props: {
                   <span>Nghỉ</span>
                   <input type="number" min="15" step="15" value={exercise.restSeconds} onChange={(event) => props.updateExerciseTarget(exercise.id, { restSeconds: Number(event.target.value) })} />
                 </label>
+                <label>
+                  <span>Superset</span>
+                  <input value={exercise.supersetGroup ?? ""} onChange={(event) => props.updateExerciseTarget(exercise.id, { supersetGroup: event.target.value.trim() || undefined })} placeholder="A1" />
+                </label>
                 <label className="wide-field">
                   <span>Lần trước</span>
                   <input value={exercise.lastSession} onChange={(event) => props.updateExerciseTarget(exercise.id, { lastSession: event.target.value })} />
@@ -2853,13 +2897,23 @@ function WorkoutView(props: {
 
       <section className="card">
         <h2>Set hiện tại</h2>
+        {props.activeExercise.supersetGroup && <span className="sync-pill">Superset {props.activeExercise.supersetGroup}</span>}
+        {props.allSetsForActive.some((set) => (set.setType ?? "working") === "warmup") && (
+          <div className="chip-row warmup-row" aria-label="Warm-up sets completed">
+            {props.allSetsForActive
+              .filter((set) => (set.setType ?? "working") === "warmup")
+              .map((set) => (
+                <span key={set.id} className="tiny-chip">WU {set.actualWeightKg}kg x {set.actualReps}</span>
+              ))}
+          </div>
+        )}
         <div className="set-table">
           {Array.from({ length: props.activeExercise.targetSets }).map((_, index) => {
             const done = props.completedSets[index];
             const isCurrent = index === props.completedSets.length;
             return (
               <div key={index} className={isCurrent ? "current" : ""}>
-                <span>Set {index + 1}</span>
+                <span>{done ? setTypeLabels[done.setType ?? "working"] : `Set ${index + 1}`}</span>
                 <strong>{done ? (done.actualReps === 0 ? "Skipped" : `${done.actualWeightKg}kg x ${done.actualReps}`) : `${props.activeExercise.targetWeightKg}kg x ${props.activeExercise.targetRepsMin}`}</strong>
                 <em>{done ? (done.actualReps === 0 ? "Skipped" : `RPE ${done.rpe ?? "-"}`) : isCurrent ? "Current" : "Pending"}</em>
               </div>
@@ -2869,6 +2923,30 @@ function WorkoutView(props: {
       </section>
 
       <section className="control-card card">
+        <div className="template-row set-type-row" aria-label="Set type">
+          {(["warmup", "working", "drop", "failure"] as WorkoutSetType[]).map((type) => (
+            <button key={type} className={props.setType === type ? "active" : ""} onClick={() => props.setSetType(type)}>
+              {setTypeLabels[type]}
+            </button>
+          ))}
+        </div>
+        {warmUpSuggestions.length > 0 && (
+          <div className="chip-row warmup-row" aria-label="Warm-up suggestions">
+            {warmUpSuggestions.map((suggestion) => (
+              <button
+                key={`${suggestion.percent}-${suggestion.weightKg}`}
+                className="tiny-chip"
+                onClick={() => {
+                  props.setSetType("warmup");
+                  props.setSetWeight(suggestion.weightKg);
+                  props.setSetReps(suggestion.reps);
+                }}
+              >
+                {suggestion.percent}%: {suggestion.weightKg}kg x {suggestion.reps}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="plate-stepper-block">
           <Stepper label="Tạ" value={props.setWeight} suffix="kg" step={2.5} onChange={props.setSetWeight} />
           <PlateCalculatorReadout calculation={plateCalculation} />
@@ -2968,7 +3046,7 @@ function WorkoutView(props: {
                   <strong>
                     {set.actualReps === 0 ? "Skipped" : `${set.actualWeightKg}kg x ${set.actualReps}`}
                   </strong>
-                  <em>RPE {set.rpe ?? "-"}</em>
+                  <em>{setTypeLabels[set.setType ?? "working"]} - RPE {set.rpe ?? "-"}</em>
                   <div className="row-actions">
                     <button onClick={() => props.updateWorkoutSet(set.id, { actualWeightKg: Math.max(0, set.actualWeightKg - 2.5) })} aria-label="Giảm kg set">
                       -kg
@@ -3110,9 +3188,9 @@ function ProgressView(props: {
   updateBodyMetric: (id: string, patch: Partial<BodyMetric>) => void;
   downloadExport: () => void;
 }) {
-  const volume = props.sets.filter((set) => set.actualReps > 0).reduce((sum, set) => sum + set.actualWeightKg * set.actualReps, 0);
+  const volume = workingSetVolumeKg(props.sets);
   const oneRm = props.bestSet ? estimatedOneRepMax(props.bestSet.actualWeightKg, props.bestSet.actualReps) : 0;
-  const completedExercises = new Set(props.sets.filter((set) => set.actualReps > 0).map((set) => set.exerciseId)).size;
+  const completedExercises = new Set(props.sets.filter(isWorkingVolumeSet).map((set) => set.exerciseId)).size;
   const maxWeeklyVolume = Math.max(1, ...props.progress.weeklyVolume.map((bucket) => bucket.volumeKg));
   const maxMuscleVolume = Math.max(1, ...props.progress.volumeByMuscleGroup.map((bucket) => bucket.volumeKg));
 

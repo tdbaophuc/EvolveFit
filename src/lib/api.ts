@@ -7,6 +7,7 @@ import {
   shouldSendCreatineReminder,
   shouldSendHydrationReminder,
   expectedHydrationByNow,
+  isWorkingVolumeSet,
   type HydrationLog,
   type SupplementLog,
   type WorkoutSet
@@ -182,7 +183,7 @@ export function recalculateProgression(exerciseId: string) {
   const exercise = serverState.workoutExercises.find((item) => item.id === exerciseId);
   if (!exercise) return fail("exercise not found");
 
-  const recentSets = serverState.workoutSets.filter((set) => set.exerciseId === exerciseId).slice(-exercise.targetSets);
+  const recentSets = serverState.workoutSets.filter((set) => set.exerciseId === exerciseId && isWorkingVolumeSet(set)).slice(-exercise.targetSets);
   return ok(
     progressiveOverloadRecommendation({
       exerciseName: exercise.name,
@@ -197,7 +198,7 @@ export function recalculateProgression(exerciseId: string) {
 
 export async function coachRecommend() {
   const exercise = serverState.workoutExercises[serverState.activeExerciseIndex] ?? serverState.workoutExercises[0];
-  const recentSets = serverState.workoutSets.filter((set) => set.exerciseId === exercise.id).slice(-exercise.targetSets);
+  const recentSets = serverState.workoutSets.filter((set) => set.exerciseId === exercise.id && isWorkingVolumeSet(set)).slice(-exercise.targetSets);
   return ok(
     await aiCoachRecommendation({
       exerciseName: exercise.name,

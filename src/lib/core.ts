@@ -69,12 +69,22 @@ export type WorkoutSet = {
   sessionId?: string;
   exerciseId: string;
   exerciseName: string;
+  setType?: WorkoutSetType;
   targetWeightKg: number;
   targetReps: number;
   actualWeightKg: number;
   actualReps: number;
   rpe?: number;
   completedAt?: string;
+};
+
+export type WorkoutSetType = "warmup" | "working" | "drop" | "failure";
+
+export type WarmUpSetSuggestion = {
+  setType: "warmup";
+  weightKg: number;
+  reps: number;
+  percent: number;
 };
 
 export type PlateSettings = {
@@ -125,6 +135,7 @@ export type WorkoutExercise = {
   id: string;
   name: string;
   muscleGroup: string;
+  supersetGroup?: string;
   targetSets: number;
   targetRepsMin: number;
   targetRepsMax: number;
@@ -617,6 +628,7 @@ export function routineExercisesToWorkoutExercises(exercises: RoutineExercise[])
       id: exercise.id,
       name: exercise.name,
       muscleGroup: exercise.muscleGroup,
+      supersetGroup: exercise.supersetGroup,
       targetSets: exercise.targetSets,
       targetRepsMin: exercise.targetRepsMin,
       targetRepsMax: exercise.targetRepsMax,
@@ -710,6 +722,77 @@ export function createWorkoutSession(input: {
     sessionExerciseOrder: input.sessionExerciseOrder,
     exerciseQueue: input.sessionExerciseOrder.map((exerciseId) => ({ exerciseId, status: "queued" }))
   };
+}
+
+export function warmUpSetSuggestions(params: {
+  workingWeightKg: number;
+  workingReps: number;
+  incrementKg?: number;
+}): WarmUpSetSuggestion[] {
+  if (!Number.isFinite(params.workingWeightKg) || params.workingWeightKg <= 0) return [];
+  const increment = params.incrementKg ?? 2.5;
+  const roundToIncrement = (weight: number) => Math.max(0, Math.round(weight / increment) * increment);
+  const workingReps = Math.max(1, Math.round(params.workingReps));
+  const tiers =
+    params.workingWeightKg >= 80
+      ? [
+          { percent: 0.4, reps: Math.min(8, workingReps) },
+          { percent: 0.6, reps: Math.min(5, workingReps) },
+          { percent: 0.8, reps: Math.min(3, workingReps) }
+        ]
+      : params.workingWeightKg >= 40
+        ? [
+            { percent: 0.5, reps: Math.min(6, workingReps) },
+            { percent: 0.75, reps: Math.min(3, workingReps) }
+          ]
+        : [{ percent: 0.6, reps: Math.min(5, workingReps) }];
+
+  const seen = new Set<number>();
+  return tiers.flatMap((tier) => {
+    const weightKg = roundToIncrement(params.workingWeightKg * tier.percent);
+    if (weightKg <= 0 || weightKg >= params.workingWeightKg || seen.has(weightKg)) return [];
+    seen.add(weightKg);
+    return [{ setType: "warmup" as const, weightKg, reps: tier.reps, percent: Math.round(tier.percent * 100) }];
+  });
+}
+
+export function isWorkingVolumeSet(set: WorkoutSet): boolean {
+  const setType = set.setType ?? "working";
+  return set.actualReps > 0 && set.actualWeightKg >= 0 && setType !== "warmup";
+}
+
+export function countsTowardTargetSets(set: WorkoutSet): boolean {
+  return (set.setType ?? "working") !== "warmup";
+}
+
+export function workingSetVolumeKg(sets: WorkoutSet[]): number {
+  return round(sets.filter(isWorkingVolumeSet).reduce((sum, set) => sum + set.actualWeightKg * set.actualReps, 0));
+}
+
+export function nextSupersetExerciseIndex(params: {
+  exercises: WorkoutExercise[];
+  currentIndex: number;
+  sets: WorkoutSet[];
+}): number | undefined {
+  const current = params.exercises[params.currentIndex];
+  if (!current?.supersetGroup) return undefined;
+  const groupIndexes = params.exercises
+    .map((exercise, index) => ({ exercise, index }))
+    .filter(({ exercise }) => exercise.supersetGroup === current.supersetGroup);
+  if (groupIndexes.length < 2) return undefined;
+
+  const completedCount = (exerciseId: string) =>
+    params.sets.filter((set) => set.exerciseId === exerciseId && countsTowardTargetSets(set)).length;
+  const currentCount = completedCount(current.id);
+  const currentGroupPosition = groupIndexes.findIndex(({ index }) => index === params.currentIndex);
+
+  for (let offset = 1; offset <= groupIndexes.length; offset += 1) {
+    const candidate = groupIndexes[(currentGroupPosition + offset) % groupIndexes.length];
+    const count = completedCount(candidate.exercise.id);
+    if (count < candidate.exercise.targetSets && count <= currentCount) return candidate.index;
+  }
+
+  return undefined;
 }
 
 function sessionOrderFromQueue(queue: SessionExerciseQueueItem[]): string[] {
@@ -874,6 +957,7 @@ const routineColumnAliases = {
   repsMax: ["reps max", "rep max", "max reps", "reps", "reps to", "rep toi da", "reps toi da"],
   weight: ["weight", "weight kg", "kg", "target weight", "muc ta", "ta", "trong luong"],
   restSeconds: ["rest seconds", "rest", "rest sec", "nghi giay", "thoi gian nghi"],
+  supersetGroup: ["superset", "superset group", "group set", "nhom superset"],
   note: ["note", "notes", "ghi chu"]
 } satisfies Record<string, string[]>;
 
@@ -890,6 +974,7 @@ function routineHeaderIndexes(headers: string[]) {
     repsMax: findHeader(routineColumnAliases.repsMax),
     weight: findHeader(routineColumnAliases.weight),
     restSeconds: findHeader(routineColumnAliases.restSeconds),
+    supersetGroup: findHeader(routineColumnAliases.supersetGroup),
     note: findHeader(routineColumnAliases.note)
   };
 }
@@ -951,6 +1036,7 @@ export function parseRoutineCsv(text: string, fileName: string): RoutineImportPr
     const targetRepsMax = numberAt(cells, indexes.repsMax);
     const targetWeightKg = numberAt(cells, indexes.weight);
     const restSeconds = numberAt(cells, indexes.restSeconds);
+    const supersetGroup = textAt(cells, indexes.supersetGroup);
     const note = textAt(cells, indexes.note);
     const duplicateKey = `${normalizeHeader(session)}::${normalizeHeader(name)}`;
     const duplicated = Boolean(session && name && seen.has(duplicateKey));
@@ -1003,6 +1089,7 @@ export function parseRoutineCsv(text: string, fileName: string): RoutineImportPr
         targetRepsMax,
         targetWeightKg,
         restSeconds,
+        supersetGroup: supersetGroup || undefined,
         note,
         lastSession: note || `${session} - ${day}`
       }
@@ -1126,7 +1213,7 @@ export function creatineConsistency(
 }
 
 function workingWorkoutSets(sets: WorkoutSet[]): WorkoutSet[] {
-  return sets.filter((set) => set.actualReps > 0 && set.actualWeightKg >= 0);
+  return sets.filter(isWorkingVolumeSet);
 }
 
 export function exercisePersonalRecords(sets: WorkoutSet[]): ExercisePr[] {
