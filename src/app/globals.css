@@ -1616,6 +1616,23 @@ button:disabled {
   gap: 14px;
 }
 
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.report-card {
+  display: grid;
+  gap: 14px;
+}
+
+.report-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .progress-kpi-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1623,6 +1640,7 @@ button:disabled {
 }
 
 .progress-kpi-grid div,
+.report-kpi-grid div,
 .pr-grid div,
 .empty-state {
   display: grid;
@@ -1635,6 +1653,8 @@ button:disabled {
 
 .progress-kpi-grid span,
 .progress-kpi-grid em,
+.report-kpi-grid span,
+.report-kpi-grid em,
 .pr-grid span,
 .empty-state p {
   color: var(--muted);
@@ -1642,9 +1662,22 @@ button:disabled {
   font-style: normal;
 }
 
-.progress-kpi-grid strong {
+.progress-kpi-grid strong,
+.report-kpi-grid strong {
   font-size: 22px;
   line-height: 1.1;
+}
+
+.report-list {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.report-list strong {
+  color: var(--text);
+  font-size: 14px;
 }
 
 .progress-list {
@@ -1734,7 +1767,9 @@ button:disabled {
 }
 
 @media (max-width: 520px) {
+  .report-grid,
   .progress-kpi-grid,
+  .report-kpi-grid,
   .pr-grid,
   .metric-goals {
     grid-template-columns: 1fr;

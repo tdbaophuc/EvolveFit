@@ -27,6 +27,7 @@ import {
   completeSessionExercise,
   buildBodyMetricChartDataset,
   buildProgressDashboard,
+  buildProgressReports,
   calculatePlatesPerSide,
   detectWorkoutSetPrs,
   displayWeight,
@@ -41,7 +42,6 @@ import {
   inputWeightToKg,
   isWorkingVolumeSet,
   isDrinkModuleActive,
-  monthlyAchievements,
   normalizeDrinkModules,
   normalizePlateInventory,
   normalizeWorkoutSessionQueue,
@@ -87,6 +87,7 @@ import {
   type SessionExerciseQueueItem,
   type Supplement,
   type ProgressDashboard,
+  type ProgressReports,
   type WorkoutSession,
   type WorkoutSetPr,
   type WorkoutExercise,
@@ -388,13 +389,6 @@ export default function AppPage() {
     emptyExercise;
   const completedSetsForActive = currentSessionSets.filter((set) => set.exerciseId === activeExercise.id && (set.setType ?? "working") !== "warmup");
   const allSetsForActive = currentSessionSets.filter((set) => set.exerciseId === activeExercise.id);
-  const achievements = monthlyAchievements({
-    hydrationGoalDays: 18,
-    hydrationTargetDays: 24,
-    volumeChangePercent: 6,
-    previousHydrationStreak: 2,
-    previousVolumeStreak: 1
-  });
   const bestSet = state.workoutSets.filter(isWorkingVolumeSet).reduce<WorkoutSet | undefined>(
     (best, set) => (!best || estimatedOneRepMax(set.actualWeightKg, set.actualReps) > estimatedOneRepMax(best.actualWeightKg, best.actualReps) ? set : best),
     undefined
@@ -409,6 +403,18 @@ export default function AppPage() {
     workoutExercises: state.workoutExercises,
     now
   });
+  const progressReports = buildProgressReports({
+    hydrationLogs: state.hydrationLogs,
+    waterTargetMl: state.profile.waterTargetMl,
+    workoutSessions: state.workoutSessions,
+    workoutSets: state.workoutSets,
+    workoutExercises: state.workoutExercises,
+    hydrationEnabled: isDrinkModuleActive(drinkModules, "water"),
+    workoutEnabled: state.workoutExercises.length > 0,
+    volumeEnabled: state.workoutExercises.length > 0,
+    now
+  });
+  const achievements = progressReports.monthly.badges.filter((badge) => badge.status !== "disabled");
   const latestMetric = latestBodyMetric(state.bodyMetrics);
   const weightDelta = bodyWeightDelta(state.bodyMetrics);
   const bodyMetricChart = buildBodyMetricChartDataset({
@@ -1058,6 +1064,66 @@ export default function AppPage() {
     link.download = "evolvefit-export.json";
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  function downloadReportPdf(period: keyof ProgressReports) {
+    const report = progressReports[period];
+    const escapeHtml = (value: string) =>
+      value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    const badgeRows = report.badges
+      .filter((badge) => badge.status !== "disabled")
+      .map((badge) => `<li><strong>${escapeHtml(badge.name)}</strong>: ${badge.progress}/${badge.target} - ${badge.status} - streak ${badge.streakMonths}</li>`)
+      .join("");
+    const prRows = report.prs
+      .slice(0, 8)
+      .map((pr) => `<li><strong>${escapeHtml(pr.exerciseName)}</strong>: ${pr.maxWeightKg}kg max, ${pr.estimatedOneRepMaxKg}kg e1RM, ${pr.volumePrKg}kg volume PR</li>`)
+      .join("");
+    const html = `<!doctype html>
+      <html>
+        <head>
+          <title>EvolveFit ${report.period} report</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #111827; margin: 32px; }
+            h1 { margin-bottom: 4px; }
+            .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 20px 0; }
+            .card { border: 1px solid #d1d5db; border-radius: 8px; padding: 14px; }
+            span { color: #6b7280; font-size: 12px; text-transform: uppercase; }
+            strong { display: block; font-size: 22px; margin-top: 4px; }
+            li { margin: 8px 0; }
+          </style>
+        </head>
+        <body>
+          <h1>EvolveFit ${report.period === "weekly" ? "Weekly" : "Monthly"} Report</h1>
+          <p>${report.periodStart} to ${report.periodEnd}</p>
+          <div class="grid">
+            <div class="card"><span>Hydration average</span><strong>${report.hydrationAverageMl}ml</strong></div>
+            <div class="card"><span>Goal hit rate</span><strong>${report.hydrationGoalHitRate}%</strong></div>
+            <div class="card"><span>Workout count</span><strong>${report.workoutCount}</strong></div>
+            <div class="card"><span>Total volume</span><strong>${report.totalVolumeKg}kg</strong></div>
+          </div>
+          <h2>Trend vs previous period</h2>
+          <ul>
+            <li>Hydration average: ${report.trendVsPrevious.hydrationAverageMl >= 0 ? "+" : ""}${report.trendVsPrevious.hydrationAverageMl}ml</li>
+            <li>Goal hit rate: ${report.trendVsPrevious.goalHitRate >= 0 ? "+" : ""}${report.trendVsPrevious.goalHitRate}%</li>
+            <li>Workout count: ${report.trendVsPrevious.workoutCount >= 0 ? "+" : ""}${report.trendVsPrevious.workoutCount}</li>
+            <li>Total volume: ${report.trendVsPrevious.totalVolumeKg >= 0 ? "+" : ""}${report.trendVsPrevious.totalVolumeKg}kg</li>
+          </ul>
+          <h2>PRs</h2>
+          <ul>${prRows || "<li>No PRs in this period.</li>"}</ul>
+          <h2>Badges</h2>
+          <ul>${badgeRows || "<li>No active badge data for this period.</li>"}</ul>
+        </body>
+      </html>`;
+    const popup = window.open("", "_blank", "noopener,noreferrer,width=900,height=700");
+    if (!popup) {
+      window.print();
+      return;
+    }
+    popup.document.open();
+    popup.document.write(html);
+    popup.document.close();
+    popup.focus();
+    popup.print();
   }
 
   function downloadCsvExport(dataset?: CsvDataset) {
@@ -1798,6 +1864,7 @@ export default function AppPage() {
             sets={state.workoutSets}
             bestSet={bestSet}
             progress={progressDashboard}
+            reports={progressReports}
             achievements={achievements}
             bodyMetrics={state.bodyMetrics}
             bodyMetricChart={bodyMetricChart}
@@ -1826,6 +1893,7 @@ export default function AppPage() {
             deleteBodyMetric={deleteBodyMetric}
             updateBodyMetric={updateBodyMetric}
             downloadExport={downloadExport}
+            downloadReportPdf={downloadReportPdf}
           />
         )}
 
@@ -3159,7 +3227,8 @@ function ProgressView(props: {
   sets: WorkoutSet[];
   bestSet?: WorkoutSet;
   progress: ProgressDashboard;
-  achievements: { code: string; name: string; progress: number; target: number; status: string; streakMonths: number }[];
+  reports: ProgressReports;
+  achievements: { code: string; name: string; progress: number; target: number; status: string; streakMonths: number; condition?: string }[];
   bodyMetrics: BodyMetric[];
   bodyMetricChart: BodyMetricChartDataset;
   bodyMetricRange: BodyMetricRangeDays;
@@ -3187,6 +3256,7 @@ function ProgressView(props: {
   deleteBodyMetric: (id: string) => void;
   updateBodyMetric: (id: string, patch: Partial<BodyMetric>) => void;
   downloadExport: () => void;
+  downloadReportPdf: (period: keyof ProgressReports) => void;
 }) {
   const volume = workingSetVolumeKg(props.sets);
   const oneRm = props.bestSet ? estimatedOneRepMax(props.bestSet.actualWeightKg, props.bestSet.actualReps) : 0;
@@ -3209,6 +3279,10 @@ function ProgressView(props: {
             <span key={index} style={{ height: `${height}%` }} />
           ))}
         </div>
+      </section>
+      <section className="report-grid" aria-label="Weekly and monthly reports">
+        <ReportCard title="Weekly report" report={props.reports.weekly} onExportPdf={() => props.downloadReportPdf("weekly")} />
+        <ReportCard title="Monthly report" report={props.reports.monthly} onExportPdf={() => props.downloadReportPdf("monthly")} />
       </section>
       <section className="card chart-card">
         <div className="section-heading">
@@ -3415,11 +3489,12 @@ function ProgressView(props: {
       <section className="card">
         <h2>Badges</h2>
         <div className="badge-list">
-          {props.achievements.map((badge) => (
+          {props.achievements.filter((badge) => badge.status !== "disabled").map((badge) => (
             <div key={badge.code}>
               <Trophy size={20} />
               <div>
                 <strong>{badge.name}</strong>
+                {badge.condition && <p>{badge.condition}</p>}
                 <p>{badge.progress}/{badge.target} • {badge.status} • streak {badge.streakMonths}</p>
               </div>
             </div>
@@ -3447,6 +3522,56 @@ function MetricCard(props: { label: string; value: string; accent: "hydration" |
       <span>{props.label}</span>
       <strong>{props.value}</strong>
     </div>
+  );
+}
+
+function ReportCard(props: { title: string; report: ProgressReports[keyof ProgressReports]; onExportPdf: () => void }) {
+  const trend = props.report.trendVsPrevious;
+  const trendText = (value: number, suffix = "") => `${value >= 0 ? "+" : ""}${value}${suffix}`;
+  return (
+    <section className="card report-card">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">{props.report.periodStart} - {props.report.periodEnd}</p>
+          <h2>{props.title}</h2>
+        </div>
+        <button className="secondary-button export-button" onClick={props.onExportPdf}>
+          Export PDF
+        </button>
+      </div>
+      <div className="report-kpi-grid">
+        <div>
+          <span>Hydration avg</span>
+          <strong>{props.report.hydrationAverageMl}ml</strong>
+          <em>{trendText(trend.hydrationAverageMl, "ml")}</em>
+        </div>
+        <div>
+          <span>Goal hit</span>
+          <strong>{props.report.hydrationGoalHitRate}%</strong>
+          <em>{trendText(trend.goalHitRate, "%")}</em>
+        </div>
+        <div>
+          <span>Workouts</span>
+          <strong>{props.report.workoutCount}</strong>
+          <em>{trendText(trend.workoutCount)}</em>
+        </div>
+        <div>
+          <span>Volume</span>
+          <strong>{props.report.totalVolumeKg}kg</strong>
+          <em>{trendText(trend.totalVolumeKg, "kg")}</em>
+        </div>
+      </div>
+      <div className="report-list">
+        <strong>PRs</strong>
+        <span>{props.report.prs.length ? props.report.prs.slice(0, 3).map((pr) => pr.exerciseName).join(", ") : "No PRs in this period"}</span>
+      </div>
+      {props.report.badges.length > 0 && (
+        <div className="report-list">
+          <strong>Badges</strong>
+          <span>{props.report.badges.filter((badge) => badge.status !== "disabled").map((badge) => `${badge.name}: ${badge.status}`).join(", ") || "Hidden because related module is disabled"}</span>
+        </div>
+      )}
+    </section>
   );
 }
 

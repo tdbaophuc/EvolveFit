@@ -7,6 +7,7 @@ import {
   builtInExerciseDefinitions,
   buildBodyMetricChartDataset,
   buildProgressDashboard,
+  buildProgressReports,
   calculatePlatesPerSide,
   completeSessionExercise,
   createCustomExerciseDefinition,
@@ -1032,12 +1033,180 @@ describe("monthly achievements", () => {
       hydrationGoalDays: 24,
       hydrationTargetDays: 24,
       volumeChangePercent: 6,
+      workoutCount: 12,
       previousHydrationStreak: 2,
+      previousWorkoutStreak: 1,
       previousVolumeStreak: 1
     });
 
     expect(badges[0]).toMatchObject({ status: "active", streakMonths: 3 });
-    expect(badges[1]).toMatchObject({ status: "active", streakMonths: 2 });
+    expect(badges[1]).toMatchObject({ code: "workout_consistency", status: "active", streakMonths: 2 });
+    expect(badges[2]).toMatchObject({ status: "active", streakMonths: 2 });
+  });
+
+  it("marks lost and disabled badges without counting disabled streaks", () => {
+    const badges = monthlyAchievements({
+      hydrationGoalDays: 10,
+      hydrationTargetDays: 24,
+      workoutCount: 4,
+      workoutTargetCount: 12,
+      volumeChangePercent: 1,
+      previousHydrationActive: true,
+      previousWorkoutActive: true,
+      previousVolumeActive: true,
+      hydrationEnabled: false
+    });
+
+    expect(badges[0]).toMatchObject({ status: "disabled", streakMonths: 0 });
+    expect(badges[1]).toMatchObject({ status: "lost" });
+    expect(badges[2]).toMatchObject({ status: "lost" });
+  });
+
+  it("builds weekly and monthly reports with trends, PRs and challenge badges", () => {
+    const now = new Date("2026-08-20T12:00:00.000Z");
+    const hydrationLogs = [
+      ...Array.from({ length: 24 }, (_, index) => ({
+        id: `h-aug-${index}`,
+        amountMl: 2500,
+        drinkType: "water" as const,
+        loggedAt: `2026-08-${String(index + 1).padStart(2, "0")}T08:00:00.000Z`
+      })),
+      ...Array.from({ length: 20 }, (_, index) => ({
+        id: `h-jul-${index}`,
+        amountMl: 2500,
+        drinkType: "water" as const,
+        loggedAt: `2026-07-${String(index + 1).padStart(2, "0")}T08:00:00.000Z`
+      }))
+    ];
+    const workoutSessions = [
+      ...Array.from({ length: 12 }, (_, index) => ({
+        id: `s-aug-${index}`,
+        routineId: "r1",
+        workoutDayId: "d1",
+        sessionName: "Upper",
+        startedAt: `2026-08-${String(index + 9).padStart(2, "0")}T09:00:00.000Z`,
+        durationSeconds: 1800,
+        status: "finished" as const,
+        sessionExerciseOrder: ["bench"],
+        exerciseQueue: [{ exerciseId: "bench", status: "completed" as const }]
+      })),
+      ...Array.from({ length: 10 }, (_, index) => ({
+        id: `s-jul-${index}`,
+        routineId: "r1",
+        workoutDayId: "d1",
+        sessionName: "Upper",
+        startedAt: `2026-07-${String(index + 1).padStart(2, "0")}T09:00:00.000Z`,
+        durationSeconds: 1800,
+        status: "finished" as const,
+        sessionExerciseOrder: ["bench"],
+        exerciseQueue: [{ exerciseId: "bench", status: "completed" as const }]
+      }))
+    ];
+    const workoutSets = [
+      {
+        id: "aug-heavy",
+        sessionId: "s-aug-19",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        targetWeightKg: 60,
+        targetReps: 8,
+        actualWeightKg: 60,
+        actualReps: 10,
+        completedAt: "2026-08-19T09:10:00.000Z"
+      },
+      {
+        id: "aug-row",
+        sessionId: "s-aug-18",
+        exerciseId: "row",
+        exerciseName: "Row",
+        targetWeightKg: 45,
+        targetReps: 10,
+        actualWeightKg: 45,
+        actualReps: 10,
+        completedAt: "2026-08-18T09:10:00.000Z"
+      },
+      {
+        id: "jul-bench",
+        sessionId: "s-jul-10",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        targetWeightKg: 50,
+        targetReps: 8,
+        actualWeightKg: 50,
+        actualReps: 10,
+        completedAt: "2026-07-10T09:10:00.000Z"
+      }
+    ];
+
+    const reports = buildProgressReports({
+      hydrationLogs,
+      waterTargetMl: 2500,
+      workoutSessions,
+      workoutSets,
+      workoutExercises: [
+        {
+          id: "bench",
+          name: "Bench Press",
+          muscleGroup: "Chest",
+          targetSets: 3,
+          targetRepsMin: 8,
+          targetRepsMax: 10,
+          targetWeightKg: 60,
+          restSeconds: 120,
+          lastSession: ""
+        },
+        {
+          id: "row",
+          name: "Row",
+          muscleGroup: "Back",
+          targetSets: 3,
+          targetRepsMin: 8,
+          targetRepsMax: 10,
+          targetWeightKg: 45,
+          restSeconds: 90,
+          lastSession: ""
+        }
+      ],
+      now
+    });
+
+    expect(reports.weekly).toMatchObject({
+      period: "weekly",
+      hydrationAverageMl: 2500,
+      hydrationGoalHitRate: 100,
+      workoutCount: 7,
+      totalVolumeKg: 1050
+    });
+    expect(reports.monthly).toMatchObject({
+      period: "monthly",
+      hydrationHitDays: 24,
+      workoutCount: 12,
+      totalVolumeKg: 1050
+    });
+    expect(reports.monthly.trendVsPrevious).toMatchObject({ workoutCount: 2, totalVolumeKg: 550 });
+    expect(reports.monthly.prs.map((pr) => pr.exerciseName)).toEqual(["Bench Press", "Row"]);
+    expect(reports.monthly.badges.map((badge) => [badge.code, badge.status])).toEqual([
+      ["monthly_hydration", "active"],
+      ["workout_consistency", "active"],
+      ["volume_progression", "active"]
+    ]);
+  });
+
+  it("keeps disabled module badges out of the visible report badge list", () => {
+    const reports = buildProgressReports({
+      hydrationLogs: [],
+      waterTargetMl: 2500,
+      workoutSessions: [],
+      workoutSets: [],
+      workoutExercises: [],
+      hydrationEnabled: false,
+      workoutEnabled: false,
+      volumeEnabled: false,
+      now: new Date("2026-08-20T12:00:00.000Z")
+    });
+
+    expect(reports.monthly.badges.every((badge) => badge.status === "disabled")).toBe(true);
+    expect(reports.monthly.badges.filter((badge) => badge.status !== "disabled")).toEqual([]);
   });
 });
 

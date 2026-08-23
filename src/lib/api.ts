@@ -1,7 +1,7 @@
 import {
   cryptoSafeId,
+  buildProgressReports,
   hydrationTotal,
-  monthlyAchievements,
   normalizeDrinkModules,
   progressiveOverloadRecommendation,
   shouldSendCreatineReminder,
@@ -410,13 +410,17 @@ function notificationPayload(
 }
 
 export function getAchievementsAndLeaderboard() {
-  const achievements = monthlyAchievements({
-    hydrationGoalDays: 18,
-    hydrationTargetDays: 24,
-    volumeChangePercent: 6,
-    previousHydrationStreak: 2,
-    previousVolumeStreak: 1
+  const reports = buildProgressReports({
+    hydrationLogs: serverState.hydrationLogs,
+    waterTargetMl: serverState.profile.waterTargetMl,
+    workoutSessions: serverState.workoutSessions,
+    workoutSets: serverState.workoutSets,
+    workoutExercises: serverState.workoutExercises,
+    hydrationEnabled: true,
+    workoutEnabled: serverState.workoutExercises.length > 0,
+    volumeEnabled: serverState.workoutExercises.length > 0
   });
+  const achievements = reports.monthly.badges.filter((achievement) => achievement.status !== "disabled");
 
   return ok({
     achievements,

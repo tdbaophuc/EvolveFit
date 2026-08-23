@@ -212,10 +212,11 @@ export type Recommendation = {
 export type AchievementStatus = {
   code: string;
   name: string;
-  status: "active" | "locked" | "lost";
+  status: "active" | "locked" | "lost" | "disabled";
   progress: number;
   target: number;
   streakMonths: number;
+  condition?: string;
 };
 
 export type PeriodProgress = {
@@ -260,6 +261,33 @@ export type ProgressDashboard = {
   volumeByMuscleGroup: VolumeBucket[];
   e1RmTrend: E1RmTrendPoint[];
   prs: ExercisePr[];
+};
+
+export type ReportTrend = {
+  hydrationAverageMl: number;
+  goalHitRate: number;
+  workoutCount: number;
+  totalVolumeKg: number;
+};
+
+export type ProgressReport = {
+  label: string;
+  period: "weekly" | "monthly";
+  periodStart: string;
+  periodEnd: string;
+  hydrationAverageMl: number;
+  hydrationGoalHitRate: number;
+  hydrationHitDays: number;
+  workoutCount: number;
+  totalVolumeKg: number;
+  prs: ExercisePr[];
+  badges: AchievementStatus[];
+  trendVsPrevious: ReportTrend;
+};
+
+export type ProgressReports = {
+  weekly: ProgressReport;
+  monthly: ProgressReport;
 };
 
 export type WeightUnit = "kg" | "lb";
@@ -1175,6 +1203,42 @@ function weekLabel(dateKeyValue: string): string {
   return dateOnly(monday);
 }
 
+function monthKey(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthRange(now = new Date(), offsetMonths = 0): { start: Date; end: Date; days: number; label: string } {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offsetMonths, 1));
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offsetMonths + 1, 0));
+  return {
+    start,
+    end,
+    days: end.getUTCDate(),
+    label: monthKey(start)
+  };
+}
+
+function dateRangeKeys(start: Date, end: Date): string[] {
+  const keys: string[] = [];
+  let cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
+  const last = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
+  while (cursor <= last) {
+    keys.push(dateOnly(cursor));
+    cursor = addDays(cursor, 1);
+  }
+  return keys;
+}
+
+function isoDateInRange(value: string | undefined, start: Date, end: Date): boolean {
+  if (!value) return false;
+  const key = value.slice(0, 10);
+  return key >= dateOnly(start) && key <= dateOnly(end);
+}
+
+function trendDelta(next: number, previous: number): number {
+  return round(next - previous);
+}
+
 export function hydrationPeriodProgress(logs: HydrationLog[], targetMl: number, days: number, now = new Date()): PeriodProgress {
   const keys = rollingDateKeys(days, now);
   const totals = new Map(keys.map((key) => [key, 0]));
@@ -1334,6 +1398,160 @@ export function buildProgressDashboard(params: {
   };
 }
 
+function reportMetrics(params: {
+  hydrationLogs: HydrationLog[];
+  waterTargetMl: number;
+  workoutSessions: WorkoutSession[];
+  workoutSets: WorkoutSet[];
+  start: Date;
+  end: Date;
+}) {
+  const keys = dateRangeKeys(params.start, params.end);
+  const keySet = new Set(keys);
+  const hydrationTotals = new Map(keys.map((key) => [key, 0]));
+  params.hydrationLogs.forEach((log) => {
+    const key = log.loggedAt.slice(0, 10);
+    if (hydrationTotals.has(key)) hydrationTotals.set(key, (hydrationTotals.get(key) ?? 0) + log.amountMl);
+  });
+  const hydrationValues = [...hydrationTotals.values()];
+  const hydrationHitDays = hydrationValues.filter((total) => total >= params.waterTargetMl).length;
+  const workoutSessions = params.workoutSessions.filter((session) => session.status !== "cancelled" && keySet.has(session.startedAt.slice(0, 10)));
+  const workoutSets = params.workoutSets.filter((set) => isoDateInRange(set.completedAt, params.start, params.end));
+  const totalVolumeKg = workingSetVolumeKg(workoutSets);
+
+  return {
+    hydrationAverageMl: round(hydrationValues.reduce((sum, total) => sum + total, 0) / Math.max(1, keys.length)),
+    hydrationGoalHitRate: round((hydrationHitDays / Math.max(1, keys.length)) * 100),
+    hydrationHitDays,
+    workoutCount: workoutSessions.length,
+    workoutSets,
+    totalVolumeKg
+  };
+}
+
+function reportTrend(current: ReturnType<typeof reportMetrics>, previous: ReturnType<typeof reportMetrics>): ReportTrend {
+  return {
+    hydrationAverageMl: trendDelta(current.hydrationAverageMl, previous.hydrationAverageMl),
+    goalHitRate: trendDelta(current.hydrationGoalHitRate, previous.hydrationGoalHitRate),
+    workoutCount: trendDelta(current.workoutCount, previous.workoutCount),
+    totalVolumeKg: trendDelta(current.totalVolumeKg, previous.totalVolumeKg)
+  };
+}
+
+function rollingMonthlyStreak(params: {
+  now: Date;
+  predicate: (range: { start: Date; end: Date; days: number; label: string }) => boolean;
+  offsetBeforeCurrent?: number;
+}): number {
+  let streak = 0;
+  for (let offset = params.offsetBeforeCurrent ?? -1; offset >= -24; offset -= 1) {
+    const range = monthRange(params.now, offset);
+    if (!params.predicate(range)) break;
+    streak += 1;
+  }
+  return streak;
+}
+
+export function buildProgressReports(params: {
+  hydrationLogs: HydrationLog[];
+  waterTargetMl: number;
+  workoutSessions: WorkoutSession[];
+  workoutSets: WorkoutSet[];
+  workoutExercises: WorkoutExercise[];
+  hydrationEnabled?: boolean;
+  workoutEnabled?: boolean;
+  volumeEnabled?: boolean;
+  monthlyHydrationTargetDays?: number;
+  monthlyWorkoutTargetCount?: number;
+  now?: Date;
+}): ProgressReports {
+  const now = params.now ?? new Date();
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const weekEnd = today;
+  const weekStart = addDays(weekEnd, -6);
+  const previousWeekEnd = addDays(weekStart, -1);
+  const previousWeekStart = addDays(previousWeekEnd, -6);
+  const currentMonth = monthRange(now, 0);
+  const previousMonth = monthRange(now, -1);
+  const monthlyHydrationTargetDays = params.monthlyHydrationTargetDays ?? Math.min(24, currentMonth.days);
+  const monthlyWorkoutTargetCount = params.monthlyWorkoutTargetCount ?? 12;
+
+  const weeklyMetrics = reportMetrics({ ...params, start: weekStart, end: weekEnd });
+  const previousWeeklyMetrics = reportMetrics({ ...params, start: previousWeekStart, end: previousWeekEnd });
+  const monthlyMetrics = reportMetrics({ ...params, start: currentMonth.start, end: currentMonth.end });
+  const previousMonthlyMetrics = reportMetrics({ ...params, start: previousMonth.start, end: previousMonth.end });
+  const previousMonthVolume = previousMonthlyMetrics.totalVolumeKg;
+  const currentVolumeChangePercent = previousMonthVolume > 0 ? round(((monthlyMetrics.totalVolumeKg - previousMonthVolume) / previousMonthVolume) * 100) : 0;
+  const previousPreviousMonth = monthRange(now, -2);
+
+  const hydrationPredicate = (range: { start: Date; end: Date }) =>
+    reportMetrics({ ...params, start: range.start, end: range.end }).hydrationHitDays >= monthlyHydrationTargetDays;
+  const workoutPredicate = (range: { start: Date; end: Date }) =>
+    reportMetrics({ ...params, start: range.start, end: range.end }).workoutCount >= monthlyWorkoutTargetCount;
+  const volumePredicate = (range: { start: Date; end: Date }, previousRange: { start: Date; end: Date }) => {
+    const current = reportMetrics({ ...params, start: range.start, end: range.end }).totalVolumeKg;
+    const previous = reportMetrics({ ...params, start: previousRange.start, end: previousRange.end }).totalVolumeKg;
+    return previous > 0 && ((current - previous) / previous) * 100 >= 3;
+  };
+
+  const previousHydrationActive = hydrationPredicate(previousMonth);
+  const previousWorkoutActive = workoutPredicate(previousMonth);
+  const previousVolumeActive = volumePredicate(previousMonth, previousPreviousMonth);
+  const previousVolumeStreak = rollingMonthlyStreak({
+    now,
+    offsetBeforeCurrent: -1,
+    predicate: (range) => volumePredicate(range, monthRange(new Date(`${range.label}-01T00:00:00.000Z`), -1))
+  });
+
+  const badges = monthlyAchievements({
+    hydrationGoalDays: monthlyMetrics.hydrationHitDays,
+    hydrationTargetDays: monthlyHydrationTargetDays,
+    workoutCount: monthlyMetrics.workoutCount,
+    workoutTargetCount: monthlyWorkoutTargetCount,
+    volumeChangePercent: currentVolumeChangePercent,
+    previousHydrationStreak: rollingMonthlyStreak({ now, predicate: hydrationPredicate }),
+    previousWorkoutStreak: rollingMonthlyStreak({ now, predicate: workoutPredicate }),
+    previousVolumeStreak,
+    previousHydrationActive,
+    previousWorkoutActive,
+    previousVolumeActive,
+    hydrationEnabled: params.hydrationEnabled,
+    workoutEnabled: params.workoutEnabled,
+    volumeEnabled: params.volumeEnabled
+  });
+
+  return {
+    weekly: {
+      label: "Last 7 days",
+      period: "weekly",
+      periodStart: dateOnly(weekStart),
+      periodEnd: dateOnly(weekEnd),
+      hydrationAverageMl: weeklyMetrics.hydrationAverageMl,
+      hydrationGoalHitRate: weeklyMetrics.hydrationGoalHitRate,
+      hydrationHitDays: weeklyMetrics.hydrationHitDays,
+      workoutCount: weeklyMetrics.workoutCount,
+      totalVolumeKg: weeklyMetrics.totalVolumeKg,
+      prs: exercisePersonalRecords(weeklyMetrics.workoutSets),
+      badges: [],
+      trendVsPrevious: reportTrend(weeklyMetrics, previousWeeklyMetrics)
+    },
+    monthly: {
+      label: currentMonth.label,
+      period: "monthly",
+      periodStart: dateOnly(currentMonth.start),
+      periodEnd: dateOnly(currentMonth.end),
+      hydrationAverageMl: monthlyMetrics.hydrationAverageMl,
+      hydrationGoalHitRate: monthlyMetrics.hydrationGoalHitRate,
+      hydrationHitDays: monthlyMetrics.hydrationHitDays,
+      workoutCount: monthlyMetrics.workoutCount,
+      totalVolumeKg: monthlyMetrics.totalVolumeKg,
+      prs: exercisePersonalRecords(monthlyMetrics.workoutSets),
+      badges,
+      trendVsPrevious: reportTrend(monthlyMetrics, previousMonthlyMetrics)
+    }
+  };
+}
+
 export function latestBodyMetric(metrics: BodyMetric[]): BodyMetric | undefined {
   return [...metrics].sort((a, b) => b.measuredAt.localeCompare(a.measuredAt))[0];
 }
@@ -1483,26 +1701,57 @@ export function monthlyAchievements(params: {
   volumeChangePercent: number;
   previousHydrationStreak?: number;
   previousVolumeStreak?: number;
+  workoutCount?: number;
+  workoutTargetCount?: number;
+  previousWorkoutStreak?: number;
+  hydrationEnabled?: boolean;
+  workoutEnabled?: boolean;
+  volumeEnabled?: boolean;
+  previousHydrationActive?: boolean;
+  previousWorkoutActive?: boolean;
+  previousVolumeActive?: boolean;
 }): AchievementStatus[] {
+  const hydrationEnabled = params.hydrationEnabled !== false;
+  const workoutEnabled = params.workoutEnabled !== false;
+  const volumeEnabled = params.volumeEnabled !== false;
+  const workoutTarget = params.workoutTargetCount ?? 12;
+  const workoutCount = params.workoutCount ?? 0;
   const hydrationActive = params.hydrationGoalDays >= params.hydrationTargetDays;
+  const workoutActive = workoutCount >= workoutTarget;
   const volumeActive = params.volumeChangePercent >= 3;
+  const statusFor = (enabled: boolean, active: boolean, previousActive?: boolean): AchievementStatus["status"] => {
+    if (!enabled) return "disabled";
+    if (active) return "active";
+    return previousActive ? "lost" : "locked";
+  };
 
   return [
     {
       code: "monthly_hydration",
       name: "Hydration Elite",
-      status: hydrationActive ? "active" : "locked",
+      status: statusFor(hydrationEnabled, hydrationActive, params.previousHydrationActive),
       progress: params.hydrationGoalDays,
       target: params.hydrationTargetDays,
-      streakMonths: hydrationActive ? (params.previousHydrationStreak ?? 0) + 1 : 0
+      streakMonths: hydrationEnabled && hydrationActive ? (params.previousHydrationStreak ?? 0) + 1 : 0,
+      condition: `Hit hydration goal on ${params.hydrationTargetDays} days this month.`
+    },
+    {
+      code: "workout_consistency",
+      name: "Consistency Builder",
+      status: statusFor(workoutEnabled, workoutActive, params.previousWorkoutActive),
+      progress: workoutCount,
+      target: workoutTarget,
+      streakMonths: workoutEnabled && workoutActive ? (params.previousWorkoutStreak ?? 0) + 1 : 0,
+      condition: `Finish ${workoutTarget} workouts this month.`
     },
     {
       code: "volume_progression",
       name: "Volume Climber",
-      status: volumeActive ? "active" : "locked",
+      status: statusFor(volumeEnabled, volumeActive, params.previousVolumeActive),
       progress: Math.max(0, Math.round(params.volumeChangePercent)),
       target: 3,
-      streakMonths: volumeActive ? (params.previousVolumeStreak ?? 0) + 1 : 0
+      streakMonths: volumeEnabled && volumeActive ? (params.previousVolumeStreak ?? 0) + 1 : 0,
+      condition: "Increase monthly working volume by at least 3% vs previous month."
     }
   ];
 }
