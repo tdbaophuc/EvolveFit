@@ -254,6 +254,27 @@ export type SocialPrivacySettings = {
   shareWorkoutDetails: boolean;
 };
 
+export type HealthProvider = "health-connect" | "apple-health";
+export type HealthSyncDataType = "weight" | "workout" | "hydration";
+export type HealthPermissionStatus = "not_requested" | "requested" | "granted" | "denied" | "revoked";
+
+export type HealthUnitMapping = {
+  weight: "kg" | "lb";
+  hydration: "ml" | "oz";
+  workoutDistance: "km" | "mi";
+};
+
+export type HealthIntegrationSettings = {
+  provider: HealthProvider;
+  permissionStatus: HealthPermissionStatus;
+  selectedDataTypes: HealthSyncDataType[];
+  unitMapping: HealthUnitMapping;
+  privacyAccepted: boolean;
+  nativeBridgeAvailable: boolean;
+  lastPermissionRequestedAt?: string;
+  lastSyncedAt?: string;
+};
+
 export type SharePreview = {
   id: string;
   kind: "badge" | "workout-summary";
@@ -1282,6 +1303,88 @@ export function defaultSocialPrivacySettings(): SocialPrivacySettings {
     shareBodyMetrics: false,
     shareWorkoutDetails: false
   };
+}
+
+export const healthSyncDataTypes: HealthSyncDataType[] = ["weight", "workout", "hydration"];
+
+export function defaultHealthIntegrationSettings(): HealthIntegrationSettings {
+  return {
+    provider: "health-connect",
+    permissionStatus: "not_requested",
+    selectedDataTypes: [],
+    unitMapping: {
+      weight: "kg",
+      hydration: "ml",
+      workoutDistance: "km"
+    },
+    privacyAccepted: false,
+    nativeBridgeAvailable: false
+  };
+}
+
+export function normalizeHealthIntegrationSettings(input?: Partial<HealthIntegrationSettings>): HealthIntegrationSettings {
+  const defaults = defaultHealthIntegrationSettings();
+  const selectedDataTypes = (input?.selectedDataTypes ?? []).filter((type): type is HealthSyncDataType =>
+    healthSyncDataTypes.includes(type as HealthSyncDataType)
+  );
+  return {
+    ...defaults,
+    ...input,
+    provider: input?.provider === "apple-health" ? "apple-health" : "health-connect",
+    permissionStatus: isHealthPermissionStatus(input?.permissionStatus) ? input.permissionStatus : defaults.permissionStatus,
+    selectedDataTypes: Array.from(new Set(selectedDataTypes)),
+    unitMapping: {
+      ...defaults.unitMapping,
+      ...input?.unitMapping
+    },
+    privacyAccepted: Boolean(input?.privacyAccepted),
+    nativeBridgeAvailable: Boolean(input?.nativeBridgeAvailable)
+  };
+}
+
+export function requestHealthIntegrationPermission(
+  settings: HealthIntegrationSettings,
+  selectedDataTypes: HealthSyncDataType[],
+  now = new Date()
+): HealthIntegrationSettings {
+  const normalized = normalizeHealthIntegrationSettings({
+    ...settings,
+    selectedDataTypes
+  });
+  return {
+    ...normalized,
+    permissionStatus: normalized.nativeBridgeAvailable && normalized.privacyAccepted && normalized.selectedDataTypes.length ? "granted" : "requested",
+    lastPermissionRequestedAt: now.toISOString()
+  };
+}
+
+export function revokeHealthIntegrationPermission(settings: HealthIntegrationSettings, now = new Date()): HealthIntegrationSettings {
+  return {
+    ...normalizeHealthIntegrationSettings(settings),
+    permissionStatus: "revoked",
+    selectedDataTypes: [],
+    lastPermissionRequestedAt: now.toISOString(),
+    lastSyncedAt: undefined
+  };
+}
+
+export function canSyncHealthData(settings: HealthIntegrationSettings, dataType: HealthSyncDataType): boolean {
+  const normalized = normalizeHealthIntegrationSettings(settings);
+  return (
+    normalized.nativeBridgeAvailable &&
+    normalized.privacyAccepted &&
+    normalized.permissionStatus === "granted" &&
+    normalized.selectedDataTypes.includes(dataType)
+  );
+}
+
+export function healthIntegrationPrivacyCopy(settings: HealthIntegrationSettings): string {
+  const platform = settings.provider === "apple-health" ? "Apple Health requires HealthKit in an iOS app." : "Health Connect requires the Android Health Connect SDK.";
+  return `${platform} This web app stores only your consent choices and never syncs health data in the background. Weight, workout, and hydration data can sync only after you choose the categories and a native bridge confirms permission.`;
+}
+
+function isHealthPermissionStatus(value: unknown): value is HealthPermissionStatus {
+  return value === "not_requested" || value === "requested" || value === "granted" || value === "denied" || value === "revoked";
 }
 
 export function privateFriendLeaderboard(input: {

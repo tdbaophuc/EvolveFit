@@ -195,4 +195,36 @@ describe("Settings import and privacy", () => {
     expect(await screen.findByText(/Shared to private friends/i)).toBeInTheDocument();
     expect(screen.getByText("private-friends")).toBeInTheDocument();
   });
+
+  it("captures health platform permissions without starting sync", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      "evolvefit-state-v1",
+      JSON.stringify({
+        ...initialState,
+        profile: { ...initialState.profile, onboardingCompleted: true }
+      })
+    );
+
+    render(<AppPage />);
+
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByText("Health platform permissions")).toBeInTheDocument();
+    expect(screen.getByText(/never syncs health data in the background/i)).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("Platform"), "apple-health");
+    await user.selectOptions(screen.getByLabelText("Weight unit"), "lb");
+    await user.selectOptions(screen.getByLabelText("Hydration unit"), "oz");
+    await user.click(screen.getByLabelText("Sync weight"));
+    await user.click(screen.getByLabelText("Sync workout"));
+    await user.click(screen.getByLabelText("Sync hydration"));
+    await user.click(screen.getByLabelText("Health privacy consent"));
+    await user.click(screen.getByRole("button", { name: "Request health permission" }));
+
+    expect(await screen.findByText(/Native bridge required before sync/i)).toBeInTheDocument();
+    expect(screen.getByText("Permission: requested")).toBeInTheDocument();
+    expect(screen.getByText("weight: Not syncing")).toBeInTheDocument();
+    expect(screen.getByText("workout: Not syncing")).toBeInTheDocument();
+    expect(screen.getByText("hydration: Not syncing")).toBeInTheDocument();
+  });
 });

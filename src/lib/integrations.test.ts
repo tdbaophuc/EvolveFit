@@ -28,7 +28,8 @@ describe("integration contracts", () => {
       supabaseServiceRole: "configured",
       ai: "gemini",
       webPush: "configured",
-      cronSecret: "configured"
+      cronSecret: "configured",
+      healthPlatform: "native-bridge-required"
     });
   });
 

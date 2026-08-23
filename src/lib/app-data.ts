@@ -1,9 +1,11 @@
 import {
   builtInExerciseDefinitions,
+  defaultHealthIntegrationSettings,
   defaultSocialPrivacySettings,
   migrateLegacyWorkoutSession,
   migrateWorkoutExercisesToRoutine,
   normalizeDrinkModules,
+  normalizeHealthIntegrationSettings,
   normalizePlateInventory,
   normalizeWorkoutSessionQueue,
   routineExercisesToWorkoutExercises,
@@ -109,6 +111,7 @@ export function applySelectiveRestore(current: AppState, imported: AppState, sec
     recommendationHistory: selected.has("workouts") ? imported.recommendationHistory : current.recommendationHistory,
     recommendationDecisions: selected.has("workouts") ? imported.recommendationDecisions : current.recommendationDecisions,
     friends: selected.has("settings") ? imported.friends : current.friends,
+    healthIntegration: selected.has("settings") ? imported.healthIntegration : current.healthIntegration,
     socialPrivacy: selected.has("settings") ? imported.socialPrivacy : current.socialPrivacy,
     sharedPosts: selected.has("settings") ? imported.sharedPosts : current.sharedPosts,
     syncQueue: current.syncQueue,
@@ -139,6 +142,7 @@ export function deletePersonalData(state: AppState): AppState {
     recommendationHistory: [],
     recommendationDecisions: [],
     friends: [],
+    healthIntegration: defaultHealthIntegrationSettings(),
     socialPrivacy: defaultSocialPrivacySettings(),
     sharedPosts: [],
     syncQueue: [],
@@ -203,6 +207,7 @@ function normalizeImportedState(parsed: Partial<AppState>): AppState {
     recommendationHistory: parsed.recommendationHistory ?? initialState.recommendationHistory,
     recommendationDecisions: parsed.recommendationDecisions ?? initialState.recommendationDecisions,
     friends: parsed.friends ?? initialState.friends,
+    healthIntegration: normalizeHealthIntegrationSettings(parsed.healthIntegration),
     socialPrivacy: { ...defaultSocialPrivacySettings(), ...parsed.socialPrivacy },
     sharedPosts: parsed.sharedPosts ?? initialState.sharedPosts,
     syncQueue: parsed.syncQueue ?? initialState.syncQueue,
@@ -224,6 +229,7 @@ function validateImportCandidate(candidate: Record<string, unknown>) {
   if ("drinkModules" in candidate && !Array.isArray(candidate.drinkModules)) errors.push("drinkModules must be an array.");
   if ("supplements" in candidate && !Array.isArray(candidate.supplements)) errors.push("supplements must be an array.");
   if ("quickAmounts" in candidate && !Array.isArray(candidate.quickAmounts)) errors.push("quickAmounts must be an array.");
+  if ("healthIntegration" in candidate && !isRecord(candidate.healthIntegration)) errors.push("healthIntegration must be an object.");
   return errors;
 }
 

@@ -35,6 +35,8 @@ import {
   displayWeight,
   estimatedOneRepMax,
   expectedHydrationByNow,
+  healthIntegrationPrivacyCopy,
+  healthSyncDataTypes,
   latestBodyMetric,
   bodyWeightDelta,
   formatWeight,
@@ -59,10 +61,13 @@ import {
   migrateWorkoutExercisesToRoutine,
   pauseWorkoutSession,
   resumeWorkoutSession,
+  requestHealthIntegrationPermission,
+  revokeHealthIntegrationPermission,
   reorderSessionExerciseQueue,
   routineExercisesToWorkoutExercises,
   saveSessionExerciseOrderToRoutine,
   selectedWorkoutDay,
+  canSyncHealthData,
   rowsToRoutineCsv,
   enqueueSync,
   markSyncItemConflict,
@@ -88,6 +93,9 @@ import {
   type EquipmentType,
   type ExerciseDefinition,
   type Friend,
+  type HealthIntegrationSettings,
+  type HealthProvider,
+  type HealthSyncDataType,
   type HydrationLog,
   type MovementPattern,
   type PlateCalculation,
@@ -1758,6 +1766,24 @@ export default function AppPage() {
     commitSynced({ ...state, socialPrivacy }, "social.privacy.update", socialPrivacy, "Updated social privacy");
   }
 
+  function updateHealthIntegration(next: Partial<HealthIntegrationSettings>) {
+    const healthIntegration = { ...state.healthIntegration, ...next };
+    commitSynced({ ...state, healthIntegration }, "health.permission.update", healthIntegration, "Updated health permissions");
+  }
+
+  function requestHealthPermission() {
+    const healthIntegration = requestHealthIntegrationPermission(state.healthIntegration, state.healthIntegration.selectedDataTypes);
+    commitSynced({ ...state, healthIntegration }, "health.permission.request", healthIntegration, "Health permission request saved");
+    if (!healthIntegration.nativeBridgeAvailable) {
+      setToast("Health permission choices saved. Native bridge required before sync.");
+    }
+  }
+
+  function revokeHealthPermission() {
+    const healthIntegration = revokeHealthIntegrationPermission(state.healthIntegration);
+    commitSynced({ ...state, healthIntegration }, "health.permission.revoke", healthIntegration, "Health permissions revoked");
+  }
+
   function addFriend() {
     const friend: Friend = {
       id: cryptoSafeId(),
@@ -2187,6 +2213,9 @@ export default function AppPage() {
             updateNotificationSettings={updateNotificationSettings}
             updatePlateSettings={updatePlateSettings}
             updateSocialPrivacy={updateSocialPrivacy}
+            updateHealthIntegration={updateHealthIntegration}
+            requestHealthPermission={requestHealthPermission}
+            revokeHealthPermission={revokeHealthPermission}
             addFriend={addFriend}
             updateFriend={updateFriend}
             drinkModules={drinkModules}
@@ -4153,6 +4182,9 @@ function SettingsView(props: {
   updateNotificationSettings: (next: Partial<AppState["notificationSettings"]>) => void;
   updatePlateSettings: (next: Partial<PlateSettings>) => void;
   updateSocialPrivacy: (next: Partial<SocialPrivacySettings>) => void;
+  updateHealthIntegration: (next: Partial<HealthIntegrationSettings>) => void;
+  requestHealthPermission: () => void;
+  revokeHealthPermission: () => void;
   addFriend: () => void;
   updateFriend: (id: string, patch: Partial<Friend>) => void;
   drinkModules: DrinkModule[];
@@ -4163,6 +4195,7 @@ function SettingsView(props: {
   const syncedQueue = props.state.syncQueue.filter((item) => item.status === "synced").length;
   const failedQueue = props.state.syncQueue.filter((item) => item.status === "failed" || item.status === "conflict").length;
   const creatineActive = isDrinkModuleActive(props.drinkModules, "creatine");
+  const healthPrivacyCopy = healthIntegrationPrivacyCopy(props.state.healthIntegration);
 
   function updateModuleGoal(module: DrinkModule, goal: number) {
     if (module.id === "water") {
@@ -4174,6 +4207,13 @@ function SettingsView(props: {
       return;
     }
     props.updateDrinkModule(module.id, { goal });
+  }
+
+  function toggleHealthDataType(dataType: HealthSyncDataType, enabled: boolean) {
+    const selectedDataTypes = enabled
+      ? Array.from(new Set([...props.state.healthIntegration.selectedDataTypes, dataType]))
+      : props.state.healthIntegration.selectedDataTypes.filter((selected) => selected !== dataType);
+    props.updateHealthIntegration({ selectedDataTypes });
   }
 
   function parseHours(value: string): number[] {
@@ -4421,6 +4461,101 @@ function SettingsView(props: {
               </div>
             </div>
           ))}
+        </div>
+      </section>
+      <section className="card">
+        <h2>Health platform permissions</h2>
+        <p className="privacy-note">{healthPrivacyCopy}</p>
+        <div className="settings-inline-grid">
+          <label>
+            <span>Platform</span>
+            <select
+              value={props.state.healthIntegration.provider}
+              onChange={(event) => props.updateHealthIntegration({ provider: event.target.value as HealthProvider, permissionStatus: "not_requested" })}
+            >
+              <option value="health-connect">Health Connect</option>
+              <option value="apple-health">Apple Health</option>
+            </select>
+          </label>
+          <label>
+            <span>Weight unit</span>
+            <select
+              value={props.state.healthIntegration.unitMapping.weight}
+              onChange={(event) =>
+                props.updateHealthIntegration({
+                  unitMapping: { ...props.state.healthIntegration.unitMapping, weight: event.target.value as HealthIntegrationSettings["unitMapping"]["weight"] }
+                })
+              }
+            >
+              <option value="kg">kg</option>
+              <option value="lb">lb</option>
+            </select>
+          </label>
+          <label>
+            <span>Hydration unit</span>
+            <select
+              value={props.state.healthIntegration.unitMapping.hydration}
+              onChange={(event) =>
+                props.updateHealthIntegration({
+                  unitMapping: { ...props.state.healthIntegration.unitMapping, hydration: event.target.value as HealthIntegrationSettings["unitMapping"]["hydration"] }
+                })
+              }
+            >
+              <option value="ml">ml</option>
+              <option value="oz">oz</option>
+            </select>
+          </label>
+          <label>
+            <span>Workout distance</span>
+            <select
+              value={props.state.healthIntegration.unitMapping.workoutDistance}
+              onChange={(event) =>
+                props.updateHealthIntegration({
+                  unitMapping: { ...props.state.healthIntegration.unitMapping, workoutDistance: event.target.value as HealthIntegrationSettings["unitMapping"]["workoutDistance"] }
+                })
+              }
+            >
+              <option value="km">km</option>
+              <option value="mi">mi</option>
+            </select>
+          </label>
+        </div>
+        <div className="restore-section-grid" aria-label="Health data type controls">
+          {healthSyncDataTypes.map((dataType) => (
+            <label key={dataType} className="toggle-row compact-toggle">
+              <span>{dataType === "weight" ? "Sync weight" : dataType === "workout" ? "Sync workout" : "Sync hydration"}</span>
+              <input
+                type="checkbox"
+                checked={props.state.healthIntegration.selectedDataTypes.includes(dataType)}
+                onChange={(event) => toggleHealthDataType(dataType, event.target.checked)}
+              />
+            </label>
+          ))}
+          <label className="toggle-row compact-toggle">
+            <span>Health privacy consent</span>
+            <input
+              type="checkbox"
+              checked={props.state.healthIntegration.privacyAccepted}
+              onChange={(event) => props.updateHealthIntegration({ privacyAccepted: event.target.checked })}
+            />
+          </label>
+        </div>
+        <div className="readiness-list">
+          <span>Permission: {props.state.healthIntegration.permissionStatus}</span>
+          <span>Native bridge: {props.state.healthIntegration.nativeBridgeAvailable ? "available" : "required"}</span>
+          {healthSyncDataTypes.map((dataType) => (
+            <span key={dataType}>
+              {dataType}: {canSyncHealthData(props.state.healthIntegration, dataType) ? "Allowed by contract" : "Not syncing"}
+            </span>
+          ))}
+        </div>
+        <div className="split-actions">
+          <button className="secondary-button" onClick={props.requestHealthPermission} disabled={!props.state.healthIntegration.selectedDataTypes.length}>
+            Request health permission
+          </button>
+          <button className="secondary-button danger-button" onClick={props.revokeHealthPermission}>
+            Revoke health permission
+          </button>
         </div>
       </section>
       <section className="card">

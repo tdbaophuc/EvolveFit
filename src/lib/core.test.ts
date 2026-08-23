@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   defaultDrinkModules,
+  defaultHealthIntegrationSettings,
   defaultPlateSettings,
   defaultSocialPrivacySettings,
   builtInExerciseDefinitions,
@@ -22,6 +23,8 @@ import {
   hydrationPaceStatus,
   hydrationPercent,
   hydrationTotal,
+  canSyncHealthData,
+  healthIntegrationPrivacyCopy,
   isWorkingVolumeSet,
   isDrinkModuleActive,
   monthlyAchievements,
@@ -33,11 +36,13 @@ import {
   parkSessionExercise,
   privateFriendLeaderboard,
   publishSharePreview,
+  requestHealthIntegrationPermission,
   filterExerciseLibrary,
   migrateWorkoutExercisesToRoutine,
   migrateLegacyWorkoutSession,
   nextSupersetExerciseIndex,
   reorderSessionExerciseQueue,
+  revokeHealthIntegrationPermission,
   readinessScore,
   validateBodyMetric,
   enqueueSync,
@@ -1375,5 +1380,50 @@ describe("social privacy sharing", () => {
 
     expect(leaderboard.visible).toBe(true);
     expect(leaderboard.entries.map((entry) => entry.displayName)).toEqual(["Minh", "Phuc"]);
+  });
+});
+
+describe("health platform permissions", () => {
+  it("keeps all health sync disabled by default", () => {
+    const settings = defaultHealthIntegrationSettings();
+
+    expect(settings).toMatchObject({
+      provider: "health-connect",
+      permissionStatus: "not_requested",
+      selectedDataTypes: [],
+      privacyAccepted: false,
+      nativeBridgeAvailable: false
+    });
+    expect(canSyncHealthData(settings, "weight")).toBe(false);
+    expect(healthIntegrationPrivacyCopy(settings)).toContain("never syncs health data in the background");
+  });
+
+  it("saves a web permission request without granting sync", () => {
+    const requested = requestHealthIntegrationPermission(
+      { ...defaultHealthIntegrationSettings(), privacyAccepted: true, unitMapping: { weight: "lb", hydration: "oz", workoutDistance: "mi" } },
+      ["weight", "workout"],
+      new Date("2026-08-23T00:00:00.000Z")
+    );
+
+    expect(requested.permissionStatus).toBe("requested");
+    expect(requested.selectedDataTypes).toEqual(["weight", "workout"]);
+    expect(requested.unitMapping).toEqual({ weight: "lb", hydration: "oz", workoutDistance: "mi" });
+    expect(requested.lastPermissionRequestedAt).toBe("2026-08-23T00:00:00.000Z");
+    expect(canSyncHealthData(requested, "weight")).toBe(false);
+  });
+
+  it("allows only explicitly selected categories after native permission is granted", () => {
+    const granted = requestHealthIntegrationPermission(
+      { ...defaultHealthIntegrationSettings(), privacyAccepted: true, nativeBridgeAvailable: true, provider: "apple-health" },
+      ["hydration"],
+      new Date("2026-08-23T00:00:00.000Z")
+    );
+    const revoked = revokeHealthIntegrationPermission(granted, new Date("2026-08-23T01:00:00.000Z"));
+
+    expect(granted.permissionStatus).toBe("granted");
+    expect(canSyncHealthData(granted, "hydration")).toBe(true);
+    expect(canSyncHealthData(granted, "weight")).toBe(false);
+    expect(revoked.selectedDataTypes).toEqual([]);
+    expect(canSyncHealthData(revoked, "hydration")).toBe(false);
   });
 });

@@ -8,6 +8,7 @@ export type IntegrationStatus = {
   ai: "gemini" | "openai" | "rule-fallback";
   webPush: "configured" | "missing-env";
   cronSecret: "configured" | "missing-env";
+  healthPlatform: "native-bridge-required";
 };
 
 export function getIntegrationStatus(env: NodeJS.ProcessEnv = process.env): IntegrationStatus {
@@ -16,7 +17,8 @@ export function getIntegrationStatus(env: NodeJS.ProcessEnv = process.env): Inte
     supabaseServiceRole: env.SUPABASE_SERVICE_ROLE_KEY ? "configured" : "missing-env",
     ai: env.GEMINI_API_KEY ? "gemini" : env.OPENAI_API_KEY ? "openai" : "rule-fallback",
     webPush: isWebPushConfigured(env) ? "configured" : "missing-env",
-    cronSecret: env.CRON_SECRET ? "configured" : "missing-env"
+    cronSecret: env.CRON_SECRET ? "configured" : "missing-env",
+    healthPlatform: "native-bridge-required"
   };
 }
 
