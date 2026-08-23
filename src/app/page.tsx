@@ -27,6 +27,8 @@ import {
   completeSessionExercise,
   buildBodyMetricChartDataset,
   buildProgressDashboard,
+  calculatePlatesPerSide,
+  detectWorkoutSetPrs,
   displayWeight,
   estimatedOneRepMax,
   expectedHydrationByNow,
@@ -40,6 +42,7 @@ import {
   isDrinkModuleActive,
   monthlyAchievements,
   normalizeDrinkModules,
+  normalizePlateInventory,
   normalizeWorkoutSessionQueue,
   parseRoutineCsv,
   parkSessionExercise,
@@ -73,12 +76,15 @@ import {
   type ExerciseDefinition,
   type HydrationLog,
   type MovementPattern,
+  type PlateCalculation,
+  type PlateSettings,
   type RoutineImportPreview,
   type RoutineExercise,
   type SessionExerciseQueueItem,
   type Supplement,
   type ProgressDashboard,
   type WorkoutSession,
+  type WorkoutSetPr,
   type WorkoutExercise,
   type WorkoutSet
 } from "@/lib/core";
@@ -145,6 +151,7 @@ export default function AppPage() {
   const [setWeight, setSetWeight] = useState(42.5);
   const [setReps, setSetReps] = useState(8);
   const [setRpe, setSetRpe] = useState(8);
+  const [livePrBadges, setLivePrBadges] = useState<WorkoutSetPr[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
   const [pushSubscriptionStatus, setPushSubscriptionStatus] = useState<PushSubscriptionStatus>("unsupported");
@@ -1233,6 +1240,8 @@ export default function AppPage() {
   }
 
   function commitWorkoutSet(completed: WorkoutSet, label: string, message: string) {
+    const prs = detectWorkoutSetPrs(state.workoutSets, completed);
+    const commitMessage = prs.length ? `New PR: ${prs.map((pr) => pr.label).join(", ")}` : message;
     const finishedExercise = completedSetsForActive.length + 1 >= activeExercise.targetSets;
     const completedSession =
       activeWorkoutSession && finishedExercise ? completeSessionExercise(activeWorkoutSession, activeExercise.id) : activeWorkoutSession;
@@ -1248,6 +1257,8 @@ export default function AppPage() {
     setRestPausedSeconds(null);
     setRestNotifiedFor(null);
     setNowMs(Date.now());
+    setLivePrBadges(prs);
+    if (prs.length) window.setTimeout(() => setLivePrBadges([]), 8000);
     const finishedSession = shouldFinishSession && completedSession ? finishWorkoutSession(completedSession) : undefined;
     withUndo(
       {
@@ -1264,7 +1275,7 @@ export default function AppPage() {
         syncQueue: enqueueSync(state.syncQueue, { type: label === "skip set" ? "workout.set.skip" : "workout.set.create", payload: completed })
       },
       label,
-      message
+      commitMessage
     );
   }
 
@@ -1490,6 +1501,15 @@ export default function AppPage() {
     commit({ ...state, notificationSettings: { ...state.notificationSettings, ...next } });
   }
 
+  function updatePlateSettings(next: Partial<PlateSettings>) {
+    const plateSettings = {
+      ...state.plateSettings,
+      ...next,
+      plateInventoryKg: next.plateInventoryKg ? normalizePlateInventory(next.plateInventoryKg) : state.plateSettings.plateInventoryKg
+    };
+    commit({ ...state, plateSettings });
+  }
+
   function markQueue(status: "synced" | "failed") {
     commit({ ...state, syncQueue: markSyncQueue(state.syncQueue, status) }, status === "synced" ? "Đã đánh dấu sync xong" : "Đã đánh dấu sync lỗi");
   }
@@ -1681,6 +1701,8 @@ export default function AppPage() {
             filteredExerciseLibrary={filteredExerciseLibrary}
             activeExercise={activeExercise}
             completedSets={completedSetsForActive}
+            livePrBadges={livePrBadges}
+            plateSettings={state.plateSettings}
             setWeight={setWeight}
             setSetWeight={setSetWeight}
             setReps={setReps}
@@ -1803,6 +1825,7 @@ export default function AppPage() {
             restoreSections={restoreSections}
             setRestoreSections={setRestoreSections}
             updateNotificationSettings={updateNotificationSettings}
+            updatePlateSettings={updatePlateSettings}
             drinkModules={drinkModules}
             updateDrinkModule={updateDrinkModule}
             reopenOnboarding={() => {
@@ -2371,6 +2394,8 @@ function WorkoutView(props: {
   filteredExerciseLibrary: ExerciseDefinition[];
   activeExercise: AppState["workoutExercises"][number];
   completedSets: WorkoutSet[];
+  livePrBadges: WorkoutSetPr[];
+  plateSettings: PlateSettings;
   setWeight: number;
   setSetWeight: (value: number) => void;
   setReps: number;
@@ -2440,6 +2465,7 @@ function WorkoutView(props: {
   const queuedCount = props.sessionQueue.filter((item) => item.status === "queued").length;
   const completedCount = props.sessionQueue.filter((item) => item.status === "completed").length;
   const parkedCount = props.sessionQueue.filter((item) => item.status === "parked").length;
+  const plateCalculation = calculatePlatesPerSide(props.setWeight, props.plateSettings);
 
   if (props.mode === "finished") {
     return (
@@ -2816,6 +2842,13 @@ function WorkoutView(props: {
           <Dumbbell size={26} />
         </div>
         <div className="last-session">Lần trước: {props.activeExercise.lastSession}</div>
+        {props.livePrBadges.length > 0 && (
+          <div className="live-pr-banner" role="status" aria-label="Live PR notification">
+            <Trophy size={18} />
+            <strong>New PR</strong>
+            <span>{props.livePrBadges.map((pr) => `${pr.label} ${pr.next}${pr.type === "maxReps" ? " reps" : "kg"}`).join(" | ")}</span>
+          </div>
+        )}
       </section>
 
       <section className="card">
@@ -2836,7 +2869,10 @@ function WorkoutView(props: {
       </section>
 
       <section className="control-card card">
-        <Stepper label="Tạ" value={props.setWeight} suffix="kg" step={2.5} onChange={props.setSetWeight} />
+        <div className="plate-stepper-block">
+          <Stepper label="Tạ" value={props.setWeight} suffix="kg" step={2.5} onChange={props.setSetWeight} />
+          <PlateCalculatorReadout calculation={plateCalculation} />
+        </div>
         <Stepper label="Reps" value={props.setReps} step={1} onChange={props.setSetReps} />
         <Stepper label="RPE" value={props.setRpe} step={1} min={1} max={10} onChange={props.setSetRpe} />
       </section>
@@ -3018,6 +3054,23 @@ function Stepper(props: {
       <button onClick={() => update(1)} aria-label={`Tăng ${props.label}`}>
         <Plus size={18} />
       </button>
+    </div>
+  );
+}
+
+function PlateCalculatorReadout(props: { calculation: PlateCalculation }) {
+  const { calculation } = props;
+  const plateText = calculation.platesPerSide.length
+    ? calculation.platesPerSide.map((plate) => `${plate.count}x${plate.weightKg}`).join(" + ")
+    : "bar only";
+  return (
+    <div className="plate-readout" aria-label="Plate calculator">
+      <span>Plates / side</span>
+      <strong>{plateText}</strong>
+      <em>
+        Bar {calculation.barbellKg}kg
+        {calculation.remainderKg > 0 ? ` | closest ${calculation.matchedWeightKg}kg, missing ${calculation.remainderKg}kg` : ""}
+      </em>
     </div>
   );
 }
@@ -3491,6 +3544,7 @@ function SettingsView(props: {
   restoreSections: RestoreSection[];
   setRestoreSections: (sections: RestoreSection[]) => void;
   updateNotificationSettings: (next: Partial<AppState["notificationSettings"]>) => void;
+  updatePlateSettings: (next: Partial<PlateSettings>) => void;
   drinkModules: DrinkModule[];
   updateDrinkModule: (id: DrinkModule["id"], patch: Partial<DrinkModule>) => void;
   reopenOnboarding: () => void;
@@ -3519,6 +3573,15 @@ function SettingsView(props: {
       .filter((hour) => Number.isInteger(hour) && hour >= 0 && hour <= 23)
       .filter((hour, index, list) => list.indexOf(hour) === index)
       .sort((a, b) => a - b);
+  }
+
+  function parsePlateInventory(value: string): number[] {
+    return normalizePlateInventory(
+      value
+        .split(",")
+        .map((item) => Number(item.trim()))
+        .filter((plate) => Number.isFinite(plate) && plate > 0)
+    );
   }
 
   function snooze(minutes: number) {
@@ -3647,6 +3710,42 @@ function SettingsView(props: {
           ))}
         </div>
         <p className="privacy-note">Water luôn là thức uống chính; module tắt sẽ rời khỏi UI hằng ngày nhưng dữ liệu cũ vẫn nằm trong export.</p>
+      </section>
+      <section className="card">
+        <h2>Plate calculator</h2>
+        <div className="settings-inline-grid">
+          <label>
+            <span>Barbell</span>
+            <select
+              value={props.state.plateSettings.barbellDefault}
+              onChange={(event) => props.updatePlateSettings({ barbellDefault: event.target.value as PlateSettings["barbellDefault"] })}
+            >
+              <option value="20kg">20kg</option>
+              <option value="15kg">15kg</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <label>
+            <span>Custom bar kg</span>
+            <input
+              type="number"
+              min="0"
+              step="0.5"
+              value={props.state.plateSettings.customBarbellKg}
+              disabled={props.state.plateSettings.barbellDefault !== "custom"}
+              onChange={(event) => props.updatePlateSettings({ customBarbellKg: Number(event.target.value) })}
+            />
+          </label>
+          <label className="wide-field">
+            <span>Plate inventory kg</span>
+            <input
+              value={props.state.plateSettings.plateInventoryKg.join(", ")}
+              onChange={(event) => props.updatePlateSettings({ plateInventoryKg: parsePlateInventory(event.target.value) })}
+              aria-label="Plate inventory kg"
+            />
+          </label>
+        </div>
+        <p className="privacy-note">Live Workout dùng cấu hình này để hiển thị đĩa mỗi bên từ target weight hoặc tạ đang log.</p>
       </section>
       <section className="card">
         <h2>Privacy</h2>

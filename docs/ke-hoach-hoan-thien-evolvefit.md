@@ -935,7 +935,7 @@ Dữ liệu cá nhân quản lý rõ, restore an toàn.
 - [ ] Structured logs/request id.
 - [ ] Rate limit.
 - [ ] Weekly/monthly reports.
-- [ ] Plate calculator.
+- [x] Plate calculator.
 - [ ] Warm-up/drop/failure/superset.
 - [ ] AI coach guarded.
 - [ ] Social/friend leaderboard private-first.

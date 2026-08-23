@@ -3,6 +3,7 @@ import {
   migrateLegacyWorkoutSession,
   migrateWorkoutExercisesToRoutine,
   normalizeDrinkModules,
+  normalizePlateInventory,
   normalizeWorkoutSessionQueue,
   routineExercisesToWorkoutExercises,
   selectedWorkoutDay
@@ -87,6 +88,7 @@ export function applySelectiveRestore(current: AppState, imported: AppState, sec
     profile: selected.has("profile") ? imported.profile : current.profile,
     recovery: selected.has("settings") ? imported.recovery : current.recovery,
     notificationSettings: selected.has("settings") ? imported.notificationSettings : current.notificationSettings,
+    plateSettings: selected.has("settings") ? imported.plateSettings : current.plateSettings,
     hydrationLogs: selected.has("hydration") ? imported.hydrationLogs : current.hydrationLogs,
     drinkModules: selected.has("settings") ? imported.drinkModules : current.drinkModules,
     supplements: selected.has("settings") ? imported.supplements : current.supplements,
@@ -122,6 +124,7 @@ export function deletePersonalData(state: AppState): AppState {
     },
     recovery: initialState.recovery,
     notificationSettings: initialState.notificationSettings,
+    plateSettings: initialState.plateSettings,
     hydrationLogs: [],
     supplementLogs: [],
     workoutSets: [],
@@ -165,6 +168,11 @@ function normalizeImportedState(parsed: Partial<AppState>): AppState {
     profile,
     recovery: { ...initialState.recovery, ...parsed.recovery },
     notificationSettings: { ...initialState.notificationSettings, ...parsed.notificationSettings },
+    plateSettings: {
+      ...initialState.plateSettings,
+      ...parsed.plateSettings,
+      plateInventoryKg: normalizePlateInventory(parsed.plateSettings?.plateInventoryKg)
+    },
     hydrationLogs: parsed.hydrationLogs ?? initialState.hydrationLogs,
     drinkModules: normalizeDrinkModules(parsed.drinkModules, profile.waterTargetMl, profile.creatineAmountG),
     supplements: parsed.supplements ?? initialState.supplements,
@@ -199,6 +207,7 @@ function validateImportCandidate(candidate: Record<string, unknown>) {
   if ("routines" in candidate && !isRoutines(candidate.routines)) errors.push("routines must be valid routine objects.");
   if ("bodyMetrics" in candidate && !isBodyMetrics(candidate.bodyMetrics)) errors.push("bodyMetrics must be valid body metric objects.");
   if ("notificationSettings" in candidate && !isRecord(candidate.notificationSettings)) errors.push("notificationSettings must be an object.");
+  if ("plateSettings" in candidate && !isPlateSettings(candidate.plateSettings)) errors.push("plateSettings must be a valid plate calculator settings object.");
   if ("drinkModules" in candidate && !Array.isArray(candidate.drinkModules)) errors.push("drinkModules must be an array.");
   if ("supplements" in candidate && !Array.isArray(candidate.supplements)) errors.push("supplements must be an array.");
   if ("quickAmounts" in candidate && !Array.isArray(candidate.quickAmounts)) errors.push("quickAmounts must be an array.");
@@ -215,6 +224,14 @@ function isWorkoutSets(value: unknown): boolean {
 
 function isRoutines(value: unknown): boolean {
   return Array.isArray(value) && value.every((routine) => isRecord(routine) && typeof routine.id === "string" && Array.isArray(routine.days));
+}
+
+function isPlateSettings(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if ("barbellDefault" in value && !["20kg", "15kg", "custom"].includes(String(value.barbellDefault))) return false;
+  if ("customBarbellKg" in value && (typeof value.customBarbellKg !== "number" || !Number.isFinite(value.customBarbellKg))) return false;
+  if ("plateInventoryKg" in value && (!Array.isArray(value.plateInventoryKg) || !value.plateInventoryKg.every((plate) => typeof plate === "number" && Number.isFinite(plate)))) return false;
+  return true;
 }
 
 function isBodyMetrics(value: unknown): boolean {

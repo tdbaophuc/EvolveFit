@@ -1899,6 +1899,11 @@ button:disabled {
   gap: 12px;
 }
 
+.plate-stepper-block {
+  display: grid;
+  gap: 8px;
+}
+
 .stepper {
   display: grid;
   grid-template-columns: 54px 44px 1fr 44px;
@@ -1923,6 +1928,42 @@ button:disabled {
   border-radius: 8px;
   background: #f8fafc;
   font-size: 22px;
+}
+
+.plate-readout,
+.live-pr-banner {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 6px 10px;
+  border: 1px solid rgba(92, 201, 121, 0.35);
+  border-radius: 8px;
+  background: rgba(92, 201, 121, 0.12);
+  color: #14532d;
+  padding: 10px 12px;
+}
+
+.plate-readout span,
+.live-pr-banner span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.plate-readout strong,
+.live-pr-banner strong {
+  font-size: 14px;
+}
+
+.plate-readout em {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.live-pr-banner {
+  margin-top: 12px;
 }
 
 .rest-card {
