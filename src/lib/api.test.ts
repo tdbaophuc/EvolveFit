@@ -10,12 +10,28 @@ import {
   sendTestNotification,
   sendHydrationReminderEvents,
   coachRecommend,
+  coachRecommendationFeedback,
+  createExercise,
+  createRoutine,
+  createWorkoutSet,
+  deleteExercise,
+  deleteRoutine,
+  deleteWorkoutSet,
+  finishWorkoutSessionById,
   logHydration,
   logSupplement,
+  pauseWorkoutSessionById,
   recalculateAchievements,
   patchHydrationLog,
+  reorderWorkoutSession,
+  resumeWorkoutSessionById,
+  startWorkoutSession,
   subscribeNotifications,
+  syncBatch,
+  updateExercise,
   updateLeaderboardVisibility,
+  updateRoutine,
+  updateWorkoutSet,
   unsubscribeNotifications
 } from "./api";
 
@@ -101,7 +117,113 @@ describe("api service layer", () => {
     const result = await coachRecommend();
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.data).toHaveProperty("mode");
-    expect(["rule-fallback", "gemini", "openai"]).toContain(result.data.mode);
+    expect(result.data.recommendation).toHaveProperty("mode");
+    expect(["rule-fallback", "gemini", "openai"]).toContain(result.data.recommendation.mode);
+    expect(result.data.recommendation.guardrail).toContain("Training guidance only");
+    const feedback = coachRecommendationFeedback({ recommendationId: result.data.recommendation.id, decision: "accepted", feedback: "reasonable" });
+    expect(feedback.ok && feedback.data.decision.feedback).toBe("reasonable");
+  });
+
+  it("supports routine and exercise CRUD contracts", () => {
+    const routine = createRoutine({ name: "API Routine", daysPerWeek: 1, days: [] });
+    expect(routine.ok).toBe(true);
+    if (!routine.ok) return;
+    const updated = updateRoutine(routine.data.id, { name: "API Routine 2", baseUpdatedAt: routine.data.updatedAt });
+    expect(updated.ok).toBe(true);
+    expect(updated.ok && "name" in updated.data && updated.data.name).toBe("API Routine 2");
+
+    const exercise = createExercise({ name: "API Curl", muscleGroup: "Arms", equipment: "dumbbell", movementPattern: "isolation" });
+    expect(exercise.ok).toBe(true);
+    if (!exercise.ok) return;
+    expect(updateExercise(exercise.data.id, { notes: "strict form" }).ok).toBe(true);
+    expect(deleteExercise(exercise.data.id).ok).toBe(true);
+    expect(deleteRoutine(routine.data.id).ok).toBe(true);
+  });
+
+  it("starts, pauses, resumes, finishes, and reorders workout sessions", () => {
+    const started = startWorkoutSession({ sessionName: "API Session", sessionExerciseOrder: ["ex1", "ex2"] });
+    expect(started.ok).toBe(true);
+    if (!started.ok) return;
+    expect(pauseWorkoutSessionById(started.data.id).ok).toBe(true);
+    expect(resumeWorkoutSessionById(started.data.id).ok).toBe(true);
+    const reordered = reorderWorkoutSession(started.data.id, [
+      { exerciseId: "ex2", status: "queued" },
+      { exerciseId: "ex1", status: "parked" }
+    ]);
+    expect(reordered.ok && reordered.data.sessionExerciseOrder).toEqual(["ex2", "ex1"]);
+    const finished = finishWorkoutSessionById(started.data.id);
+    expect(finished.ok && finished.data.status).toBe("finished");
+  });
+
+  it("creates, updates, and deletes workout sets", () => {
+    const created = createWorkoutSet({
+      id: "api-set-1",
+      sessionId: "api-session",
+      exerciseId: "ex1",
+      exerciseName: "Incline Bench Press",
+      targetWeightKg: 40,
+      targetReps: 8,
+      actualWeightKg: 40,
+      actualReps: 8,
+      completedAt: "2026-08-23T01:00:00.000Z"
+    });
+    expect(created.ok).toBe(true);
+    const updated = updateWorkoutSet("api-set-1", { actualReps: 9, completedAt: "2026-08-23T01:01:00.000Z" });
+    expect(updated.ok && updated.data.actualReps).toBe(9);
+    expect(deleteWorkoutSet("api-set-1").ok).toBe(true);
+  });
+
+  it("sync batch is idempotent and reports routine conflicts for confirm flow", () => {
+    const first = syncBatch({
+      idempotencyKey: "batch-api-test",
+      items: [
+        {
+          id: "sync-set",
+          type: "workout.set.create",
+          idempotencyKey: "sync-set-key",
+          payload: {
+            id: "sync-set",
+            sessionId: "session-sync",
+            exerciseId: "ex1",
+            exerciseName: "Incline Bench Press",
+            targetWeightKg: 40,
+            targetReps: 8,
+            actualWeightKg: 40,
+            actualReps: 8,
+            completedAt: "2026-08-23T02:00:00.000Z"
+          }
+        }
+      ]
+    });
+    const second = syncBatch({
+      idempotencyKey: "batch-api-test",
+      items: [{ id: "sync-set", type: "workout.set.create", idempotencyKey: "sync-set-key", payload: { id: "sync-set" } }]
+    });
+    expect(first).toEqual(second);
+
+    const routine = createRoutine({ name: "Conflict Routine", days: [] });
+    expect(routine.ok).toBe(true);
+    if (!routine.ok) return;
+    const baseUpdatedAt = routine.data.updatedAt;
+    const remote = updateRoutine(routine.data.id, { name: "Remote update", baseUpdatedAt });
+    expect(remote.ok).toBe(true);
+    const conflict = syncBatch({
+      items: [
+        {
+          type: "routine.update",
+          payload: { routineId: routine.data.id, routine: { name: "Local update" }, baseUpdatedAt }
+        }
+      ]
+    });
+    expect(conflict.ok && conflict.data.results[0].status).toBe("conflict");
+    const confirmed = syncBatch({
+      items: [
+        {
+          type: "routine.update",
+          payload: { routineId: routine.data.id, routine: { name: "Local update" }, baseUpdatedAt, conflictResolution: "confirm" }
+        }
+      ]
+    });
+    expect(confirmed.ok && confirmed.data.results[0].status).toBe("synced");
   });
 });

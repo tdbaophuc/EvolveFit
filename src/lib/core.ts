@@ -69,12 +69,22 @@ export type WorkoutSet = {
   sessionId?: string;
   exerciseId: string;
   exerciseName: string;
+  setType?: WorkoutSetType;
   targetWeightKg: number;
   targetReps: number;
   actualWeightKg: number;
   actualReps: number;
   rpe?: number;
   completedAt?: string;
+};
+
+export type WorkoutSetType = "warmup" | "working" | "drop" | "failure";
+
+export type WarmUpSetSuggestion = {
+  setType: "warmup";
+  weightKg: number;
+  reps: number;
+  percent: number;
 };
 
 export type PlateSettings = {
@@ -125,6 +135,7 @@ export type WorkoutExercise = {
   id: string;
   name: string;
   muscleGroup: string;
+  supersetGroup?: string;
   targetSets: number;
   targetRepsMin: number;
   targetRepsMax: number;
@@ -196,15 +207,97 @@ export type Recommendation = {
   source: "rule" | "ai-assisted";
   action: "increase" | "hold" | "deload";
   nextWeightKg: number;
+  dataBasis: string[];
+  suggestedAction: string;
+  guardrail: string;
+  aiEligible: boolean;
+  mode: "rule-fallback" | "gemini" | "openai";
+};
+
+export type RecommendationDecision = {
+  id: string;
+  recommendationId: string;
+  title: string;
+  source: Recommendation["source"];
+  action: Recommendation["action"];
+  nextWeightKg: number;
+  decision: "accepted" | "rejected";
+  reason?: string;
+  feedback?: string;
+  decidedAt: string;
+};
+
+export type RecommendationHistoryItem = Recommendation & {
+  id: string;
+  generatedAt: string;
+  exerciseId?: string;
+  exerciseName: string;
+  status: "pending" | "accepted" | "rejected";
+  feedback?: string;
+};
+
+export type Friend = {
+  id: string;
+  displayName: string;
+  handle: string;
+  status: "pending" | "accepted" | "blocked";
+  badgeStreakMonths: number;
+  score: number;
+  addedAt: string;
+};
+
+export type SocialPrivacySettings = {
+  friendLeaderboardEnabled: boolean;
+  shareBadges: boolean;
+  shareWorkoutSummaries: boolean;
+  shareBodyMetrics: boolean;
+  shareWorkoutDetails: boolean;
+};
+
+export type HealthProvider = "health-connect" | "apple-health";
+export type HealthSyncDataType = "weight" | "workout" | "hydration";
+export type HealthPermissionStatus = "not_requested" | "requested" | "granted" | "denied" | "revoked";
+
+export type HealthUnitMapping = {
+  weight: "kg" | "lb";
+  hydration: "ml" | "oz";
+  workoutDistance: "km" | "mi";
+};
+
+export type HealthIntegrationSettings = {
+  provider: HealthProvider;
+  permissionStatus: HealthPermissionStatus;
+  selectedDataTypes: HealthSyncDataType[];
+  unitMapping: HealthUnitMapping;
+  privacyAccepted: boolean;
+  nativeBridgeAvailable: boolean;
+  lastPermissionRequestedAt?: string;
+  lastSyncedAt?: string;
+};
+
+export type SharePreview = {
+  id: string;
+  kind: "badge" | "workout-summary";
+  title: string;
+  summary: string;
+  visibleFields: string[];
+  redactedFields: string[];
+  createdAt: string;
+};
+
+export type SharedPost = SharePreview & {
+  publishedAt: string;
+  audience: "private-friends";
 };
 
 export type AchievementStatus = {
   code: string;
   name: string;
-  status: "active" | "locked" | "lost";
+  status: "active" | "locked" | "lost" | "disabled";
   progress: number;
   target: number;
   streakMonths: number;
+  condition?: string;
 };
 
 export type PeriodProgress = {
@@ -249,6 +342,33 @@ export type ProgressDashboard = {
   volumeByMuscleGroup: VolumeBucket[];
   e1RmTrend: E1RmTrendPoint[];
   prs: ExercisePr[];
+};
+
+export type ReportTrend = {
+  hydrationAverageMl: number;
+  goalHitRate: number;
+  workoutCount: number;
+  totalVolumeKg: number;
+};
+
+export type ProgressReport = {
+  label: string;
+  period: "weekly" | "monthly";
+  periodStart: string;
+  periodEnd: string;
+  hydrationAverageMl: number;
+  hydrationGoalHitRate: number;
+  hydrationHitDays: number;
+  workoutCount: number;
+  totalVolumeKg: number;
+  prs: ExercisePr[];
+  badges: AchievementStatus[];
+  trendVsPrevious: ReportTrend;
+};
+
+export type ProgressReports = {
+  weekly: ProgressReport;
+  monthly: ProgressReport;
 };
 
 export type WeightUnit = "kg" | "lb";
@@ -617,6 +737,7 @@ export function routineExercisesToWorkoutExercises(exercises: RoutineExercise[])
       id: exercise.id,
       name: exercise.name,
       muscleGroup: exercise.muscleGroup,
+      supersetGroup: exercise.supersetGroup,
       targetSets: exercise.targetSets,
       targetRepsMin: exercise.targetRepsMin,
       targetRepsMax: exercise.targetRepsMax,
@@ -710,6 +831,77 @@ export function createWorkoutSession(input: {
     sessionExerciseOrder: input.sessionExerciseOrder,
     exerciseQueue: input.sessionExerciseOrder.map((exerciseId) => ({ exerciseId, status: "queued" }))
   };
+}
+
+export function warmUpSetSuggestions(params: {
+  workingWeightKg: number;
+  workingReps: number;
+  incrementKg?: number;
+}): WarmUpSetSuggestion[] {
+  if (!Number.isFinite(params.workingWeightKg) || params.workingWeightKg <= 0) return [];
+  const increment = params.incrementKg ?? 2.5;
+  const roundToIncrement = (weight: number) => Math.max(0, Math.round(weight / increment) * increment);
+  const workingReps = Math.max(1, Math.round(params.workingReps));
+  const tiers =
+    params.workingWeightKg >= 80
+      ? [
+          { percent: 0.4, reps: Math.min(8, workingReps) },
+          { percent: 0.6, reps: Math.min(5, workingReps) },
+          { percent: 0.8, reps: Math.min(3, workingReps) }
+        ]
+      : params.workingWeightKg >= 40
+        ? [
+            { percent: 0.5, reps: Math.min(6, workingReps) },
+            { percent: 0.75, reps: Math.min(3, workingReps) }
+          ]
+        : [{ percent: 0.6, reps: Math.min(5, workingReps) }];
+
+  const seen = new Set<number>();
+  return tiers.flatMap((tier) => {
+    const weightKg = roundToIncrement(params.workingWeightKg * tier.percent);
+    if (weightKg <= 0 || weightKg >= params.workingWeightKg || seen.has(weightKg)) return [];
+    seen.add(weightKg);
+    return [{ setType: "warmup" as const, weightKg, reps: tier.reps, percent: Math.round(tier.percent * 100) }];
+  });
+}
+
+export function isWorkingVolumeSet(set: WorkoutSet): boolean {
+  const setType = set.setType ?? "working";
+  return set.actualReps > 0 && set.actualWeightKg >= 0 && setType !== "warmup";
+}
+
+export function countsTowardTargetSets(set: WorkoutSet): boolean {
+  return (set.setType ?? "working") !== "warmup";
+}
+
+export function workingSetVolumeKg(sets: WorkoutSet[]): number {
+  return round(sets.filter(isWorkingVolumeSet).reduce((sum, set) => sum + set.actualWeightKg * set.actualReps, 0));
+}
+
+export function nextSupersetExerciseIndex(params: {
+  exercises: WorkoutExercise[];
+  currentIndex: number;
+  sets: WorkoutSet[];
+}): number | undefined {
+  const current = params.exercises[params.currentIndex];
+  if (!current?.supersetGroup) return undefined;
+  const groupIndexes = params.exercises
+    .map((exercise, index) => ({ exercise, index }))
+    .filter(({ exercise }) => exercise.supersetGroup === current.supersetGroup);
+  if (groupIndexes.length < 2) return undefined;
+
+  const completedCount = (exerciseId: string) =>
+    params.sets.filter((set) => set.exerciseId === exerciseId && countsTowardTargetSets(set)).length;
+  const currentCount = completedCount(current.id);
+  const currentGroupPosition = groupIndexes.findIndex(({ index }) => index === params.currentIndex);
+
+  for (let offset = 1; offset <= groupIndexes.length; offset += 1) {
+    const candidate = groupIndexes[(currentGroupPosition + offset) % groupIndexes.length];
+    const count = completedCount(candidate.exercise.id);
+    if (count < candidate.exercise.targetSets && count <= currentCount) return candidate.index;
+  }
+
+  return undefined;
 }
 
 function sessionOrderFromQueue(queue: SessionExerciseQueueItem[]): string[] {
@@ -874,6 +1066,7 @@ const routineColumnAliases = {
   repsMax: ["reps max", "rep max", "max reps", "reps", "reps to", "rep toi da", "reps toi da"],
   weight: ["weight", "weight kg", "kg", "target weight", "muc ta", "ta", "trong luong"],
   restSeconds: ["rest seconds", "rest", "rest sec", "nghi giay", "thoi gian nghi"],
+  supersetGroup: ["superset", "superset group", "group set", "nhom superset"],
   note: ["note", "notes", "ghi chu"]
 } satisfies Record<string, string[]>;
 
@@ -890,6 +1083,7 @@ function routineHeaderIndexes(headers: string[]) {
     repsMax: findHeader(routineColumnAliases.repsMax),
     weight: findHeader(routineColumnAliases.weight),
     restSeconds: findHeader(routineColumnAliases.restSeconds),
+    supersetGroup: findHeader(routineColumnAliases.supersetGroup),
     note: findHeader(routineColumnAliases.note)
   };
 }
@@ -951,6 +1145,7 @@ export function parseRoutineCsv(text: string, fileName: string): RoutineImportPr
     const targetRepsMax = numberAt(cells, indexes.repsMax);
     const targetWeightKg = numberAt(cells, indexes.weight);
     const restSeconds = numberAt(cells, indexes.restSeconds);
+    const supersetGroup = textAt(cells, indexes.supersetGroup);
     const note = textAt(cells, indexes.note);
     const duplicateKey = `${normalizeHeader(session)}::${normalizeHeader(name)}`;
     const duplicated = Boolean(session && name && seen.has(duplicateKey));
@@ -1003,6 +1198,7 @@ export function parseRoutineCsv(text: string, fileName: string): RoutineImportPr
         targetRepsMax,
         targetWeightKg,
         restSeconds,
+        supersetGroup: supersetGroup || undefined,
         note,
         lastSession: note || `${session} - ${day}`
       }
@@ -1020,6 +1216,9 @@ export function progressiveOverloadRecommendation(params: {
   incrementKg?: number;
 }): Recommendation {
   const increment = params.incrementKg ?? 2.5;
+  const dataBasis = coachDataBasis(params);
+  const guardrail = coachGuardrailCopy();
+  const aiEligible = hasEnoughCoachData(params.recentSets);
   const allHitTopReps =
     params.recentSets.length > 0 &&
     params.recentSets.every((set) => set.actualReps >= params.targetRepsMax && set.actualWeightKg >= params.targetWeightKg);
@@ -1032,7 +1231,12 @@ export function progressiveOverloadRecommendation(params: {
       reason: "Bạn đã đạt top reps ở toàn bộ set gần nhất, phù hợp double progression.",
       source: "rule",
       action: "increase",
-      nextWeightKg: params.targetWeightKg + increment
+      nextWeightKg: params.targetWeightKg + increment,
+      dataBasis,
+      suggestedAction: `Try ${params.targetWeightKg + increment}kg next time and stop the increase if form breaks down.`,
+      guardrail,
+      aiEligible,
+      mode: "rule-fallback"
     };
   }
 
@@ -1043,7 +1247,12 @@ export function progressiveOverloadRecommendation(params: {
       reason: "Set gần nhất quá nặng hoặc hụt reps sâu; nên deload để giữ kỹ thuật.",
       source: "rule",
       action: "deload",
-      nextWeightKg: Math.round(nextWeight * 2) / 2
+      nextWeightKg: Math.round(nextWeight * 2) / 2,
+      dataBasis,
+      suggestedAction: `Use about ${Math.round(nextWeight * 2) / 2}kg next time and rebuild reps with controlled technique.`,
+      guardrail,
+      aiEligible,
+      mode: "rule-fallback"
     };
   }
 
@@ -1052,8 +1261,200 @@ export function progressiveOverloadRecommendation(params: {
     reason: "Bạn đang trong vùng tiến bộ, tiếp tục gom thêm reps trước khi tăng tải.",
     source: "rule",
     action: "hold",
-    nextWeightKg: params.targetWeightKg
+    nextWeightKg: params.targetWeightKg,
+    dataBasis,
+    suggestedAction: `Repeat ${params.targetWeightKg}kg and aim to add clean reps before loading more weight.`,
+    guardrail,
+    aiEligible,
+    mode: "rule-fallback"
   };
+}
+
+export function coachGuardrailCopy(): string {
+  return "Training guidance only. Stop for sharp pain, dizziness, chest pain, or unusual symptoms, and consult a qualified professional for medical concerns.";
+}
+
+export function hasEnoughCoachData(recentSets: Pick<WorkoutSet, "actualWeightKg" | "actualReps" | "rpe">[]): boolean {
+  const usefulSets = recentSets.filter((set) => Number.isFinite(set.actualWeightKg) && set.actualWeightKg >= 0 && Number.isFinite(set.actualReps) && set.actualReps > 0);
+  return usefulSets.length >= 3;
+}
+
+export function coachDataBasis(params: {
+  exerciseName: string;
+  targetWeightKg: number;
+  targetRepsMax: number;
+  recentSets: Pick<WorkoutSet, "actualWeightKg" | "actualReps" | "rpe">[];
+}): string[] {
+  const recentSetText = params.recentSets.length
+    ? params.recentSets.map((set) => `${set.actualWeightKg}kg x ${set.actualReps}${set.rpe ? ` @RPE ${set.rpe}` : ""}`).join(", ")
+    : "no completed working sets yet";
+  return [
+    `Exercise: ${params.exerciseName}`,
+    `Target: ${params.targetWeightKg}kg x ${params.targetRepsMax} reps`,
+    `Recent sets: ${recentSetText}`
+  ];
+}
+
+export function defaultSocialPrivacySettings(): SocialPrivacySettings {
+  return {
+    friendLeaderboardEnabled: false,
+    shareBadges: false,
+    shareWorkoutSummaries: false,
+    shareBodyMetrics: false,
+    shareWorkoutDetails: false
+  };
+}
+
+export const healthSyncDataTypes: HealthSyncDataType[] = ["weight", "workout", "hydration"];
+
+export function defaultHealthIntegrationSettings(): HealthIntegrationSettings {
+  return {
+    provider: "health-connect",
+    permissionStatus: "not_requested",
+    selectedDataTypes: [],
+    unitMapping: {
+      weight: "kg",
+      hydration: "ml",
+      workoutDistance: "km"
+    },
+    privacyAccepted: false,
+    nativeBridgeAvailable: false
+  };
+}
+
+export function normalizeHealthIntegrationSettings(input?: Partial<HealthIntegrationSettings>): HealthIntegrationSettings {
+  const defaults = defaultHealthIntegrationSettings();
+  const selectedDataTypes = (input?.selectedDataTypes ?? []).filter((type): type is HealthSyncDataType =>
+    healthSyncDataTypes.includes(type as HealthSyncDataType)
+  );
+  return {
+    ...defaults,
+    ...input,
+    provider: input?.provider === "apple-health" ? "apple-health" : "health-connect",
+    permissionStatus: isHealthPermissionStatus(input?.permissionStatus) ? input.permissionStatus : defaults.permissionStatus,
+    selectedDataTypes: Array.from(new Set(selectedDataTypes)),
+    unitMapping: {
+      ...defaults.unitMapping,
+      ...input?.unitMapping
+    },
+    privacyAccepted: Boolean(input?.privacyAccepted),
+    nativeBridgeAvailable: Boolean(input?.nativeBridgeAvailable)
+  };
+}
+
+export function requestHealthIntegrationPermission(
+  settings: HealthIntegrationSettings,
+  selectedDataTypes: HealthSyncDataType[],
+  now = new Date()
+): HealthIntegrationSettings {
+  const normalized = normalizeHealthIntegrationSettings({
+    ...settings,
+    selectedDataTypes
+  });
+  return {
+    ...normalized,
+    permissionStatus: normalized.nativeBridgeAvailable && normalized.privacyAccepted && normalized.selectedDataTypes.length ? "granted" : "requested",
+    lastPermissionRequestedAt: now.toISOString()
+  };
+}
+
+export function revokeHealthIntegrationPermission(settings: HealthIntegrationSettings, now = new Date()): HealthIntegrationSettings {
+  return {
+    ...normalizeHealthIntegrationSettings(settings),
+    permissionStatus: "revoked",
+    selectedDataTypes: [],
+    lastPermissionRequestedAt: now.toISOString(),
+    lastSyncedAt: undefined
+  };
+}
+
+export function canSyncHealthData(settings: HealthIntegrationSettings, dataType: HealthSyncDataType): boolean {
+  const normalized = normalizeHealthIntegrationSettings(settings);
+  return (
+    normalized.nativeBridgeAvailable &&
+    normalized.privacyAccepted &&
+    normalized.permissionStatus === "granted" &&
+    normalized.selectedDataTypes.includes(dataType)
+  );
+}
+
+export function healthIntegrationPrivacyCopy(settings: HealthIntegrationSettings): string {
+  const platform = settings.provider === "apple-health" ? "Apple Health requires HealthKit in an iOS app." : "Health Connect requires the Android Health Connect SDK.";
+  return `${platform} This web app stores only your consent choices and never syncs health data in the background. Weight, workout, and hydration data can sync only after you choose the categories and a native bridge confirms permission.`;
+}
+
+function isHealthPermissionStatus(value: unknown): value is HealthPermissionStatus {
+  return value === "not_requested" || value === "requested" || value === "granted" || value === "denied" || value === "revoked";
+}
+
+export function privateFriendLeaderboard(input: {
+  profileName: string;
+  friends: Friend[];
+  enabled: boolean;
+  myScore: number;
+  myBadgeStreakMonths: number;
+}): { visible: boolean; entries: { rank: number; displayName: string; score: number; badgeStreakMonths: number }[] } {
+  if (!input.enabled) return { visible: false, entries: [] };
+  const acceptedFriends = input.friends.filter((friend) => friend.status === "accepted");
+  const entries = [
+    { displayName: input.profileName || "You", score: input.myScore, badgeStreakMonths: input.myBadgeStreakMonths },
+    ...acceptedFriends.map((friend) => ({
+      displayName: friend.displayName,
+      score: friend.score,
+      badgeStreakMonths: friend.badgeStreakMonths
+    }))
+  ]
+    .sort((a, b) => b.score - a.score || b.badgeStreakMonths - a.badgeStreakMonths || a.displayName.localeCompare(b.displayName))
+    .map((entry, index) => ({ ...entry, rank: index + 1 }));
+  return { visible: true, entries };
+}
+
+export function buildBadgeSharePreview(input: {
+  badge: Pick<AchievementStatus, "name" | "status" | "streakMonths" | "progress" | "target">;
+  privacy: SocialPrivacySettings;
+  now?: Date;
+}): SharePreview | null {
+  if (!input.privacy.shareBadges) return null;
+  return {
+    id: `share-${cryptoSafeId()}`,
+    kind: "badge",
+    title: `${input.badge.name} badge`,
+    summary: `${input.badge.status} badge, streak ${input.badge.streakMonths} months, progress ${input.badge.progress}/${input.badge.target}.`,
+    visibleFields: ["badge name", "badge status", "badge streak", "badge progress"],
+    redactedFields: ["weight", "body fat", "exercise details", "email"],
+    createdAt: (input.now ?? new Date()).toISOString()
+  };
+}
+
+export function buildWorkoutSummarySharePreview(input: {
+  session: Pick<WorkoutSession, "sessionName" | "durationSeconds" | "status">;
+  setCount: number;
+  totalVolumeKg: number;
+  privacy: SocialPrivacySettings;
+  now?: Date;
+}): SharePreview | null {
+  if (!input.privacy.shareWorkoutSummaries) return null;
+  return {
+    id: `share-${cryptoSafeId()}`,
+    kind: "workout-summary",
+    title: `${input.session.sessionName} summary`,
+    summary: `${input.session.status} workout, ${Math.round(input.session.durationSeconds / 60)} minutes, ${input.setCount} sets, ${input.totalVolumeKg}kg volume.`,
+    visibleFields: ["session name", "duration", "set count", "total volume"],
+    redactedFields: [
+      "weight",
+      "body fat",
+      "email",
+      ...(input.privacy.shareWorkoutDetails ? [] : ["exercise names", "set weights", "set reps", "RPE"])
+    ],
+    createdAt: (input.now ?? new Date()).toISOString()
+  };
+}
+
+export function publishSharePreview(preview: SharePreview | null, privacy: SocialPrivacySettings, now = new Date()): SharedPost | null {
+  if (!preview) return null;
+  if (preview.kind === "badge" && !privacy.shareBadges) return null;
+  if (preview.kind === "workout-summary" && !privacy.shareWorkoutSummaries) return null;
+  return { ...preview, audience: "private-friends", publishedAt: now.toISOString() };
 }
 
 export function estimatedOneRepMax(weightKg: number, reps: number): number {
@@ -1086,6 +1487,42 @@ function weekLabel(dateKeyValue: string): string {
   const day = date.getUTCDay() || 7;
   const monday = addDays(date, 1 - day);
   return dateOnly(monday);
+}
+
+function monthKey(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthRange(now = new Date(), offsetMonths = 0): { start: Date; end: Date; days: number; label: string } {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offsetMonths, 1));
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offsetMonths + 1, 0));
+  return {
+    start,
+    end,
+    days: end.getUTCDate(),
+    label: monthKey(start)
+  };
+}
+
+function dateRangeKeys(start: Date, end: Date): string[] {
+  const keys: string[] = [];
+  let cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
+  const last = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
+  while (cursor <= last) {
+    keys.push(dateOnly(cursor));
+    cursor = addDays(cursor, 1);
+  }
+  return keys;
+}
+
+function isoDateInRange(value: string | undefined, start: Date, end: Date): boolean {
+  if (!value) return false;
+  const key = value.slice(0, 10);
+  return key >= dateOnly(start) && key <= dateOnly(end);
+}
+
+function trendDelta(next: number, previous: number): number {
+  return round(next - previous);
 }
 
 export function hydrationPeriodProgress(logs: HydrationLog[], targetMl: number, days: number, now = new Date()): PeriodProgress {
@@ -1126,7 +1563,7 @@ export function creatineConsistency(
 }
 
 function workingWorkoutSets(sets: WorkoutSet[]): WorkoutSet[] {
-  return sets.filter((set) => set.actualReps > 0 && set.actualWeightKg >= 0);
+  return sets.filter(isWorkingVolumeSet);
 }
 
 export function exercisePersonalRecords(sets: WorkoutSet[]): ExercisePr[] {
@@ -1244,6 +1681,160 @@ export function buildProgressDashboard(params: {
       .sort((a, b) => b.volumeKg - a.volumeKg || a.label.localeCompare(b.label)),
     e1RmTrend: e1RmTrendByExercise(params.workoutSets),
     prs: exercisePersonalRecords(params.workoutSets)
+  };
+}
+
+function reportMetrics(params: {
+  hydrationLogs: HydrationLog[];
+  waterTargetMl: number;
+  workoutSessions: WorkoutSession[];
+  workoutSets: WorkoutSet[];
+  start: Date;
+  end: Date;
+}) {
+  const keys = dateRangeKeys(params.start, params.end);
+  const keySet = new Set(keys);
+  const hydrationTotals = new Map(keys.map((key) => [key, 0]));
+  params.hydrationLogs.forEach((log) => {
+    const key = log.loggedAt.slice(0, 10);
+    if (hydrationTotals.has(key)) hydrationTotals.set(key, (hydrationTotals.get(key) ?? 0) + log.amountMl);
+  });
+  const hydrationValues = [...hydrationTotals.values()];
+  const hydrationHitDays = hydrationValues.filter((total) => total >= params.waterTargetMl).length;
+  const workoutSessions = params.workoutSessions.filter((session) => session.status !== "cancelled" && keySet.has(session.startedAt.slice(0, 10)));
+  const workoutSets = params.workoutSets.filter((set) => isoDateInRange(set.completedAt, params.start, params.end));
+  const totalVolumeKg = workingSetVolumeKg(workoutSets);
+
+  return {
+    hydrationAverageMl: round(hydrationValues.reduce((sum, total) => sum + total, 0) / Math.max(1, keys.length)),
+    hydrationGoalHitRate: round((hydrationHitDays / Math.max(1, keys.length)) * 100),
+    hydrationHitDays,
+    workoutCount: workoutSessions.length,
+    workoutSets,
+    totalVolumeKg
+  };
+}
+
+function reportTrend(current: ReturnType<typeof reportMetrics>, previous: ReturnType<typeof reportMetrics>): ReportTrend {
+  return {
+    hydrationAverageMl: trendDelta(current.hydrationAverageMl, previous.hydrationAverageMl),
+    goalHitRate: trendDelta(current.hydrationGoalHitRate, previous.hydrationGoalHitRate),
+    workoutCount: trendDelta(current.workoutCount, previous.workoutCount),
+    totalVolumeKg: trendDelta(current.totalVolumeKg, previous.totalVolumeKg)
+  };
+}
+
+function rollingMonthlyStreak(params: {
+  now: Date;
+  predicate: (range: { start: Date; end: Date; days: number; label: string }) => boolean;
+  offsetBeforeCurrent?: number;
+}): number {
+  let streak = 0;
+  for (let offset = params.offsetBeforeCurrent ?? -1; offset >= -24; offset -= 1) {
+    const range = monthRange(params.now, offset);
+    if (!params.predicate(range)) break;
+    streak += 1;
+  }
+  return streak;
+}
+
+export function buildProgressReports(params: {
+  hydrationLogs: HydrationLog[];
+  waterTargetMl: number;
+  workoutSessions: WorkoutSession[];
+  workoutSets: WorkoutSet[];
+  workoutExercises: WorkoutExercise[];
+  hydrationEnabled?: boolean;
+  workoutEnabled?: boolean;
+  volumeEnabled?: boolean;
+  monthlyHydrationTargetDays?: number;
+  monthlyWorkoutTargetCount?: number;
+  now?: Date;
+}): ProgressReports {
+  const now = params.now ?? new Date();
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const weekEnd = today;
+  const weekStart = addDays(weekEnd, -6);
+  const previousWeekEnd = addDays(weekStart, -1);
+  const previousWeekStart = addDays(previousWeekEnd, -6);
+  const currentMonth = monthRange(now, 0);
+  const previousMonth = monthRange(now, -1);
+  const monthlyHydrationTargetDays = params.monthlyHydrationTargetDays ?? Math.min(24, currentMonth.days);
+  const monthlyWorkoutTargetCount = params.monthlyWorkoutTargetCount ?? 12;
+
+  const weeklyMetrics = reportMetrics({ ...params, start: weekStart, end: weekEnd });
+  const previousWeeklyMetrics = reportMetrics({ ...params, start: previousWeekStart, end: previousWeekEnd });
+  const monthlyMetrics = reportMetrics({ ...params, start: currentMonth.start, end: currentMonth.end });
+  const previousMonthlyMetrics = reportMetrics({ ...params, start: previousMonth.start, end: previousMonth.end });
+  const previousMonthVolume = previousMonthlyMetrics.totalVolumeKg;
+  const currentVolumeChangePercent = previousMonthVolume > 0 ? round(((monthlyMetrics.totalVolumeKg - previousMonthVolume) / previousMonthVolume) * 100) : 0;
+  const previousPreviousMonth = monthRange(now, -2);
+
+  const hydrationPredicate = (range: { start: Date; end: Date }) =>
+    reportMetrics({ ...params, start: range.start, end: range.end }).hydrationHitDays >= monthlyHydrationTargetDays;
+  const workoutPredicate = (range: { start: Date; end: Date }) =>
+    reportMetrics({ ...params, start: range.start, end: range.end }).workoutCount >= monthlyWorkoutTargetCount;
+  const volumePredicate = (range: { start: Date; end: Date }, previousRange: { start: Date; end: Date }) => {
+    const current = reportMetrics({ ...params, start: range.start, end: range.end }).totalVolumeKg;
+    const previous = reportMetrics({ ...params, start: previousRange.start, end: previousRange.end }).totalVolumeKg;
+    return previous > 0 && ((current - previous) / previous) * 100 >= 3;
+  };
+
+  const previousHydrationActive = hydrationPredicate(previousMonth);
+  const previousWorkoutActive = workoutPredicate(previousMonth);
+  const previousVolumeActive = volumePredicate(previousMonth, previousPreviousMonth);
+  const previousVolumeStreak = rollingMonthlyStreak({
+    now,
+    offsetBeforeCurrent: -1,
+    predicate: (range) => volumePredicate(range, monthRange(new Date(`${range.label}-01T00:00:00.000Z`), -1))
+  });
+
+  const badges = monthlyAchievements({
+    hydrationGoalDays: monthlyMetrics.hydrationHitDays,
+    hydrationTargetDays: monthlyHydrationTargetDays,
+    workoutCount: monthlyMetrics.workoutCount,
+    workoutTargetCount: monthlyWorkoutTargetCount,
+    volumeChangePercent: currentVolumeChangePercent,
+    previousHydrationStreak: rollingMonthlyStreak({ now, predicate: hydrationPredicate }),
+    previousWorkoutStreak: rollingMonthlyStreak({ now, predicate: workoutPredicate }),
+    previousVolumeStreak,
+    previousHydrationActive,
+    previousWorkoutActive,
+    previousVolumeActive,
+    hydrationEnabled: params.hydrationEnabled,
+    workoutEnabled: params.workoutEnabled,
+    volumeEnabled: params.volumeEnabled
+  });
+
+  return {
+    weekly: {
+      label: "Last 7 days",
+      period: "weekly",
+      periodStart: dateOnly(weekStart),
+      periodEnd: dateOnly(weekEnd),
+      hydrationAverageMl: weeklyMetrics.hydrationAverageMl,
+      hydrationGoalHitRate: weeklyMetrics.hydrationGoalHitRate,
+      hydrationHitDays: weeklyMetrics.hydrationHitDays,
+      workoutCount: weeklyMetrics.workoutCount,
+      totalVolumeKg: weeklyMetrics.totalVolumeKg,
+      prs: exercisePersonalRecords(weeklyMetrics.workoutSets),
+      badges: [],
+      trendVsPrevious: reportTrend(weeklyMetrics, previousWeeklyMetrics)
+    },
+    monthly: {
+      label: currentMonth.label,
+      period: "monthly",
+      periodStart: dateOnly(currentMonth.start),
+      periodEnd: dateOnly(currentMonth.end),
+      hydrationAverageMl: monthlyMetrics.hydrationAverageMl,
+      hydrationGoalHitRate: monthlyMetrics.hydrationGoalHitRate,
+      hydrationHitDays: monthlyMetrics.hydrationHitDays,
+      workoutCount: monthlyMetrics.workoutCount,
+      totalVolumeKg: monthlyMetrics.totalVolumeKg,
+      prs: exercisePersonalRecords(monthlyMetrics.workoutSets),
+      badges,
+      trendVsPrevious: reportTrend(monthlyMetrics, previousMonthlyMetrics)
+    }
   };
 }
 
@@ -1369,25 +1960,79 @@ export function readinessScore(input: { energy: number; sleepQuality: number; so
 export type SyncQueueItem = {
   id: string;
   type: string;
-  status: "pending" | "synced" | "failed";
+  status: "pending" | "syncing" | "synced" | "failed" | "conflict";
   createdAt: string;
+  updatedAt?: string;
+  attempts?: number;
+  nextRetryAt?: string;
+  lastError?: string;
+  idempotencyKey?: string;
+  conflict?: {
+    kind: "routine";
+    local: unknown;
+    remote: unknown;
+    message: string;
+  };
   payload: unknown;
 };
 
 export function enqueueSync(queue: SyncQueueItem[], item: Omit<SyncQueueItem, "id" | "status" | "createdAt">): SyncQueueItem[] {
+  const id = cryptoSafeId();
   return [
     {
       ...item,
-      id: cryptoSafeId(),
+      id,
       status: "pending",
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      attempts: item.attempts ?? 0,
+      idempotencyKey: item.idempotencyKey ?? id
     },
     ...queue
   ];
 }
 
 export function markSyncQueue(queue: SyncQueueItem[], status: SyncQueueItem["status"]): SyncQueueItem[] {
-  return queue.map((item) => (item.status === "pending" ? { ...item, status } : item));
+  return queue.map((item) =>
+    item.status === "pending" || item.status === "failed" || item.status === "syncing"
+      ? { ...item, status, updatedAt: new Date().toISOString(), lastError: status === "synced" ? undefined : item.lastError }
+      : item
+  );
+}
+
+export function syncRetryDelayMs(attempts: number): number {
+  return Math.min(60_000, 1000 * 2 ** Math.max(0, attempts));
+}
+
+export function markSyncItemSyncing(queue: SyncQueueItem[], id: string): SyncQueueItem[] {
+  return queue.map((item) => (item.id === id ? { ...item, status: "syncing", updatedAt: new Date().toISOString() } : item));
+}
+
+export function markSyncItemSynced(queue: SyncQueueItem[], id: string): SyncQueueItem[] {
+  return queue.map((item) =>
+    item.id === id ? { ...item, status: "synced", updatedAt: new Date().toISOString(), lastError: undefined, nextRetryAt: undefined } : item
+  );
+}
+
+export function markSyncItemFailed(queue: SyncQueueItem[], id: string, error: string, now = new Date()): SyncQueueItem[] {
+  return queue.map((item) => {
+    if (item.id !== id) return item;
+    const attempts = (item.attempts ?? 0) + 1;
+    return {
+      ...item,
+      status: "failed",
+      attempts,
+      lastError: error,
+      updatedAt: now.toISOString(),
+      nextRetryAt: new Date(now.getTime() + syncRetryDelayMs(attempts)).toISOString()
+    };
+  });
+}
+
+export function markSyncItemConflict(queue: SyncQueueItem[], id: string, conflict: NonNullable<SyncQueueItem["conflict"]>): SyncQueueItem[] {
+  return queue.map((item) =>
+    item.id === id ? { ...item, status: "conflict", conflict, lastError: conflict.message, updatedAt: new Date().toISOString() } : item
+  );
 }
 
 export function monthlyAchievements(params: {
@@ -1396,26 +2041,57 @@ export function monthlyAchievements(params: {
   volumeChangePercent: number;
   previousHydrationStreak?: number;
   previousVolumeStreak?: number;
+  workoutCount?: number;
+  workoutTargetCount?: number;
+  previousWorkoutStreak?: number;
+  hydrationEnabled?: boolean;
+  workoutEnabled?: boolean;
+  volumeEnabled?: boolean;
+  previousHydrationActive?: boolean;
+  previousWorkoutActive?: boolean;
+  previousVolumeActive?: boolean;
 }): AchievementStatus[] {
+  const hydrationEnabled = params.hydrationEnabled !== false;
+  const workoutEnabled = params.workoutEnabled !== false;
+  const volumeEnabled = params.volumeEnabled !== false;
+  const workoutTarget = params.workoutTargetCount ?? 12;
+  const workoutCount = params.workoutCount ?? 0;
   const hydrationActive = params.hydrationGoalDays >= params.hydrationTargetDays;
+  const workoutActive = workoutCount >= workoutTarget;
   const volumeActive = params.volumeChangePercent >= 3;
+  const statusFor = (enabled: boolean, active: boolean, previousActive?: boolean): AchievementStatus["status"] => {
+    if (!enabled) return "disabled";
+    if (active) return "active";
+    return previousActive ? "lost" : "locked";
+  };
 
   return [
     {
       code: "monthly_hydration",
       name: "Hydration Elite",
-      status: hydrationActive ? "active" : "locked",
+      status: statusFor(hydrationEnabled, hydrationActive, params.previousHydrationActive),
       progress: params.hydrationGoalDays,
       target: params.hydrationTargetDays,
-      streakMonths: hydrationActive ? (params.previousHydrationStreak ?? 0) + 1 : 0
+      streakMonths: hydrationEnabled && hydrationActive ? (params.previousHydrationStreak ?? 0) + 1 : 0,
+      condition: `Hit hydration goal on ${params.hydrationTargetDays} days this month.`
+    },
+    {
+      code: "workout_consistency",
+      name: "Consistency Builder",
+      status: statusFor(workoutEnabled, workoutActive, params.previousWorkoutActive),
+      progress: workoutCount,
+      target: workoutTarget,
+      streakMonths: workoutEnabled && workoutActive ? (params.previousWorkoutStreak ?? 0) + 1 : 0,
+      condition: `Finish ${workoutTarget} workouts this month.`
     },
     {
       code: "volume_progression",
       name: "Volume Climber",
-      status: volumeActive ? "active" : "locked",
+      status: statusFor(volumeEnabled, volumeActive, params.previousVolumeActive),
       progress: Math.max(0, Math.round(params.volumeChangePercent)),
       target: 3,
-      streakMonths: volumeActive ? (params.previousVolumeStreak ?? 0) + 1 : 0
+      streakMonths: volumeEnabled && volumeActive ? (params.previousVolumeStreak ?? 0) + 1 : 0,
+      condition: "Increase monthly working volume by at least 3% vs previous month."
     }
   ];
 }

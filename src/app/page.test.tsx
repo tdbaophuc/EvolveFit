@@ -95,6 +95,34 @@ describe("Progress dashboard", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent("Weight must be greater than 0.");
   });
+
+  it("shows guarded coach insight and stores accept feedback history", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      "evolvefit-state-v1",
+      JSON.stringify({
+        ...initialState,
+        profile: { ...initialState.profile, onboardingCompleted: true },
+        workoutSets: []
+      })
+    );
+
+    render(<AppPage />);
+
+    await user.click(screen.getByRole("button", { name: "Progress" }));
+
+    expect(screen.getByText("Guarded coach")).toBeInTheDocument();
+    expect(screen.getByText(/AI insight is hidden until at least 3 useful working sets/i)).toBeInTheDocument();
+    expect(screen.getByText(/Training guidance only/i)).toBeInTheDocument();
+    expect(screen.getByText(/Recent sets: no completed working sets yet/i)).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText(/Too heavy/i), "looks good");
+    await user.click(screen.getByRole("button", { name: "Accept" }));
+
+    expect(screen.getByRole("heading", { name: "Recommendation history" })).toBeInTheDocument();
+    expect(screen.getByText("accepted")).toBeInTheDocument();
+    expect(screen.getByText(/looks good/)).toBeInTheDocument();
+  });
 });
 
 describe("Settings import and privacy", () => {
@@ -129,5 +157,74 @@ describe("Settings import and privacy", () => {
     expect(JSON.parse(window.localStorage.getItem("evolvefit-state-v1") ?? "{}").profile.name).toBe("Current Athlete");
     expect(screen.getByRole("button", { name: "Delete personal data" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reset demo data" })).toBeInTheDocument();
+  });
+
+  it("keeps social sharing private by default and requires opt-in before publishing", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      "evolvefit-state-v1",
+      JSON.stringify({
+        ...initialState,
+        profile: { ...initialState.profile, onboardingCompleted: true }
+      })
+    );
+
+    render(<AppPage />);
+
+    await user.click(screen.getByRole("button", { name: "Progress" }));
+
+    expect(screen.getByText(/Friend leaderboard is private and disabled/i)).toBeInTheDocument();
+    expect(screen.getAllByText("Sharing is off.").length).toBeGreaterThan(0);
+    expect(screen.getByText(/redact weight, body fat, email, and workout details/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Bench Press.*RPE/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "Publish" })[0]);
+    expect(await screen.findByText(/Turn on the matching share permission/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByText("Social privacy")).toBeInTheDocument();
+    await user.click(screen.getByLabelText("Share badges"));
+    await user.click(screen.getByLabelText("Friend leaderboard"));
+
+    await user.click(screen.getByRole("button", { name: "Progress" }));
+    expect(screen.getByText("Private friend leaderboard")).toBeInTheDocument();
+    expect(screen.getByText("Badge share")).toBeInTheDocument();
+    expect(screen.getByText(/Redacted: weight, body fat, exercise details, email/i)).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "Publish" })[0]);
+    expect(await screen.findByText(/Shared to private friends/i)).toBeInTheDocument();
+    expect(screen.getByText("private-friends")).toBeInTheDocument();
+  });
+
+  it("captures health platform permissions without starting sync", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      "evolvefit-state-v1",
+      JSON.stringify({
+        ...initialState,
+        profile: { ...initialState.profile, onboardingCompleted: true }
+      })
+    );
+
+    render(<AppPage />);
+
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByText("Health platform permissions")).toBeInTheDocument();
+    expect(screen.getByText(/never syncs health data in the background/i)).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("Platform"), "apple-health");
+    await user.selectOptions(screen.getByLabelText("Weight unit"), "lb");
+    await user.selectOptions(screen.getByLabelText("Hydration unit"), "oz");
+    await user.click(screen.getByLabelText("Sync weight"));
+    await user.click(screen.getByLabelText("Sync workout"));
+    await user.click(screen.getByLabelText("Sync hydration"));
+    await user.click(screen.getByLabelText("Health privacy consent"));
+    await user.click(screen.getByRole("button", { name: "Request health permission" }));
+
+    expect(await screen.findByText(/Native bridge required before sync/i)).toBeInTheDocument();
+    expect(screen.getByText("Permission: requested")).toBeInTheDocument();
+    expect(screen.getByText("weight: Not syncing")).toBeInTheDocument();
+    expect(screen.getByText("workout: Not syncing")).toBeInTheDocument();
+    expect(screen.getByText("hydration: Not syncing")).toBeInTheDocument();
   });
 });

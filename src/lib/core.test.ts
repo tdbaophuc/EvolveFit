@@ -3,10 +3,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   defaultDrinkModules,
+  defaultHealthIntegrationSettings,
   defaultPlateSettings,
+  defaultSocialPrivacySettings,
   builtInExerciseDefinitions,
+  buildBadgeSharePreview,
   buildBodyMetricChartDataset,
   buildProgressDashboard,
+  buildProgressReports,
+  buildWorkoutSummarySharePreview,
   calculatePlatesPerSide,
   completeSessionExercise,
   createCustomExerciseDefinition,
@@ -18,6 +23,9 @@ import {
   hydrationPaceStatus,
   hydrationPercent,
   hydrationTotal,
+  canSyncHealthData,
+  healthIntegrationPrivacyCopy,
+  isWorkingVolumeSet,
   isDrinkModuleActive,
   monthlyAchievements,
   latestBodyMetric,
@@ -26,16 +34,25 @@ import {
   normalizeDrinkModules,
   parseRoutineCsv,
   parkSessionExercise,
+  privateFriendLeaderboard,
+  publishSharePreview,
+  requestHealthIntegrationPermission,
   filterExerciseLibrary,
   migrateWorkoutExercisesToRoutine,
   migrateLegacyWorkoutSession,
+  nextSupersetExerciseIndex,
   reorderSessionExerciseQueue,
+  revokeHealthIntegrationPermission,
   readinessScore,
   validateBodyMetric,
   enqueueSync,
   exercisePersonalRecords,
   detectWorkoutSetPrs,
   saveSessionExerciseOrderToRoutine,
+  markSyncItemConflict,
+  markSyncItemFailed,
+  markSyncItemSynced,
+  markSyncItemSyncing,
   markSyncQueue,
   progressiveOverloadRecommendation,
   shouldSendCreatineReminder,
@@ -47,7 +64,9 @@ import {
   toCsv,
   upsertQuickAmount,
   visibleHydrationLogs,
-  visibleQuickAmounts
+  visibleQuickAmounts,
+  warmUpSetSuggestions,
+  workingSetVolumeKg
 } from "./core";
 
 describe("hydration logic", () => {
@@ -211,6 +230,8 @@ describe("routine import parser", () => {
       targetWeightKg: 42.5,
       restSeconds: 90
     });
+    expect(preview.rows[1]).toMatchObject({ name: "Seated Shoulder Press", supersetGroup: "A1" });
+    expect(preview.rows[2]).toMatchObject({ name: "Cable Triceps Pushdown", supersetGroup: "A1" });
   });
 
   it("supports Vietnamese and English column aliases", () => {
@@ -508,6 +529,166 @@ describe("workout session model", () => {
 });
 
 describe("progress dashboard aggregation", () => {
+  it("counts working, drop and failure sets for volume while excluding warm-up and skipped sets", () => {
+    const sets = [
+      {
+        id: "warm",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        setType: "warmup" as const,
+        targetWeightKg: 60,
+        targetReps: 8,
+        actualWeightKg: 30,
+        actualReps: 6
+      },
+      {
+        id: "legacy-working",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        targetWeightKg: 60,
+        targetReps: 8,
+        actualWeightKg: 60,
+        actualReps: 8
+      },
+      {
+        id: "drop",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        setType: "drop" as const,
+        targetWeightKg: 60,
+        targetReps: 8,
+        actualWeightKg: 45,
+        actualReps: 10
+      },
+      {
+        id: "failure",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        setType: "failure" as const,
+        targetWeightKg: 60,
+        targetReps: 8,
+        actualWeightKg: 50,
+        actualReps: 9
+      },
+      {
+        id: "skip",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        setType: "working" as const,
+        targetWeightKg: 60,
+        targetReps: 8,
+        actualWeightKg: 60,
+        actualReps: 0
+      }
+    ];
+
+    expect(sets.map(isWorkingVolumeSet)).toEqual([false, true, true, true, false]);
+    expect(workingSetVolumeKg(sets)).toBe(1380);
+    expect(exercisePersonalRecords(sets)).toEqual([
+      {
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        maxWeightKg: 60,
+        maxReps: 10,
+        estimatedOneRepMaxKg: 76,
+        volumePrKg: 480
+      }
+    ]);
+  });
+
+  it("suggests warm-up sets below working weight rounded to plate increments", () => {
+    expect(warmUpSetSuggestions({ workingWeightKg: 100, workingReps: 8 })).toEqual([
+      { setType: "warmup", weightKg: 40, reps: 8, percent: 40 },
+      { setType: "warmup", weightKg: 60, reps: 5, percent: 60 },
+      { setType: "warmup", weightKg: 80, reps: 3, percent: 80 }
+    ]);
+    expect(warmUpSetSuggestions({ workingWeightKg: 0, workingReps: 10 })).toEqual([]);
+  });
+
+  it("alternates through a superset group until each exercise reaches target sets", () => {
+    const exercises = [
+      {
+        id: "curl",
+        name: "Curl",
+        muscleGroup: "Arms",
+        supersetGroup: "A1",
+        targetSets: 2,
+        targetRepsMin: 10,
+        targetRepsMax: 12,
+        targetWeightKg: 12,
+        restSeconds: 45,
+        lastSession: ""
+      },
+      {
+        id: "pressdown",
+        name: "Pressdown",
+        muscleGroup: "Arms",
+        supersetGroup: "A1",
+        targetSets: 2,
+        targetRepsMin: 10,
+        targetRepsMax: 12,
+        targetWeightKg: 25,
+        restSeconds: 45,
+        lastSession: ""
+      },
+      {
+        id: "plank",
+        name: "Plank",
+        muscleGroup: "Core",
+        targetSets: 2,
+        targetRepsMin: 1,
+        targetRepsMax: 1,
+        targetWeightKg: 0,
+        restSeconds: 45,
+        lastSession: ""
+      }
+    ];
+
+    expect(
+      nextSupersetExerciseIndex({
+        exercises,
+        currentIndex: 0,
+        sets: [
+          {
+            id: "curl-1",
+            exerciseId: "curl",
+            exerciseName: "Curl",
+            targetWeightKg: 12,
+            targetReps: 10,
+            actualWeightKg: 12,
+            actualReps: 10
+          }
+        ]
+      })
+    ).toBe(1);
+    expect(
+      nextSupersetExerciseIndex({
+        exercises,
+        currentIndex: 1,
+        sets: [
+          {
+            id: "curl-1",
+            exerciseId: "curl",
+            exerciseName: "Curl",
+            targetWeightKg: 12,
+            targetReps: 10,
+            actualWeightKg: 12,
+            actualReps: 10
+          },
+          {
+            id: "pressdown-1",
+            exerciseId: "pressdown",
+            exerciseName: "Pressdown",
+            targetWeightKg: 25,
+            targetReps: 10,
+            actualWeightKg: 25,
+            actualReps: 10
+          }
+        ]
+      })
+    ).toBe(0);
+  });
+
   it("aggregates hydration, creatine, workout count, weekly volume and muscle volume", () => {
     const now = new Date("2026-08-20T12:00:00.000Z");
     const dashboard = buildProgressDashboard({
@@ -568,6 +749,18 @@ describe("progress dashboard aggregation", () => {
           actualWeightKg: 60,
           actualReps: 0,
           completedAt: "2026-08-20T09:12:00.000Z"
+        },
+        {
+          id: "set-warm",
+          sessionId: "s1",
+          exerciseId: "bench",
+          exerciseName: "Bench Press",
+          setType: "warmup",
+          targetWeightKg: 60,
+          targetReps: 8,
+          actualWeightKg: 40,
+          actualReps: 5,
+          completedAt: "2026-08-20T09:08:00.000Z"
         },
         {
           id: "set-2",
@@ -651,6 +844,17 @@ describe("progress dashboard aggregation", () => {
         actualWeightKg: 100,
         actualReps: 0,
         completedAt: "2026-08-20T09:05:00.000Z"
+      },
+      {
+        id: "set-warm",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        setType: "warmup" as const,
+        targetWeightKg: 80,
+        targetReps: 3,
+        actualWeightKg: 80,
+        actualReps: 3,
+        completedAt: "2026-08-20T08:55:00.000Z"
       }
     ];
 
@@ -687,6 +891,17 @@ describe("progress dashboard aggregation", () => {
         actualWeightKg: 100,
         actualReps: 0,
         completedAt: "2026-08-19T09:00:00.000Z"
+      },
+      {
+        id: "old-warm",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        setType: "warmup" as const,
+        targetWeightKg: 90,
+        targetReps: 2,
+        actualWeightKg: 90,
+        actualReps: 2,
+        completedAt: "2026-08-19T08:55:00.000Z"
       }
     ];
 
@@ -811,6 +1026,11 @@ describe("progressive overload", () => {
 
     expect(rec.action).toBe("increase");
     expect(rec.nextWeightKg).toBe(52.5);
+    expect(rec.source).toBe("rule");
+    expect(rec.aiEligible).toBe(false);
+    expect(rec.dataBasis.join(" ")).toContain("Bench");
+    expect(rec.suggestedAction).toContain("52.5kg");
+    expect(rec.guardrail).toContain("Training guidance only");
   });
 
   it("deloads after very hard failed work", () => {
@@ -832,12 +1052,180 @@ describe("monthly achievements", () => {
       hydrationGoalDays: 24,
       hydrationTargetDays: 24,
       volumeChangePercent: 6,
+      workoutCount: 12,
       previousHydrationStreak: 2,
+      previousWorkoutStreak: 1,
       previousVolumeStreak: 1
     });
 
     expect(badges[0]).toMatchObject({ status: "active", streakMonths: 3 });
-    expect(badges[1]).toMatchObject({ status: "active", streakMonths: 2 });
+    expect(badges[1]).toMatchObject({ code: "workout_consistency", status: "active", streakMonths: 2 });
+    expect(badges[2]).toMatchObject({ status: "active", streakMonths: 2 });
+  });
+
+  it("marks lost and disabled badges without counting disabled streaks", () => {
+    const badges = monthlyAchievements({
+      hydrationGoalDays: 10,
+      hydrationTargetDays: 24,
+      workoutCount: 4,
+      workoutTargetCount: 12,
+      volumeChangePercent: 1,
+      previousHydrationActive: true,
+      previousWorkoutActive: true,
+      previousVolumeActive: true,
+      hydrationEnabled: false
+    });
+
+    expect(badges[0]).toMatchObject({ status: "disabled", streakMonths: 0 });
+    expect(badges[1]).toMatchObject({ status: "lost" });
+    expect(badges[2]).toMatchObject({ status: "lost" });
+  });
+
+  it("builds weekly and monthly reports with trends, PRs and challenge badges", () => {
+    const now = new Date("2026-08-20T12:00:00.000Z");
+    const hydrationLogs = [
+      ...Array.from({ length: 24 }, (_, index) => ({
+        id: `h-aug-${index}`,
+        amountMl: 2500,
+        drinkType: "water" as const,
+        loggedAt: `2026-08-${String(index + 1).padStart(2, "0")}T08:00:00.000Z`
+      })),
+      ...Array.from({ length: 20 }, (_, index) => ({
+        id: `h-jul-${index}`,
+        amountMl: 2500,
+        drinkType: "water" as const,
+        loggedAt: `2026-07-${String(index + 1).padStart(2, "0")}T08:00:00.000Z`
+      }))
+    ];
+    const workoutSessions = [
+      ...Array.from({ length: 12 }, (_, index) => ({
+        id: `s-aug-${index}`,
+        routineId: "r1",
+        workoutDayId: "d1",
+        sessionName: "Upper",
+        startedAt: `2026-08-${String(index + 9).padStart(2, "0")}T09:00:00.000Z`,
+        durationSeconds: 1800,
+        status: "finished" as const,
+        sessionExerciseOrder: ["bench"],
+        exerciseQueue: [{ exerciseId: "bench", status: "completed" as const }]
+      })),
+      ...Array.from({ length: 10 }, (_, index) => ({
+        id: `s-jul-${index}`,
+        routineId: "r1",
+        workoutDayId: "d1",
+        sessionName: "Upper",
+        startedAt: `2026-07-${String(index + 1).padStart(2, "0")}T09:00:00.000Z`,
+        durationSeconds: 1800,
+        status: "finished" as const,
+        sessionExerciseOrder: ["bench"],
+        exerciseQueue: [{ exerciseId: "bench", status: "completed" as const }]
+      }))
+    ];
+    const workoutSets = [
+      {
+        id: "aug-heavy",
+        sessionId: "s-aug-19",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        targetWeightKg: 60,
+        targetReps: 8,
+        actualWeightKg: 60,
+        actualReps: 10,
+        completedAt: "2026-08-19T09:10:00.000Z"
+      },
+      {
+        id: "aug-row",
+        sessionId: "s-aug-18",
+        exerciseId: "row",
+        exerciseName: "Row",
+        targetWeightKg: 45,
+        targetReps: 10,
+        actualWeightKg: 45,
+        actualReps: 10,
+        completedAt: "2026-08-18T09:10:00.000Z"
+      },
+      {
+        id: "jul-bench",
+        sessionId: "s-jul-10",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        targetWeightKg: 50,
+        targetReps: 8,
+        actualWeightKg: 50,
+        actualReps: 10,
+        completedAt: "2026-07-10T09:10:00.000Z"
+      }
+    ];
+
+    const reports = buildProgressReports({
+      hydrationLogs,
+      waterTargetMl: 2500,
+      workoutSessions,
+      workoutSets,
+      workoutExercises: [
+        {
+          id: "bench",
+          name: "Bench Press",
+          muscleGroup: "Chest",
+          targetSets: 3,
+          targetRepsMin: 8,
+          targetRepsMax: 10,
+          targetWeightKg: 60,
+          restSeconds: 120,
+          lastSession: ""
+        },
+        {
+          id: "row",
+          name: "Row",
+          muscleGroup: "Back",
+          targetSets: 3,
+          targetRepsMin: 8,
+          targetRepsMax: 10,
+          targetWeightKg: 45,
+          restSeconds: 90,
+          lastSession: ""
+        }
+      ],
+      now
+    });
+
+    expect(reports.weekly).toMatchObject({
+      period: "weekly",
+      hydrationAverageMl: 2500,
+      hydrationGoalHitRate: 100,
+      workoutCount: 7,
+      totalVolumeKg: 1050
+    });
+    expect(reports.monthly).toMatchObject({
+      period: "monthly",
+      hydrationHitDays: 24,
+      workoutCount: 12,
+      totalVolumeKg: 1050
+    });
+    expect(reports.monthly.trendVsPrevious).toMatchObject({ workoutCount: 2, totalVolumeKg: 550 });
+    expect(reports.monthly.prs.map((pr) => pr.exerciseName)).toEqual(["Bench Press", "Row"]);
+    expect(reports.monthly.badges.map((badge) => [badge.code, badge.status])).toEqual([
+      ["monthly_hydration", "active"],
+      ["workout_consistency", "active"],
+      ["volume_progression", "active"]
+    ]);
+  });
+
+  it("keeps disabled module badges out of the visible report badge list", () => {
+    const reports = buildProgressReports({
+      hydrationLogs: [],
+      waterTargetMl: 2500,
+      workoutSessions: [],
+      workoutSets: [],
+      workoutExercises: [],
+      hydrationEnabled: false,
+      workoutEnabled: false,
+      volumeEnabled: false,
+      now: new Date("2026-08-20T12:00:00.000Z")
+    });
+
+    expect(reports.monthly.badges.every((badge) => badge.status === "disabled")).toBe(true);
+    expect(reports.monthly.badges.filter((badge) => badge.status !== "disabled")).toEqual([]);
   });
 });
 
@@ -913,6 +1301,129 @@ describe("offline sync queue", () => {
   it("enqueues pending work and marks it synced", () => {
     const queue = enqueueSync([], { type: "hydration.log", payload: { amountMl: 250 } });
     expect(queue[0]).toMatchObject({ type: "hydration.log", status: "pending" });
+    expect(queue[0].idempotencyKey).toBe(queue[0].id);
     expect(markSyncQueue(queue, "synced")[0].status).toBe("synced");
+  });
+
+  it("tracks per-item retry attempts, backoff, and routine conflicts", () => {
+    const queue = enqueueSync([], { type: "routine.update", payload: { routineId: "r1" } });
+    const syncing = markSyncItemSyncing(queue, queue[0].id);
+    expect(syncing[0].status).toBe("syncing");
+    const failed = markSyncItemFailed(syncing, queue[0].id, "network", new Date("2026-08-23T00:00:00.000Z"));
+    expect(failed[0]).toMatchObject({ status: "failed", attempts: 1, lastError: "network" });
+    expect(failed[0].nextRetryAt).toBe("2026-08-23T00:00:02.000Z");
+    const conflicted = markSyncItemConflict(failed, queue[0].id, {
+      kind: "routine",
+      local: { name: "Local" },
+      remote: { name: "Remote" },
+      message: "Routine changed"
+    });
+    expect(conflicted[0].status).toBe("conflict");
+    expect(markSyncItemSynced(conflicted, queue[0].id)[0].status).toBe("synced");
+  });
+});
+
+describe("social privacy sharing", () => {
+  it("keeps leaderboard and sharing disabled by default", () => {
+    const privacy = defaultSocialPrivacySettings();
+    expect(privacy).toMatchObject({
+      friendLeaderboardEnabled: false,
+      shareBadges: false,
+      shareWorkoutSummaries: false,
+      shareBodyMetrics: false,
+      shareWorkoutDetails: false
+    });
+    expect(buildBadgeSharePreview({ badge: { name: "Hydration", status: "active", streakMonths: 2, progress: 20, target: 20 }, privacy })).toBeNull();
+    expect(
+      buildWorkoutSummarySharePreview({
+        session: { sessionName: "Push Day", durationSeconds: 3600, status: "finished" },
+        setCount: 9,
+        totalVolumeKg: 4500,
+        privacy
+      })
+    ).toBeNull();
+  });
+
+  it("redacts sensitive data unless the user explicitly opts in", () => {
+    const privacy = { ...defaultSocialPrivacySettings(), shareBadges: true, shareWorkoutSummaries: true };
+    const badge = buildBadgeSharePreview({
+      badge: { name: "Workout consistency", status: "active", streakMonths: 3, progress: 12, target: 12 },
+      privacy,
+      now: new Date("2026-08-23T00:00:00.000Z")
+    });
+    const workout = buildWorkoutSummarySharePreview({
+      session: { sessionName: "Push Day", durationSeconds: 4200, status: "finished" },
+      setCount: 10,
+      totalVolumeKg: 5000,
+      privacy,
+      now: new Date("2026-08-23T00:00:00.000Z")
+    });
+
+    expect(badge?.redactedFields).toEqual(expect.arrayContaining(["weight", "body fat", "exercise details", "email"]));
+    expect(workout?.redactedFields).toEqual(expect.arrayContaining(["weight", "body fat", "exercise names", "set weights", "set reps", "RPE"]));
+    expect(workout?.summary).not.toContain("Bench");
+    const post = publishSharePreview(workout, privacy, new Date("2026-08-23T01:00:00.000Z"));
+    expect(post).toMatchObject({ audience: "private-friends", kind: "workout-summary" });
+  });
+
+  it("shows only accepted friends in the private leaderboard after opt-in", () => {
+    const leaderboard = privateFriendLeaderboard({
+      profileName: "Phuc",
+      enabled: true,
+      myScore: 91,
+      myBadgeStreakMonths: 3,
+      friends: [
+        { id: "1", displayName: "Minh", handle: "@minh", status: "accepted", score: 96, badgeStreakMonths: 4, addedAt: "2026-08-23T00:00:00.000Z" },
+        { id: "2", displayName: "Blocked", handle: "@blocked", status: "blocked", score: 99, badgeStreakMonths: 9, addedAt: "2026-08-23T00:00:00.000Z" }
+      ]
+    });
+
+    expect(leaderboard.visible).toBe(true);
+    expect(leaderboard.entries.map((entry) => entry.displayName)).toEqual(["Minh", "Phuc"]);
+  });
+});
+
+describe("health platform permissions", () => {
+  it("keeps all health sync disabled by default", () => {
+    const settings = defaultHealthIntegrationSettings();
+
+    expect(settings).toMatchObject({
+      provider: "health-connect",
+      permissionStatus: "not_requested",
+      selectedDataTypes: [],
+      privacyAccepted: false,
+      nativeBridgeAvailable: false
+    });
+    expect(canSyncHealthData(settings, "weight")).toBe(false);
+    expect(healthIntegrationPrivacyCopy(settings)).toContain("never syncs health data in the background");
+  });
+
+  it("saves a web permission request without granting sync", () => {
+    const requested = requestHealthIntegrationPermission(
+      { ...defaultHealthIntegrationSettings(), privacyAccepted: true, unitMapping: { weight: "lb", hydration: "oz", workoutDistance: "mi" } },
+      ["weight", "workout"],
+      new Date("2026-08-23T00:00:00.000Z")
+    );
+
+    expect(requested.permissionStatus).toBe("requested");
+    expect(requested.selectedDataTypes).toEqual(["weight", "workout"]);
+    expect(requested.unitMapping).toEqual({ weight: "lb", hydration: "oz", workoutDistance: "mi" });
+    expect(requested.lastPermissionRequestedAt).toBe("2026-08-23T00:00:00.000Z");
+    expect(canSyncHealthData(requested, "weight")).toBe(false);
+  });
+
+  it("allows only explicitly selected categories after native permission is granted", () => {
+    const granted = requestHealthIntegrationPermission(
+      { ...defaultHealthIntegrationSettings(), privacyAccepted: true, nativeBridgeAvailable: true, provider: "apple-health" },
+      ["hydration"],
+      new Date("2026-08-23T00:00:00.000Z")
+    );
+    const revoked = revokeHealthIntegrationPermission(granted, new Date("2026-08-23T01:00:00.000Z"));
+
+    expect(granted.permissionStatus).toBe("granted");
+    expect(canSyncHealthData(granted, "hydration")).toBe(true);
+    expect(canSyncHealthData(granted, "weight")).toBe(false);
+    expect(revoked.selectedDataTypes).toEqual([]);
+    expect(canSyncHealthData(revoked, "hydration")).toBe(false);
   });
 });

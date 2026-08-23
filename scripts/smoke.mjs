@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 const port = process.env.PORT ?? "5173";
 const baseUrl = `http://127.0.0.1:${port}`;
@@ -7,16 +7,16 @@ const routes = [
   "/hydration",
   "/api/health",
   "/api/integrations/status",
+  "/api/docs/openapi",
+  "/api/observability/logs",
   "/api/notifications/config",
   "/api/auth/session",
   "/api/hydration/today"
 ];
 
-const command = process.platform === "win32" ? ".\\node_modules\\.bin\\next.cmd" : "./node_modules/.bin/next";
-const server = spawn(command, ["dev", "-p", port], {
+const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "dev", "-p", port], {
   cwd: process.cwd(),
   env: normalizedEnv({ ...process.env, PORT: port }),
-  shell: process.platform === "win32",
   stdio: ["ignore", "pipe", "pipe"]
 });
 
@@ -39,12 +39,26 @@ try {
     }
     console.log(`${route} => ${response.status}`);
   }
+  const errorResponse = await fetch(`${baseUrl}/api/client-errors`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ requestId: "req_smoke", message: "Smoke client error", path: "/smoke" })
+  });
+  if (!errorResponse.ok) throw new Error(`/api/client-errors returned ${errorResponse.status}`);
+  console.log(`/api/client-errors => ${errorResponse.status}`);
+  const coachResponse = await fetch(`${baseUrl}/api/coach/recommend`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({})
+  });
+  if (!coachResponse.ok) throw new Error(`/api/coach/recommend returned ${coachResponse.status}`);
+  console.log(`/api/coach/recommend => ${coachResponse.status}`);
 } catch (error) {
   exitCode = 1;
   console.error(error);
 } finally {
   stopServer();
-  setTimeout(() => process.exit(exitCode), 250);
+  process.exit(exitCode);
 }
 
 async function waitForReady() {
@@ -74,13 +88,10 @@ function normalizedEnv(env) {
 function stopServer() {
   server.stdout.destroy();
   server.stderr.destroy();
-  server.unref();
   if (server.exitCode !== null) return;
 
+  server.kill(process.platform === "win32" ? "SIGTERM" : "SIGTERM");
   if (process.platform === "win32") {
-    const killer = spawn("taskkill", ["/pid", String(server.pid), "/T", "/F"], { stdio: "ignore" });
-    killer.unref();
-  } else {
-    server.kill("SIGTERM");
+    spawnSync("taskkill", ["/pid", String(server.pid), "/T", "/F"], { stdio: "ignore", timeout: 2_000 });
   }
 }

@@ -26,12 +26,17 @@ import {
   cryptoSafeId,
   completeSessionExercise,
   buildBodyMetricChartDataset,
+  buildBadgeSharePreview,
+  buildWorkoutSummarySharePreview,
   buildProgressDashboard,
+  buildProgressReports,
   calculatePlatesPerSide,
   detectWorkoutSetPrs,
   displayWeight,
   estimatedOneRepMax,
   expectedHydrationByNow,
+  healthIntegrationPrivacyCopy,
+  healthSyncDataTypes,
   latestBodyMetric,
   bodyWeightDelta,
   formatWeight,
@@ -39,25 +44,36 @@ import {
   hydrationPercent,
   hydrationTotal,
   inputWeightToKg,
+  isWorkingVolumeSet,
   isDrinkModuleActive,
-  monthlyAchievements,
   normalizeDrinkModules,
   normalizePlateInventory,
   normalizeWorkoutSessionQueue,
+  nextSupersetExerciseIndex,
   parseRoutineCsv,
   parkSessionExercise,
+  privateFriendLeaderboard,
+  publishSharePreview,
+  progressiveOverloadRecommendation,
   readinessScore,
   filterExerciseLibrary,
   finishWorkoutSession,
   migrateWorkoutExercisesToRoutine,
   pauseWorkoutSession,
   resumeWorkoutSession,
+  requestHealthIntegrationPermission,
+  revokeHealthIntegrationPermission,
   reorderSessionExerciseQueue,
   routineExercisesToWorkoutExercises,
   saveSessionExerciseOrderToRoutine,
   selectedWorkoutDay,
+  canSyncHealthData,
   rowsToRoutineCsv,
   enqueueSync,
+  markSyncItemConflict,
+  markSyncItemFailed,
+  markSyncItemSynced,
+  markSyncItemSyncing,
   markSyncQueue,
   shouldSendCreatineReminder,
   shouldSendHydrationReminder,
@@ -68,12 +84,18 @@ import {
   validateBodyMetric,
   visibleHydrationLogs,
   visibleQuickAmounts,
+  warmUpSetSuggestions,
+  workingSetVolumeKg,
   type BodyMetric,
   type BodyMetricChartDataset,
   type BodyMetricRangeDays,
   type DrinkModule,
   type EquipmentType,
   type ExerciseDefinition,
+  type Friend,
+  type HealthIntegrationSettings,
+  type HealthProvider,
+  type HealthSyncDataType,
   type HydrationLog,
   type MovementPattern,
   type PlateCalculation,
@@ -83,10 +105,17 @@ import {
   type SessionExerciseQueueItem,
   type Supplement,
   type ProgressDashboard,
+  type ProgressReports,
+  type RecommendationDecision,
+  type RecommendationHistoryItem,
+  type SharedPost,
+  type SocialPrivacySettings,
+  type SyncQueueItem,
   type WorkoutSession,
   type WorkoutSetPr,
   type WorkoutExercise,
-  type WorkoutSet
+  type WorkoutSet,
+  type WorkoutSetType
 } from "@/lib/core";
 import {
   allRestoreSections,
@@ -103,6 +132,14 @@ type Tab = "today" | "hydration" | "workout" | "progress" | "settings";
 type SyncStatus = "offline" | "pending" | "failed" | "synced";
 type CsvDataset = "hydration" | "creatine" | "workouts" | "body-metrics";
 type PushSubscriptionStatus = "unsupported" | "missing-env" | "unsubscribed" | "subscribed";
+type HealthDashboard = {
+  requestId?: string;
+  app?: string;
+  version?: string;
+  checkedAt?: string;
+  storageAdapter?: string;
+  integrations?: Record<string, string>;
+};
 type WakeLockSentinelLike = { release: () => Promise<void> };
 type NavigatorWithWakeLock = Navigator & {
   wakeLock?: { request: (type: "screen") => Promise<WakeLockSentinelLike> };
@@ -147,10 +184,12 @@ export default function AppPage() {
   const [newMetricArm, setNewMetricArm] = useState(34);
   const [newMetricThigh, setNewMetricThigh] = useState(56);
   const [newMetricNote, setNewMetricNote] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
   const [bodyMetricRange, setBodyMetricRange] = useState<BodyMetricRangeDays>(30);
   const [setWeight, setSetWeight] = useState(42.5);
   const [setReps, setSetReps] = useState(8);
   const [setRpe, setSetRpe] = useState(8);
+  const [setType, setSetType] = useState<WorkoutSetType>("working");
   const [livePrBadges, setLivePrBadges] = useState<WorkoutSetPr[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
@@ -165,6 +204,8 @@ export default function AppPage() {
   const [nowMs, setNowMs] = useState(Date.now());
   const [restPausedSeconds, setRestPausedSeconds] = useState<number | null>(null);
   const [restNotifiedFor, setRestNotifiedFor] = useState<string | null>(null);
+  const [healthDashboard, setHealthDashboard] = useState<HealthDashboard | null>(null);
+  const [coachFeedback, setCoachFeedback] = useState("");
 
   useEffect(() => {
     setState(loadState());
@@ -183,6 +224,16 @@ export default function AppPage() {
     refreshPushStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted, state.profile.email]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    fetch("/api/health")
+      .then(async (response) => {
+        const body = (await response.json()) as { ok?: boolean; data?: HealthDashboard; requestId?: string };
+        if (body.ok && body.data) setHealthDashboard({ ...body.data, requestId: body.requestId ?? response.headers.get("x-request-id") ?? undefined });
+      })
+      .catch(() => undefined);
+  }, [mounted]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -218,7 +269,66 @@ export default function AppPage() {
   }, []);
 
   useEffect(() => {
-    if (!mounted || !isOnline || !state.syncQueue.some((item) => item.status === "pending")) return;
+    if (!mounted || !isOnline) return;
+    const nowTime = Date.now();
+    const nextItem = state.syncQueue
+      .filter((item) => item.status === "pending" || item.status === "failed")
+      .find((item) => !item.nextRetryAt || new Date(item.nextRetryAt).getTime() <= nowTime);
+    if (!nextItem) return;
+
+    let cancelled = false;
+    setState((current) => ({ ...current, syncQueue: markSyncItemSyncing(current.syncQueue, nextItem.id) }));
+
+    fetch("/api/sync/batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        idempotencyKey: nextItem.idempotencyKey ?? nextItem.id,
+        items: [{ id: nextItem.id, type: nextItem.type, payload: nextItem.payload, idempotencyKey: nextItem.idempotencyKey ?? nextItem.id }]
+      })
+    })
+      .then(async (response) => {
+        const body = (await response.json()) as {
+          ok?: boolean;
+          data?: {
+            results?: {
+              id: string;
+              status: "synced" | "failed" | "conflict";
+              error?: string;
+              conflict?: NonNullable<SyncQueueItem["conflict"]>;
+            }[];
+          };
+          error?: string;
+        };
+        if (!response.ok || !body.ok) throw new Error(body.error ?? "sync request failed");
+        return body.data?.results?.[0];
+      })
+      .then((result) => {
+        if (cancelled || !result) return;
+        if (result.status === "synced") {
+          setState((current) => ({ ...current, syncQueue: markSyncItemSynced(current.syncQueue, nextItem.id) }));
+          return;
+        }
+        if (result.status === "conflict" && result.conflict) {
+          const conflict = result.conflict;
+          setState((current) => ({ ...current, syncQueue: markSyncItemConflict(current.syncQueue, nextItem.id, conflict) }));
+          setToast("Routine conflict needs preview and confirm");
+          return;
+        }
+        setState((current) => ({ ...current, syncQueue: markSyncItemFailed(current.syncQueue, nextItem.id, result.error ?? "sync failed") }));
+      })
+      .catch((error: Error) => {
+        if (cancelled) return;
+        setState((current) => ({ ...current, syncQueue: markSyncItemFailed(current.syncQueue, nextItem.id, error.message) }));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, isOnline, state.syncQueue]);
+
+  useEffect(() => {
+    if (!mounted || !isOnline || !state.syncQueue.some((item) => item.status === "pending" && item.type === "__legacy_disabled__")) return;
     const id = window.setTimeout(() => {
       setState((current) => ({ ...current, syncQueue: markSyncQueue(current.syncQueue, "synced") }));
       setToast("Offline queue đã retry local và đánh dấu synced");
@@ -364,6 +474,10 @@ export default function AppPage() {
   const activeSessionQueue = activeWorkoutSession
     ? normalizeWorkoutSessionQueue(activeWorkoutSession).exerciseQueue
     : state.workoutExercises.map((exercise) => ({ exerciseId: exercise.id, status: "queued" as const }));
+  const activeSessionExercises = activeSessionQueue.flatMap((item) => {
+    const exercise = state.workoutExercises.find((entry) => entry.id === item.exerciseId);
+    return exercise ? [exercise] : [];
+  });
   const filteredExerciseLibrary = filterExerciseLibrary(state.exerciseLibrary, {
     query: librarySearch,
     muscleGroup: libraryMuscleFilter,
@@ -376,15 +490,23 @@ export default function AppPage() {
       : state.workoutExercises[state.activeExerciseIndex]) ??
     state.workoutExercises[0] ??
     emptyExercise;
-  const completedSetsForActive = currentSessionSets.filter((set) => set.exerciseId === activeExercise.id);
-  const achievements = monthlyAchievements({
-    hydrationGoalDays: 18,
-    hydrationTargetDays: 24,
-    volumeChangePercent: 6,
-    previousHydrationStreak: 2,
-    previousVolumeStreak: 1
-  });
-  const bestSet = state.workoutSets.filter((set) => set.actualReps > 0).reduce<WorkoutSet | undefined>(
+  const completedSetsForActive = currentSessionSets.filter((set) => set.exerciseId === activeExercise.id && (set.setType ?? "working") !== "warmup");
+  const allSetsForActive = currentSessionSets.filter((set) => set.exerciseId === activeExercise.id);
+  const recentCoachSets = state.workoutSets.filter((set) => set.exerciseId === activeExercise.id && isWorkingVolumeSet(set)).slice(-activeExercise.targetSets);
+  const activeRecommendation: RecommendationHistoryItem = {
+    ...progressiveOverloadRecommendation({
+      exerciseName: activeExercise.name,
+      targetWeightKg: activeExercise.targetWeightKg,
+      targetRepsMax: activeExercise.targetRepsMax,
+      recentSets: recentCoachSets
+    }),
+    id: `local-${activeExercise.id}`,
+    generatedAt: new Date().toISOString(),
+    exerciseId: activeExercise.id,
+    exerciseName: activeExercise.name,
+    status: state.recommendationHistory.find((item) => item.exerciseId === activeExercise.id)?.status ?? "pending"
+  };
+  const bestSet = state.workoutSets.filter(isWorkingVolumeSet).reduce<WorkoutSet | undefined>(
     (best, set) => (!best || estimatedOneRepMax(set.actualWeightKg, set.actualReps) > estimatedOneRepMax(best.actualWeightKg, best.actualReps) ? set : best),
     undefined
   );
@@ -398,6 +520,36 @@ export default function AppPage() {
     workoutExercises: state.workoutExercises,
     now
   });
+  const progressReports = buildProgressReports({
+    hydrationLogs: state.hydrationLogs,
+    waterTargetMl: state.profile.waterTargetMl,
+    workoutSessions: state.workoutSessions,
+    workoutSets: state.workoutSets,
+    workoutExercises: state.workoutExercises,
+    hydrationEnabled: isDrinkModuleActive(drinkModules, "water"),
+    workoutEnabled: state.workoutExercises.length > 0,
+    volumeEnabled: state.workoutExercises.length > 0,
+    now
+  });
+  const achievements = progressReports.monthly.badges.filter((badge) => badge.status !== "disabled");
+  const topBadge = achievements.find((badge) => badge.status === "active") ?? achievements[0];
+  const socialLeaderboard = privateFriendLeaderboard({
+    profileName: state.profile.name,
+    friends: state.friends,
+    enabled: state.socialPrivacy.friendLeaderboardEnabled,
+    myScore: progressDashboard.hydration30.goalHitRate + progressDashboard.workoutCount30 * 5,
+    myBadgeStreakMonths: Math.max(0, ...achievements.map((badge) => badge.streakMonths))
+  });
+  const latestWorkoutSession = state.workoutSessions.filter((session) => session.status === "finished").at(-1);
+  const badgeSharePreview = topBadge ? buildBadgeSharePreview({ badge: topBadge, privacy: state.socialPrivacy }) : null;
+  const workoutSummarySharePreview = latestWorkoutSession
+    ? buildWorkoutSummarySharePreview({
+        session: latestWorkoutSession,
+        setCount: state.workoutSets.filter((set) => set.sessionId === latestWorkoutSession.id).length,
+        totalVolumeKg: workingSetVolumeKg(state.workoutSets.filter((set) => set.sessionId === latestWorkoutSession.id)),
+        privacy: state.socialPrivacy
+      })
+    : null;
   const latestMetric = latestBodyMetric(state.bodyMetrics);
   const weightDelta = bodyWeightDelta(state.bodyMetrics);
   const bodyMetricChart = buildBodyMetricChartDataset({
@@ -419,9 +571,9 @@ export default function AppPage() {
   });
   const syncStatus: SyncStatus = !isOnline
     ? "offline"
-    : state.syncQueue.some((item) => item.status === "failed")
+    : state.syncQueue.some((item) => item.status === "failed" || item.status === "conflict")
       ? "failed"
-      : state.syncQueue.some((item) => item.status === "pending")
+      : state.syncQueue.some((item) => item.status === "pending" || item.status === "syncing")
         ? "pending"
         : "synced";
 
@@ -624,7 +776,7 @@ export default function AppPage() {
         routines: state.routines.map((routine) => (routine.id === updatedRoutine.id ? { ...updatedRoutine, updatedAt: new Date().toISOString() } : routine))
       }),
       "routine.update",
-      { routineId: updatedRoutine.id },
+      { routineId: updatedRoutine.id, routine: updatedRoutine, baseUpdatedAt: activeRoutine.updatedAt },
       label
     );
   }
@@ -743,8 +895,8 @@ export default function AppPage() {
         workoutSets: [],
         activeExerciseIndex: 0
       }),
-      "routine.import",
-      { fileName: routineImportPreview.fileName, mode, count: routineImportPreview.rows.length },
+      "routine.update",
+      { routineId: updatedRoutine.id, routine: updatedRoutine, baseUpdatedAt: nextRoutine.updatedAt, fileName: routineImportPreview.fileName, mode },
       `Imported ${routineImportPreview.rows.length} exercises`
     );
     setRoutineImportPreview(null);
@@ -838,7 +990,7 @@ export default function AppPage() {
       return;
     }
     const routine = routineFromTemplate(template);
-    commit(
+    commitSynced(
       syncSelectedDay({
         ...state,
         activeTemplate: template,
@@ -848,6 +1000,8 @@ export default function AppPage() {
         workoutSets: [],
         activeExerciseIndex: 0
       }),
+      "routine.create",
+      routine,
       `?? ?p d?ng template ${template}`
     );
   }
@@ -941,7 +1095,7 @@ export default function AppPage() {
     });
     commitSynced(
       { ...state, exerciseLibrary: [...state.exerciseLibrary, exercise] },
-      "exerciseLibrary.create",
+      "exercise.create",
       exercise,
       `Created ${exercise.name}`
     );
@@ -952,7 +1106,7 @@ export default function AppPage() {
     if (!target || target.builtIn) return;
     commitSynced(
       { ...state, exerciseLibrary: state.exerciseLibrary.map((exercise) => (exercise.id === id ? { ...exercise, ...patch, builtIn: false } : exercise)) },
-      "exerciseLibrary.update",
+      "exercise.update",
       { id, patch },
       "Updated custom exercise"
     );
@@ -963,7 +1117,7 @@ export default function AppPage() {
     if (!target || target.builtIn) return;
     commitSynced(
       { ...state, exerciseLibrary: state.exerciseLibrary.filter((exercise) => exercise.id !== id) },
-      "exerciseLibrary.delete",
+      "exercise.delete",
       { id },
       "Deleted custom exercise"
     );
@@ -1049,6 +1203,66 @@ export default function AppPage() {
     URL.revokeObjectURL(url);
   }
 
+  function downloadReportPdf(period: keyof ProgressReports) {
+    const report = progressReports[period];
+    const escapeHtml = (value: string) =>
+      value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    const badgeRows = report.badges
+      .filter((badge) => badge.status !== "disabled")
+      .map((badge) => `<li><strong>${escapeHtml(badge.name)}</strong>: ${badge.progress}/${badge.target} - ${badge.status} - streak ${badge.streakMonths}</li>`)
+      .join("");
+    const prRows = report.prs
+      .slice(0, 8)
+      .map((pr) => `<li><strong>${escapeHtml(pr.exerciseName)}</strong>: ${pr.maxWeightKg}kg max, ${pr.estimatedOneRepMaxKg}kg e1RM, ${pr.volumePrKg}kg volume PR</li>`)
+      .join("");
+    const html = `<!doctype html>
+      <html>
+        <head>
+          <title>EvolveFit ${report.period} report</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #111827; margin: 32px; }
+            h1 { margin-bottom: 4px; }
+            .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 20px 0; }
+            .card { border: 1px solid #d1d5db; border-radius: 8px; padding: 14px; }
+            span { color: #6b7280; font-size: 12px; text-transform: uppercase; }
+            strong { display: block; font-size: 22px; margin-top: 4px; }
+            li { margin: 8px 0; }
+          </style>
+        </head>
+        <body>
+          <h1>EvolveFit ${report.period === "weekly" ? "Weekly" : "Monthly"} Report</h1>
+          <p>${report.periodStart} to ${report.periodEnd}</p>
+          <div class="grid">
+            <div class="card"><span>Hydration average</span><strong>${report.hydrationAverageMl}ml</strong></div>
+            <div class="card"><span>Goal hit rate</span><strong>${report.hydrationGoalHitRate}%</strong></div>
+            <div class="card"><span>Workout count</span><strong>${report.workoutCount}</strong></div>
+            <div class="card"><span>Total volume</span><strong>${report.totalVolumeKg}kg</strong></div>
+          </div>
+          <h2>Trend vs previous period</h2>
+          <ul>
+            <li>Hydration average: ${report.trendVsPrevious.hydrationAverageMl >= 0 ? "+" : ""}${report.trendVsPrevious.hydrationAverageMl}ml</li>
+            <li>Goal hit rate: ${report.trendVsPrevious.goalHitRate >= 0 ? "+" : ""}${report.trendVsPrevious.goalHitRate}%</li>
+            <li>Workout count: ${report.trendVsPrevious.workoutCount >= 0 ? "+" : ""}${report.trendVsPrevious.workoutCount}</li>
+            <li>Total volume: ${report.trendVsPrevious.totalVolumeKg >= 0 ? "+" : ""}${report.trendVsPrevious.totalVolumeKg}kg</li>
+          </ul>
+          <h2>PRs</h2>
+          <ul>${prRows || "<li>No PRs in this period.</li>"}</ul>
+          <h2>Badges</h2>
+          <ul>${badgeRows || "<li>No active badge data for this period.</li>"}</ul>
+        </body>
+      </html>`;
+    const popup = window.open("", "_blank", "noopener,noreferrer,width=900,height=700");
+    if (!popup) {
+      window.print();
+      return;
+    }
+    popup.document.open();
+    popup.document.write(html);
+    popup.document.close();
+    popup.focus();
+    popup.print();
+  }
+
   function downloadCsvExport(dataset?: CsvDataset) {
     const datasets: Record<CsvDataset, Record<string, unknown>[]> = {
       hydration: state.hydrationLogs.map((row) => ({ ...row })),
@@ -1067,6 +1281,33 @@ export default function AppPage() {
       link.click();
       URL.revokeObjectURL(url);
     });
+  }
+
+  async function authenticateEmail(mode: "sign-in" | "sign-up") {
+    if (!state.profile.email.trim() || authPassword.length < 6) {
+      setToast("Email/password chÆ°a há»£p lá»‡");
+      return;
+    }
+    const response = await fetch(mode === "sign-up" ? "/api/auth/sign-up" : "/api/auth/sign-in", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: state.profile.email.trim(), password: authPassword, mode: "email" })
+    });
+    const payload = (await response.json()) as { ok: boolean; data?: { email: string; mode: AppState["profile"]["authMode"] }; error?: string };
+    if (!payload.ok || !payload.data) {
+      setToast(payload.error ?? "Auth failed");
+      return;
+    }
+    commitSynced(
+      { ...state, profile: { ...state.profile, email: payload.data.email, authMode: payload.data.mode } },
+      `auth.${mode}`,
+      { email: payload.data.email, mergeMode: "keep-local" },
+      "ÄÃ£ liÃªn káº¿t account; dá»¯ liá»‡u local Ä‘Æ°á»£c giá»¯ Ä‘á»ƒ sync"
+    );
+  }
+
+  function startGoogleOAuth() {
+    window.location.href = "/api/auth/oauth/google";
   }
 
   function importJsonExport(file: File) {
@@ -1242,13 +1483,23 @@ export default function AppPage() {
   function commitWorkoutSet(completed: WorkoutSet, label: string, message: string) {
     const prs = detectWorkoutSetPrs(state.workoutSets, completed);
     const commitMessage = prs.length ? `New PR: ${prs.map((pr) => pr.label).join(", ")}` : message;
-    const finishedExercise = completedSetsForActive.length + 1 >= activeExercise.targetSets;
+    const countsTowardTarget = (completed.setType ?? "working") !== "warmup";
+    const finishedExercise = countsTowardTarget && completedSetsForActive.length + 1 >= activeExercise.targetSets;
     const completedSession =
       activeWorkoutSession && finishedExercise ? completeSessionExercise(activeWorkoutSession, activeExercise.id) : activeWorkoutSession;
+    const nextWorkoutSets = [...state.workoutSets, completed];
+    const supersetIndex =
+      countsTowardTarget && !finishedExercise
+        ? nextSupersetExerciseIndex({
+            exercises: activeWorkoutSession ? activeSessionExercises : state.workoutExercises,
+            currentIndex: state.activeExerciseIndex,
+            sets: currentSessionSets.concat(completed)
+          })
+        : undefined;
     const nextExerciseIndex =
       completedSession && finishedExercise
         ? nextOpenQueueIndex(completedSession.exerciseQueue, state.activeExerciseIndex)
-        : state.activeExerciseIndex;
+        : supersetIndex ?? state.activeExerciseIndex;
     const shouldFinishSession = Boolean(completedSession && finishedExercise && nextExerciseIndex < 0);
     const restEndsAt = new Date(Date.now() + activeExercise.restSeconds * 1000).toISOString();
     if (shouldFinishSession) {
@@ -1263,7 +1514,7 @@ export default function AppPage() {
     withUndo(
       {
         ...state,
-        workoutSets: [...state.workoutSets, completed],
+        workoutSets: nextWorkoutSets,
         workoutSessions: finishedSession
           ? replaceWorkoutSession(finishedSession)
           : completedSession
@@ -1295,12 +1546,13 @@ export default function AppPage() {
       exerciseName: activeExercise.name,
       targetWeightKg: activeExercise.targetWeightKg,
       targetReps: activeExercise.targetRepsMin,
+      setType,
       actualWeightKg: setWeight,
       actualReps: setReps,
       rpe: setRpe,
       completedAt: new Date().toISOString()
     };
-    commitWorkoutSet(completed, "set", `Ho?n th?nh set ${completedSetsForActive.length + 1}`);
+    commitWorkoutSet(completed, "set", `Ho?n th?nh ${setType} set ${completedSetsForActive.length + 1}`);
   }
 
   function skipCurrentSet() {
@@ -1316,6 +1568,7 @@ export default function AppPage() {
       exerciseName: activeExercise.name,
       targetWeightKg: activeExercise.targetWeightKg,
       targetReps: activeExercise.targetRepsMin,
+      setType: "working",
       actualWeightKg: activeExercise.targetWeightKg,
       actualReps: 0,
       completedAt: new Date().toISOString()
@@ -1446,7 +1699,12 @@ export default function AppPage() {
     }
     if (activeWorkoutSession) {
       const paused = pauseWorkoutSession(activeWorkoutSession);
-      commit({ ...state, workoutSessions: state.workoutSessions.map((session) => (session.id === paused.id ? paused : session)) }, "Pause workout session");
+      commitSynced(
+        { ...state, workoutSessions: state.workoutSessions.map((session) => (session.id === paused.id ? paused : session)) },
+        "workout.session.pause",
+        paused,
+        "Pause workout session"
+      );
     }
   }
 
@@ -1456,14 +1714,16 @@ export default function AppPage() {
     const resumedSessions = activeWorkoutSession
       ? state.workoutSessions.map((session) => (session.id === activeWorkoutSession.id ? resumeWorkoutSession(session) : session))
       : state.workoutSessions;
-    commit(
-      {
-        ...state,
-        workoutSessions: resumedSessions,
-        restEndsAt: restPausedSeconds !== null ? new Date(Date.now() + restPausedSeconds * 1000).toISOString() : state.restEndsAt
-      },
-      "Resume workout session"
-    );
+    const nextState = {
+      ...state,
+      workoutSessions: resumedSessions,
+      restEndsAt: restPausedSeconds !== null ? new Date(Date.now() + restPausedSeconds * 1000).toISOString() : state.restEndsAt
+    };
+    if (activeWorkoutSession) {
+      commitSynced(nextState, "workout.session.resume", resumeWorkoutSession(activeWorkoutSession), "Resume workout session");
+    } else {
+      commit(nextState, "Resume rest timer");
+    }
     setRestPausedSeconds(null);
     setNowMs(Date.now());
   }
@@ -1501,6 +1761,61 @@ export default function AppPage() {
     commit({ ...state, notificationSettings: { ...state.notificationSettings, ...next } });
   }
 
+  function updateSocialPrivacy(next: Partial<SocialPrivacySettings>) {
+    const socialPrivacy = { ...state.socialPrivacy, ...next };
+    commitSynced({ ...state, socialPrivacy }, "social.privacy.update", socialPrivacy, "Updated social privacy");
+  }
+
+  function updateHealthIntegration(next: Partial<HealthIntegrationSettings>) {
+    const healthIntegration = { ...state.healthIntegration, ...next };
+    commitSynced({ ...state, healthIntegration }, "health.permission.update", healthIntegration, "Updated health permissions");
+  }
+
+  function requestHealthPermission() {
+    const healthIntegration = requestHealthIntegrationPermission(state.healthIntegration, state.healthIntegration.selectedDataTypes);
+    commitSynced({ ...state, healthIntegration }, "health.permission.request", healthIntegration, "Health permission request saved");
+    if (!healthIntegration.nativeBridgeAvailable) {
+      setToast("Health permission choices saved. Native bridge required before sync.");
+    }
+  }
+
+  function revokeHealthPermission() {
+    const healthIntegration = revokeHealthIntegrationPermission(state.healthIntegration);
+    commitSynced({ ...state, healthIntegration }, "health.permission.revoke", healthIntegration, "Health permissions revoked");
+  }
+
+  function addFriend() {
+    const friend: Friend = {
+      id: cryptoSafeId(),
+      displayName: "New friend",
+      handle: `@friend${state.friends.length + 1}`,
+      status: "pending",
+      badgeStreakMonths: 0,
+      score: 0,
+      addedAt: new Date().toISOString()
+    };
+    commitSynced({ ...state, friends: [friend, ...state.friends] }, "social.friend.add", friend, "Added friend invite");
+  }
+
+  function updateFriend(id: string, patch: Partial<Friend>) {
+    commitSynced(
+      { ...state, friends: state.friends.map((friend) => (friend.id === id ? { ...friend, ...patch } : friend)) },
+      "social.friend.update",
+      { id, patch },
+      "Updated friend"
+    );
+  }
+
+  function publishSocialShare(kind: SharedPost["kind"]) {
+    const preview = kind === "badge" ? badgeSharePreview : workoutSummarySharePreview;
+    const post = publishSharePreview(preview, state.socialPrivacy);
+    if (!post) {
+      setToast("Turn on the matching share permission before publishing.");
+      return;
+    }
+    commitSynced({ ...state, sharedPosts: [post, ...state.sharedPosts] }, "social.share.publish", post, "Shared to private friends");
+  }
+
   function updatePlateSettings(next: Partial<PlateSettings>) {
     const plateSettings = {
       ...state.plateSettings,
@@ -1514,33 +1829,81 @@ export default function AppPage() {
     commit({ ...state, syncQueue: markSyncQueue(state.syncQueue, status) }, status === "synced" ? "Đã đánh dấu sync xong" : "Đã đánh dấu sync lỗi");
   }
 
-  function clearQueue(status?: "synced" | "failed") {
+  function retryQueueItem(id: string) {
+    commit(
+      {
+        ...state,
+        syncQueue: state.syncQueue.map((item) =>
+          item.id === id ? { ...item, status: "pending", nextRetryAt: undefined, lastError: undefined, updatedAt: new Date().toISOString() } : item
+        )
+      },
+      "Queued item for retry"
+    );
+  }
+
+  function confirmRoutineConflict(id: string) {
+    commit(
+      {
+        ...state,
+        syncQueue: state.syncQueue.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                status: "pending",
+                payload: { ...(item.payload as Record<string, unknown>), conflictResolution: "confirm" },
+                conflict: undefined,
+                lastError: undefined,
+                nextRetryAt: undefined,
+                updatedAt: new Date().toISOString()
+              }
+            : item
+        )
+      },
+      "Routine conflict confirmed for sync"
+    );
+  }
+
+  function clearQueue(status?: SyncQueueItem["status"]) {
     commit(
       { ...state, syncQueue: status ? state.syncQueue.filter((item) => item.status !== status) : [] },
       status ? `Đã xóa queue ${status}` : "Đã xóa toàn bộ sync queue"
     );
   }
 
-  const activeRecommendation = {
+  const legacyRecommendationPlaceholder = {
     title: "V1 insight moved to Progress",
     reason: "Coach không nằm trong navigation chính của V1."
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  void legacyRecommendationPlaceholder;
+
   function decideRecommendation(decision: "accepted" | "rejected") {
+    const decidedAt = new Date().toISOString();
+    const recommendationId = activeRecommendation.id;
+    const feedback = coachFeedback.trim() || undefined;
+    const decisionRecord: RecommendationDecision = {
+      id: cryptoSafeId(),
+      recommendationId,
+      title: activeRecommendation.title,
+      source: activeRecommendation.source,
+      action: activeRecommendation.action,
+      nextWeightKg: activeRecommendation.nextWeightKg,
+      decision,
+      reason: activeRecommendation.reason,
+      feedback,
+      decidedAt
+    };
+    const historyItem: RecommendationHistoryItem = {
+      ...activeRecommendation,
+      id: recommendationId,
+      status: decision,
+      feedback
+    };
     commit(
       {
         ...state,
-        recommendationDecisions: [
-          {
-            id: cryptoSafeId(),
-            title: activeRecommendation.title,
-            decision,
-            reason: activeRecommendation.reason,
-            decidedAt: new Date().toISOString()
-          },
-          ...state.recommendationDecisions
-        ]
+        recommendationHistory: [historyItem, ...state.recommendationHistory.filter((item) => item.id !== recommendationId)].slice(0, 50),
+        recommendationDecisions: [decisionRecord, ...state.recommendationDecisions]
       },
       decision === "accepted" ? "Đã áp dụng recommendation" : "Đã từ chối recommendation"
     );
@@ -1701,6 +2064,7 @@ export default function AppPage() {
             filteredExerciseLibrary={filteredExerciseLibrary}
             activeExercise={activeExercise}
             completedSets={completedSetsForActive}
+            allSetsForActive={allSetsForActive}
             livePrBadges={livePrBadges}
             plateSettings={state.plateSettings}
             setWeight={setWeight}
@@ -1709,6 +2073,8 @@ export default function AppPage() {
             setSetReps={setSetReps}
             setRpe={setRpe}
             setSetRpe={setSetRpe}
+            setType={setType}
+            setSetType={setSetType}
             mode={workoutMode}
             startWorkout={startWorkout}
             finishWorkout={finishWorkout}
@@ -1772,6 +2138,7 @@ export default function AppPage() {
             sets={state.workoutSets}
             bestSet={bestSet}
             progress={progressDashboard}
+            reports={progressReports}
             achievements={achievements}
             bodyMetrics={state.bodyMetrics}
             bodyMetricChart={bodyMetricChart}
@@ -1799,7 +2166,19 @@ export default function AppPage() {
             addBodyMetric={addBodyMetric}
             deleteBodyMetric={deleteBodyMetric}
             updateBodyMetric={updateBodyMetric}
+            coachRecommendation={activeRecommendation}
+            coachFeedback={coachFeedback}
+            setCoachFeedback={setCoachFeedback}
+            recommendationHistory={state.recommendationHistory}
+            recommendationDecisions={state.recommendationDecisions}
+            decideRecommendation={decideRecommendation}
+            socialLeaderboard={socialLeaderboard}
+            badgeSharePreview={badgeSharePreview}
+            workoutSummarySharePreview={workoutSummarySharePreview}
+            sharedPosts={state.sharedPosts}
+            publishSocialShare={publishSocialShare}
             downloadExport={downloadExport}
+            downloadReportPdf={downloadReportPdf}
           />
         )}
 
@@ -1808,16 +2187,23 @@ export default function AppPage() {
             state={state}
             updateProfile={updateProfile}
             signInLocal={(mode) => updateProfile({ authMode: mode })}
+            authPassword={authPassword}
+            setAuthPassword={setAuthPassword}
+            authenticateEmail={authenticateEmail}
+            startGoogleOAuth={startGoogleOAuth}
             reset={() => commit(resetState(), "Đã khôi phục dữ liệu mẫu")}
             deletePersonalData={deleteLocalPersonalData}
             notificationPermission={notificationPermission}
             pushConfigured={pushConfigured}
             pushSubscriptionStatus={pushSubscriptionStatus}
+            healthDashboard={healthDashboard}
             requestNotifications={requestNotifications}
             subscribeWebPush={subscribeWebPush}
             unsubscribeWebPush={unsubscribeWebPush}
             sendTestPushNotification={sendTestPushNotification}
             markQueue={markQueue}
+            retryQueueItem={retryQueueItem}
+            confirmRoutineConflict={confirmRoutineConflict}
             clearQueue={clearQueue}
             downloadExport={downloadExport}
             downloadCsvExport={downloadCsvExport}
@@ -1826,6 +2212,12 @@ export default function AppPage() {
             setRestoreSections={setRestoreSections}
             updateNotificationSettings={updateNotificationSettings}
             updatePlateSettings={updatePlateSettings}
+            updateSocialPrivacy={updateSocialPrivacy}
+            updateHealthIntegration={updateHealthIntegration}
+            requestHealthPermission={requestHealthPermission}
+            revokeHealthPermission={revokeHealthPermission}
+            addFriend={addFriend}
+            updateFriend={updateFriend}
             drinkModules={drinkModules}
             updateDrinkModule={updateDrinkModule}
             reopenOnboarding={() => {
@@ -2394,6 +2786,7 @@ function WorkoutView(props: {
   filteredExerciseLibrary: ExerciseDefinition[];
   activeExercise: AppState["workoutExercises"][number];
   completedSets: WorkoutSet[];
+  allSetsForActive: WorkoutSet[];
   livePrBadges: WorkoutSetPr[];
   plateSettings: PlateSettings;
   setWeight: number;
@@ -2402,6 +2795,8 @@ function WorkoutView(props: {
   setSetReps: (value: number) => void;
   setRpe: number;
   setSetRpe: (value: number) => void;
+  setType: WorkoutSetType;
+  setSetType: (value: WorkoutSetType) => void;
   mode: "plan" | "live" | "finished";
   startWorkout: () => void;
   finishWorkout: () => void;
@@ -2456,7 +2851,7 @@ function WorkoutView(props: {
   updateExerciseDefinition: (id: string, patch: Partial<ExerciseDefinition>) => void;
   deleteExerciseDefinition: (id: string) => void;
 }) {
-  const totalVolume = props.currentSessionSets.reduce((sum, set) => sum + set.actualWeightKg * set.actualReps, 0);
+  const totalVolume = workingSetVolumeKg(props.currentSessionSets);
   const completedExerciseCount = new Set(props.currentSessionSets.map((set) => set.exerciseId)).size;
   const queueExercises = props.sessionQueue.flatMap((item) => {
     const exercise = props.state.workoutExercises.find((entry) => entry.id === item.exerciseId);
@@ -2466,6 +2861,16 @@ function WorkoutView(props: {
   const completedCount = props.sessionQueue.filter((item) => item.status === "completed").length;
   const parkedCount = props.sessionQueue.filter((item) => item.status === "parked").length;
   const plateCalculation = calculatePlatesPerSide(props.setWeight, props.plateSettings);
+  const warmUpSuggestions = warmUpSetSuggestions({
+    workingWeightKg: props.activeExercise.targetWeightKg,
+    workingReps: props.activeExercise.targetRepsMin
+  });
+  const setTypeLabels: Record<WorkoutSetType, string> = {
+    warmup: "Warm-up",
+    working: "Working",
+    drop: "Drop",
+    failure: "Failure"
+  };
 
   if (props.mode === "finished") {
     return (
@@ -2587,6 +2992,7 @@ function WorkoutView(props: {
                   <label><span>Reps max</span><input type="number" min="1" max="50" value={exercise.targetRepsMax} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetRepsMax: Number(event.target.value) })} /></label>
                   <label><span>Kg</span><input type="number" min="0" step="0.5" value={exercise.targetWeightKg} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetWeightKg: Number(event.target.value) })} /></label>
                   <label><span>Rest</span><input type="number" min="15" step="15" value={exercise.restSeconds} onChange={(event) => props.updateExerciseTarget(exercise.id, { restSeconds: Number(event.target.value) })} /></label>
+                  <label><span>Superset</span><input value={exercise.supersetGroup ?? ""} onChange={(event) => props.updateExerciseTarget(exercise.id, { supersetGroup: event.target.value.trim() || undefined })} placeholder="A1" /></label>
                   <label className="wide-field"><span>Last session</span><input value={exercise.lastSession} onChange={(event) => props.updateExerciseTarget(exercise.id, { lastSession: event.target.value })} /></label>
                 </div>
               </div>
@@ -2816,6 +3222,10 @@ function WorkoutView(props: {
                   <span>Nghỉ</span>
                   <input type="number" min="15" step="15" value={exercise.restSeconds} onChange={(event) => props.updateExerciseTarget(exercise.id, { restSeconds: Number(event.target.value) })} />
                 </label>
+                <label>
+                  <span>Superset</span>
+                  <input value={exercise.supersetGroup ?? ""} onChange={(event) => props.updateExerciseTarget(exercise.id, { supersetGroup: event.target.value.trim() || undefined })} placeholder="A1" />
+                </label>
                 <label className="wide-field">
                   <span>Lần trước</span>
                   <input value={exercise.lastSession} onChange={(event) => props.updateExerciseTarget(exercise.id, { lastSession: event.target.value })} />
@@ -2853,13 +3263,23 @@ function WorkoutView(props: {
 
       <section className="card">
         <h2>Set hiện tại</h2>
+        {props.activeExercise.supersetGroup && <span className="sync-pill">Superset {props.activeExercise.supersetGroup}</span>}
+        {props.allSetsForActive.some((set) => (set.setType ?? "working") === "warmup") && (
+          <div className="chip-row warmup-row" aria-label="Warm-up sets completed">
+            {props.allSetsForActive
+              .filter((set) => (set.setType ?? "working") === "warmup")
+              .map((set) => (
+                <span key={set.id} className="tiny-chip">WU {set.actualWeightKg}kg x {set.actualReps}</span>
+              ))}
+          </div>
+        )}
         <div className="set-table">
           {Array.from({ length: props.activeExercise.targetSets }).map((_, index) => {
             const done = props.completedSets[index];
             const isCurrent = index === props.completedSets.length;
             return (
               <div key={index} className={isCurrent ? "current" : ""}>
-                <span>Set {index + 1}</span>
+                <span>{done ? setTypeLabels[done.setType ?? "working"] : `Set ${index + 1}`}</span>
                 <strong>{done ? (done.actualReps === 0 ? "Skipped" : `${done.actualWeightKg}kg x ${done.actualReps}`) : `${props.activeExercise.targetWeightKg}kg x ${props.activeExercise.targetRepsMin}`}</strong>
                 <em>{done ? (done.actualReps === 0 ? "Skipped" : `RPE ${done.rpe ?? "-"}`) : isCurrent ? "Current" : "Pending"}</em>
               </div>
@@ -2869,6 +3289,30 @@ function WorkoutView(props: {
       </section>
 
       <section className="control-card card">
+        <div className="template-row set-type-row" aria-label="Set type">
+          {(["warmup", "working", "drop", "failure"] as WorkoutSetType[]).map((type) => (
+            <button key={type} className={props.setType === type ? "active" : ""} onClick={() => props.setSetType(type)}>
+              {setTypeLabels[type]}
+            </button>
+          ))}
+        </div>
+        {warmUpSuggestions.length > 0 && (
+          <div className="chip-row warmup-row" aria-label="Warm-up suggestions">
+            {warmUpSuggestions.map((suggestion) => (
+              <button
+                key={`${suggestion.percent}-${suggestion.weightKg}`}
+                className="tiny-chip"
+                onClick={() => {
+                  props.setSetType("warmup");
+                  props.setSetWeight(suggestion.weightKg);
+                  props.setSetReps(suggestion.reps);
+                }}
+              >
+                {suggestion.percent}%: {suggestion.weightKg}kg x {suggestion.reps}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="plate-stepper-block">
           <Stepper label="Tạ" value={props.setWeight} suffix="kg" step={2.5} onChange={props.setSetWeight} />
           <PlateCalculatorReadout calculation={plateCalculation} />
@@ -2968,7 +3412,7 @@ function WorkoutView(props: {
                   <strong>
                     {set.actualReps === 0 ? "Skipped" : `${set.actualWeightKg}kg x ${set.actualReps}`}
                   </strong>
-                  <em>RPE {set.rpe ?? "-"}</em>
+                  <em>{setTypeLabels[set.setType ?? "working"]} - RPE {set.rpe ?? "-"}</em>
                   <div className="row-actions">
                     <button onClick={() => props.updateWorkoutSet(set.id, { actualWeightKg: Math.max(0, set.actualWeightKg - 2.5) })} aria-label="Giảm kg set">
                       -kg
@@ -3081,7 +3525,8 @@ function ProgressView(props: {
   sets: WorkoutSet[];
   bestSet?: WorkoutSet;
   progress: ProgressDashboard;
-  achievements: { code: string; name: string; progress: number; target: number; status: string; streakMonths: number }[];
+  reports: ProgressReports;
+  achievements: { code: string; name: string; progress: number; target: number; status: string; streakMonths: number; condition?: string }[];
   bodyMetrics: BodyMetric[];
   bodyMetricChart: BodyMetricChartDataset;
   bodyMetricRange: BodyMetricRangeDays;
@@ -3108,16 +3553,118 @@ function ProgressView(props: {
   addBodyMetric: () => void;
   deleteBodyMetric: (id: string) => void;
   updateBodyMetric: (id: string, patch: Partial<BodyMetric>) => void;
+  coachRecommendation: RecommendationHistoryItem;
+  coachFeedback: string;
+  setCoachFeedback: (value: string) => void;
+  recommendationHistory: RecommendationHistoryItem[];
+  recommendationDecisions: RecommendationDecision[];
+  decideRecommendation: (decision: "accepted" | "rejected") => void;
+  socialLeaderboard: { visible: boolean; entries: { rank: number; displayName: string; score: number; badgeStreakMonths: number }[] };
+  badgeSharePreview: ReturnType<typeof buildBadgeSharePreview>;
+  workoutSummarySharePreview: ReturnType<typeof buildWorkoutSummarySharePreview>;
+  sharedPosts: SharedPost[];
+  publishSocialShare: (kind: SharedPost["kind"]) => void;
   downloadExport: () => void;
+  downloadReportPdf: (period: keyof ProgressReports) => void;
 }) {
-  const volume = props.sets.filter((set) => set.actualReps > 0).reduce((sum, set) => sum + set.actualWeightKg * set.actualReps, 0);
+  const volume = workingSetVolumeKg(props.sets);
   const oneRm = props.bestSet ? estimatedOneRepMax(props.bestSet.actualWeightKg, props.bestSet.actualReps) : 0;
-  const completedExercises = new Set(props.sets.filter((set) => set.actualReps > 0).map((set) => set.exerciseId)).size;
+  const completedExercises = new Set(props.sets.filter(isWorkingVolumeSet).map((set) => set.exerciseId)).size;
   const maxWeeklyVolume = Math.max(1, ...props.progress.weeklyVolume.map((bucket) => bucket.volumeKg));
   const maxMuscleVolume = Math.max(1, ...props.progress.volumeByMuscleGroup.map((bucket) => bucket.volumeKg));
 
   return (
     <div className="stack progress-screen">
+      <section className="card coach-card">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Guarded coach</p>
+            <h2>{props.coachRecommendation.title}</h2>
+          </div>
+          <span className="sync-pill">{props.coachRecommendation.aiEligible ? props.coachRecommendation.mode : "rule-first"}</span>
+        </div>
+        <p>{props.coachRecommendation.reason}</p>
+        <div className="readiness-list">
+          {props.coachRecommendation.dataBasis.map((basis) => (
+            <span key={basis}>{basis}</span>
+          ))}
+        </div>
+        <div className="setting-row">
+          <span>Suggested action</span>
+          <strong>{props.coachRecommendation.suggestedAction}</strong>
+        </div>
+        <p className="privacy-note">{props.coachRecommendation.guardrail}</p>
+        {!props.coachRecommendation.aiEligible && (
+          <p className="privacy-note">AI insight is hidden until at least 3 useful working sets exist for this exercise. The rule-based coach remains available first.</p>
+        )}
+        <label className="setting-row">
+          <span>Feedback</span>
+          <input value={props.coachFeedback} onChange={(event) => props.setCoachFeedback(event.target.value)} placeholder="Too heavy, accepted, not relevant..." />
+        </label>
+        <div className="coach-actions">
+          <button className="primary-button coach-bg" onClick={() => props.decideRecommendation("accepted")}>
+            Accept
+          </button>
+          <button className="secondary-button" onClick={() => props.decideRecommendation("rejected")}>
+            Reject
+          </button>
+        </div>
+      </section>
+      <section className="card">
+        <h2>Recommendation history</h2>
+        <div className="timeline compact">
+          {props.recommendationDecisions.length ? (
+            props.recommendationDecisions.slice(0, 6).map((decision) => (
+              <div key={decision.id}>
+                <span>{new Date(decision.decidedAt).toLocaleDateString("vi-VN")}</span>
+                <strong>{decision.decision}</strong>
+                <em>
+                  {decision.title} - {decision.action} to {decision.nextWeightKg}kg{decision.feedback ? ` - ${decision.feedback}` : ""}
+                </em>
+              </div>
+            ))
+          ) : (
+            <p>No recommendation feedback yet.</p>
+          )}
+        </div>
+      </section>
+      <section className="card">
+        <div className="section-heading">
+          <h2>Private friend leaderboard</h2>
+          <span className="sync-pill">{props.socialLeaderboard.visible ? "private group" : "off"}</span>
+        </div>
+        {props.socialLeaderboard.visible ? (
+          <div className="leaderboard">
+            {props.socialLeaderboard.entries.map((entry) => (
+              <div key={entry.displayName}>
+                <span>#{entry.rank}</span>
+                <strong>{entry.displayName}</strong>
+                <em>{entry.score} pts - streak {entry.badgeStreakMonths}</em>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="privacy-note">Friend leaderboard is private and disabled until you opt in from Settings.</p>
+        )}
+      </section>
+      <section className="card">
+        <h2>Share to friends</h2>
+        <div className="settings-inline-grid">
+          <SharePreviewCard title="Badge share" preview={props.badgeSharePreview} onPublish={() => props.publishSocialShare("badge")} />
+          <SharePreviewCard title="Workout summary share" preview={props.workoutSummarySharePreview} onPublish={() => props.publishSocialShare("workout-summary")} />
+        </div>
+        <p className="privacy-note">Shared cards redact weight, body fat, email, and workout details unless the matching consent is enabled.</p>
+        <div className="timeline compact">
+          {props.sharedPosts.slice(0, 4).map((post) => (
+            <div key={post.id}>
+              <span>{post.audience}</span>
+              <strong>{post.title}</strong>
+              <em>{new Date(post.publishedAt).toLocaleDateString("vi-VN")}</em>
+            </div>
+          ))}
+          {!props.sharedPosts.length && <p>No shared posts yet.</p>}
+        </div>
+      </section>
       <section className="stats-grid progress-summary">
         <MetricCard label="Nước hôm nay" value={`${props.totalWater}/${props.target}ml`} accent="hydration" />
         <MetricCard icon={<Dumbbell size={19} />} label="Workouts 7d/30d" value={`${props.progress.workoutCount7}/${props.progress.workoutCount30}`} accent="training" />
@@ -3131,6 +3678,10 @@ function ProgressView(props: {
             <span key={index} style={{ height: `${height}%` }} />
           ))}
         </div>
+      </section>
+      <section className="report-grid" aria-label="Weekly and monthly reports">
+        <ReportCard title="Weekly report" report={props.reports.weekly} onExportPdf={() => props.downloadReportPdf("weekly")} />
+        <ReportCard title="Monthly report" report={props.reports.monthly} onExportPdf={() => props.downloadReportPdf("monthly")} />
       </section>
       <section className="card chart-card">
         <div className="section-heading">
@@ -3337,11 +3888,12 @@ function ProgressView(props: {
       <section className="card">
         <h2>Badges</h2>
         <div className="badge-list">
-          {props.achievements.map((badge) => (
+          {props.achievements.filter((badge) => badge.status !== "disabled").map((badge) => (
             <div key={badge.code}>
               <Trophy size={20} />
               <div>
                 <strong>{badge.name}</strong>
+                {badge.condition && <p>{badge.condition}</p>}
                 <p>{badge.progress}/{badge.target} • {badge.status} • streak {badge.streakMonths}</p>
               </div>
             </div>
@@ -3362,6 +3914,33 @@ function ProgressView(props: {
   );
 }
 
+function SharePreviewCard(props: {
+  title: string;
+  preview: ReturnType<typeof buildBadgeSharePreview> | ReturnType<typeof buildWorkoutSummarySharePreview>;
+  onPublish: () => void;
+}) {
+  return (
+    <div className="share-preview-card">
+      <strong>{props.title}</strong>
+      {props.preview ? (
+        <>
+          <span>{props.preview.summary}</span>
+          <em>Visible: {props.preview.visibleFields.join(", ")}</em>
+          <em>Redacted: {props.preview.redactedFields.join(", ")}</em>
+        </>
+      ) : (
+        <>
+          <span>Sharing is off.</span>
+          <em>Enable opt-in controls in Settings before publishing.</em>
+        </>
+      )}
+      <button className="secondary-button" onClick={props.onPublish}>
+        Publish
+      </button>
+    </div>
+  );
+}
+
 function MetricCard(props: { label: string; value: string; accent: "hydration" | "training" | "coach" | "neutral"; icon?: React.ReactNode }) {
   return (
     <div className={`metric-card ${props.accent}`}>
@@ -3369,6 +3948,56 @@ function MetricCard(props: { label: string; value: string; accent: "hydration" |
       <span>{props.label}</span>
       <strong>{props.value}</strong>
     </div>
+  );
+}
+
+function ReportCard(props: { title: string; report: ProgressReports[keyof ProgressReports]; onExportPdf: () => void }) {
+  const trend = props.report.trendVsPrevious;
+  const trendText = (value: number, suffix = "") => `${value >= 0 ? "+" : ""}${value}${suffix}`;
+  return (
+    <section className="card report-card">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">{props.report.periodStart} - {props.report.periodEnd}</p>
+          <h2>{props.title}</h2>
+        </div>
+        <button className="secondary-button export-button" onClick={props.onExportPdf}>
+          Export PDF
+        </button>
+      </div>
+      <div className="report-kpi-grid">
+        <div>
+          <span>Hydration avg</span>
+          <strong>{props.report.hydrationAverageMl}ml</strong>
+          <em>{trendText(trend.hydrationAverageMl, "ml")}</em>
+        </div>
+        <div>
+          <span>Goal hit</span>
+          <strong>{props.report.hydrationGoalHitRate}%</strong>
+          <em>{trendText(trend.goalHitRate, "%")}</em>
+        </div>
+        <div>
+          <span>Workouts</span>
+          <strong>{props.report.workoutCount}</strong>
+          <em>{trendText(trend.workoutCount)}</em>
+        </div>
+        <div>
+          <span>Volume</span>
+          <strong>{props.report.totalVolumeKg}kg</strong>
+          <em>{trendText(trend.totalVolumeKg, "kg")}</em>
+        </div>
+      </div>
+      <div className="report-list">
+        <strong>PRs</strong>
+        <span>{props.report.prs.length ? props.report.prs.slice(0, 3).map((pr) => pr.exerciseName).join(", ") : "No PRs in this period"}</span>
+      </div>
+      {props.report.badges.length > 0 && (
+        <div className="report-list">
+          <strong>Badges</strong>
+          <span>{props.report.badges.filter((badge) => badge.status !== "disabled").map((badge) => `${badge.name}: ${badge.status}`).join(", ") || "Hidden because related module is disabled"}</span>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -3527,17 +4156,24 @@ function SettingsView(props: {
   state: AppState;
   updateProfile: (next: Partial<AppState["profile"]>) => void;
   signInLocal: (mode: AppState["profile"]["authMode"]) => void;
+  authPassword: string;
+  setAuthPassword: (value: string) => void;
+  authenticateEmail: (mode: "sign-in" | "sign-up") => void;
+  startGoogleOAuth: () => void;
   reset: () => void;
   deletePersonalData: () => void;
   notificationPermission: NotificationPermission;
   pushConfigured: boolean;
   pushSubscriptionStatus: PushSubscriptionStatus;
+  healthDashboard: HealthDashboard | null;
   requestNotifications: () => void;
   subscribeWebPush: () => void;
   unsubscribeWebPush: () => void;
   sendTestPushNotification: () => void;
   markQueue: (status: "synced" | "failed") => void;
-  clearQueue: (status?: "synced" | "failed") => void;
+  retryQueueItem: (id: string) => void;
+  confirmRoutineConflict: (id: string) => void;
+  clearQueue: (status?: SyncQueueItem["status"]) => void;
   downloadExport: () => void;
   downloadCsvExport: (dataset?: CsvDataset) => void;
   importJsonExport: (file: File) => void;
@@ -3545,14 +4181,21 @@ function SettingsView(props: {
   setRestoreSections: (sections: RestoreSection[]) => void;
   updateNotificationSettings: (next: Partial<AppState["notificationSettings"]>) => void;
   updatePlateSettings: (next: Partial<PlateSettings>) => void;
+  updateSocialPrivacy: (next: Partial<SocialPrivacySettings>) => void;
+  updateHealthIntegration: (next: Partial<HealthIntegrationSettings>) => void;
+  requestHealthPermission: () => void;
+  revokeHealthPermission: () => void;
+  addFriend: () => void;
+  updateFriend: (id: string, patch: Partial<Friend>) => void;
   drinkModules: DrinkModule[];
   updateDrinkModule: (id: DrinkModule["id"], patch: Partial<DrinkModule>) => void;
   reopenOnboarding: () => void;
 }) {
-  const pendingQueue = props.state.syncQueue.filter((item) => item.status === "pending").length;
+  const pendingQueue = props.state.syncQueue.filter((item) => item.status === "pending" || item.status === "syncing").length;
   const syncedQueue = props.state.syncQueue.filter((item) => item.status === "synced").length;
-  const failedQueue = props.state.syncQueue.filter((item) => item.status === "failed").length;
+  const failedQueue = props.state.syncQueue.filter((item) => item.status === "failed" || item.status === "conflict").length;
   const creatineActive = isDrinkModuleActive(props.drinkModules, "creatine");
+  const healthPrivacyCopy = healthIntegrationPrivacyCopy(props.state.healthIntegration);
 
   function updateModuleGoal(module: DrinkModule, goal: number) {
     if (module.id === "water") {
@@ -3564,6 +4207,13 @@ function SettingsView(props: {
       return;
     }
     props.updateDrinkModule(module.id, { goal });
+  }
+
+  function toggleHealthDataType(dataType: HealthSyncDataType, enabled: boolean) {
+    const selectedDataTypes = enabled
+      ? Array.from(new Set([...props.state.healthIntegration.selectedDataTypes, dataType]))
+      : props.state.healthIntegration.selectedDataTypes.filter((selected) => selected !== dataType);
+    props.updateHealthIntegration({ selectedDataTypes });
   }
 
   function parseHours(value: string): number[] {
@@ -3620,12 +4270,27 @@ function SettingsView(props: {
             onChange={(event) => props.updateProfile({ email: event.target.value })}
           />
         </label>
+        <label className="setting-row">
+          <span>Password</span>
+          <input
+            type="password"
+            value={props.authPassword}
+            onChange={(event) => props.setAuthPassword(event.target.value)}
+            autoComplete="current-password"
+          />
+        </label>
         <div className="split-actions">
-          <button className="secondary-button" onClick={() => props.signInLocal("email")}>
-            Email mode
+          <button className="secondary-button" onClick={() => props.authenticateEmail("sign-up")}>
+            Sign up email
           </button>
-          <button className="secondary-button" onClick={() => props.signInLocal("google")}>
-            Google mode
+          <button className="secondary-button" onClick={() => props.authenticateEmail("sign-in")}>
+            Sign in email
+          </button>
+          <button className="secondary-button" onClick={props.startGoogleOAuth}>
+            Google OAuth
+          </button>
+          <button className="secondary-button" onClick={() => props.signInLocal("local")}>
+            Local mode
           </button>
         </div>
         <button className="secondary-button export-button" onClick={props.reopenOnboarding}>
@@ -3758,6 +4423,140 @@ function SettingsView(props: {
           />
         </label>
         <p className="privacy-note">Mặc định riêng tư. Leaderboard chỉ hiển thị tên, avatar, rank và badge streak.</p>
+      </section>
+      <section className="card">
+        <h2>Social privacy</h2>
+        <p className="privacy-note">Private by default. Sharing requires opt-in and never includes weight, body fat, email, or exercise details unless that exact permission is enabled.</p>
+        <div className="restore-section-grid" aria-label="Social privacy controls">
+          {[
+            ["friendLeaderboardEnabled", "Friend leaderboard"],
+            ["shareBadges", "Share badges"],
+            ["shareWorkoutSummaries", "Share workout summaries"],
+            ["shareWorkoutDetails", "Workout details consent"],
+            ["shareBodyMetrics", "Body metrics consent"]
+          ].map(([key, label]) => (
+            <label key={key} className="toggle-row compact-toggle">
+              <span>{label}</span>
+              <input
+                type="checkbox"
+                checked={Boolean(props.state.socialPrivacy[key as keyof SocialPrivacySettings])}
+                onChange={(event) => props.updateSocialPrivacy({ [key]: event.target.checked } as Partial<SocialPrivacySettings>)}
+              />
+            </label>
+          ))}
+        </div>
+        <div className="section-heading">
+          <h3>Friends</h3>
+          <button className="secondary-button" onClick={props.addFriend}>Add friend</button>
+        </div>
+        <div className="leaderboard">
+          {props.state.friends.map((friend) => (
+            <div key={friend.id}>
+              <span>{friend.status}</span>
+              <strong>{friend.displayName}</strong>
+              <em>{friend.handle} - {friend.score} pts</em>
+              <div className="split-actions">
+                <button className="secondary-button" onClick={() => props.updateFriend(friend.id, { status: "accepted" })}>Accept</button>
+                <button className="secondary-button danger-button" onClick={() => props.updateFriend(friend.id, { status: "blocked" })}>Block</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+      <section className="card">
+        <h2>Health platform permissions</h2>
+        <p className="privacy-note">{healthPrivacyCopy}</p>
+        <div className="settings-inline-grid">
+          <label>
+            <span>Platform</span>
+            <select
+              value={props.state.healthIntegration.provider}
+              onChange={(event) => props.updateHealthIntegration({ provider: event.target.value as HealthProvider, permissionStatus: "not_requested" })}
+            >
+              <option value="health-connect">Health Connect</option>
+              <option value="apple-health">Apple Health</option>
+            </select>
+          </label>
+          <label>
+            <span>Weight unit</span>
+            <select
+              value={props.state.healthIntegration.unitMapping.weight}
+              onChange={(event) =>
+                props.updateHealthIntegration({
+                  unitMapping: { ...props.state.healthIntegration.unitMapping, weight: event.target.value as HealthIntegrationSettings["unitMapping"]["weight"] }
+                })
+              }
+            >
+              <option value="kg">kg</option>
+              <option value="lb">lb</option>
+            </select>
+          </label>
+          <label>
+            <span>Hydration unit</span>
+            <select
+              value={props.state.healthIntegration.unitMapping.hydration}
+              onChange={(event) =>
+                props.updateHealthIntegration({
+                  unitMapping: { ...props.state.healthIntegration.unitMapping, hydration: event.target.value as HealthIntegrationSettings["unitMapping"]["hydration"] }
+                })
+              }
+            >
+              <option value="ml">ml</option>
+              <option value="oz">oz</option>
+            </select>
+          </label>
+          <label>
+            <span>Workout distance</span>
+            <select
+              value={props.state.healthIntegration.unitMapping.workoutDistance}
+              onChange={(event) =>
+                props.updateHealthIntegration({
+                  unitMapping: { ...props.state.healthIntegration.unitMapping, workoutDistance: event.target.value as HealthIntegrationSettings["unitMapping"]["workoutDistance"] }
+                })
+              }
+            >
+              <option value="km">km</option>
+              <option value="mi">mi</option>
+            </select>
+          </label>
+        </div>
+        <div className="restore-section-grid" aria-label="Health data type controls">
+          {healthSyncDataTypes.map((dataType) => (
+            <label key={dataType} className="toggle-row compact-toggle">
+              <span>{dataType === "weight" ? "Sync weight" : dataType === "workout" ? "Sync workout" : "Sync hydration"}</span>
+              <input
+                type="checkbox"
+                checked={props.state.healthIntegration.selectedDataTypes.includes(dataType)}
+                onChange={(event) => toggleHealthDataType(dataType, event.target.checked)}
+              />
+            </label>
+          ))}
+          <label className="toggle-row compact-toggle">
+            <span>Health privacy consent</span>
+            <input
+              type="checkbox"
+              checked={props.state.healthIntegration.privacyAccepted}
+              onChange={(event) => props.updateHealthIntegration({ privacyAccepted: event.target.checked })}
+            />
+          </label>
+        </div>
+        <div className="readiness-list">
+          <span>Permission: {props.state.healthIntegration.permissionStatus}</span>
+          <span>Native bridge: {props.state.healthIntegration.nativeBridgeAvailable ? "available" : "required"}</span>
+          {healthSyncDataTypes.map((dataType) => (
+            <span key={dataType}>
+              {dataType}: {canSyncHealthData(props.state.healthIntegration, dataType) ? "Allowed by contract" : "Not syncing"}
+            </span>
+          ))}
+        </div>
+        <div className="split-actions">
+          <button className="secondary-button" onClick={props.requestHealthPermission} disabled={!props.state.healthIntegration.selectedDataTypes.length}>
+            Request health permission
+          </button>
+          <button className="secondary-button danger-button" onClick={props.revokeHealthPermission}>
+            Revoke health permission
+          </button>
+        </div>
       </section>
       <section className="card">
         <h2>Notifications</h2>
@@ -3922,10 +4721,14 @@ function SettingsView(props: {
       <section className="card">
         <h2>Backend readiness</h2>
         <div className="readiness-list">
-          <span>Supabase adapter: env-ready contract</span>
-          <span>AI coach: Gemini/OpenAI fallback contract</span>
-          <span>Vercel Cron: configured</span>
-          <span>Push actions: Log 250ml / Snooze</span>
+          <span>Storage: {props.healthDashboard?.storageAdapter ?? "checking"}</span>
+          <span>Request id: {props.healthDashboard?.requestId ?? "checking"}</span>
+          <span>Checked: {props.healthDashboard?.checkedAt ? new Date(props.healthDashboard.checkedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "checking"}</span>
+          {Object.entries(props.healthDashboard?.integrations ?? {}).map(([name, status]) => (
+            <span key={name}>
+              {name}: {status}
+            </span>
+          ))}
         </div>
       </section>
       <section className="card">
@@ -3950,15 +4753,37 @@ function SettingsView(props: {
           <button className="secondary-button" onClick={() => props.clearQueue("failed")} disabled={!failedQueue}>
             Clear failed
           </button>
+          <button className="secondary-button" onClick={() => props.clearQueue("conflict")} disabled={!props.state.syncQueue.some((item) => item.status === "conflict")}>
+            Clear conflicts
+          </button>
         </div>
         <div className="sync-preview">
-          {props.state.syncQueue.slice(0, 4).map((item) => (
+          {props.state.syncQueue.map((item) => (
             <div key={item.id}>
               <span>{item.status}</span>
               <strong>{item.type}</strong>
-              <em>{new Date(item.createdAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</em>
+              <em>
+                {item.attempts ?? 0} tries
+                {item.nextRetryAt ? ` - retry ${new Date(item.nextRetryAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}` : ""}
+              </em>
+              {item.lastError && <small>{item.lastError}</small>}
+              {item.conflict && (
+                <small>
+                  Conflict: {item.conflict.message}. Remote preview: {JSON.stringify(item.conflict.remote).slice(0, 140)}
+                </small>
+              )}
+              <small>{JSON.stringify(item.payload).slice(0, 180)}</small>
+              <div className="split-actions">
+                <button className="secondary-button" onClick={() => props.retryQueueItem(item.id)} disabled={item.status === "pending" || item.status === "syncing"}>
+                  Retry
+                </button>
+                <button className="secondary-button" onClick={() => props.confirmRoutineConflict(item.id)} disabled={item.status !== "conflict"}>
+                  Confirm routine
+                </button>
+              </div>
             </div>
           ))}
+          {!props.state.syncQueue.length && <div>No queued mutations</div>}
         </div>
         <p className="privacy-note">Queue hiện lưu local-first để chuẩn bị sync backend và xử lý retry/conflict ở bước production.</p>
       </section>

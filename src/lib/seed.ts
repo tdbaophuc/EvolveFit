@@ -1,18 +1,27 @@
 import {
   builtInExerciseDefinitions,
+  defaultHealthIntegrationSettings,
+  defaultSocialPrivacySettings,
   defaultDrinkModules,
   defaultPlateSettings,
   migrateWorkoutExercisesToRoutine,
   type BodyMetric,
   type DrinkModule,
   type ExerciseDefinition,
+  type Friend,
+  type HealthIntegrationSettings,
   type HydrationLog,
   type QuickAmount,
   type PlateSettings,
   type ReminderMode,
   type Routine,
+  type RecommendationDecision,
+  type RecommendationHistoryItem,
+  type SharedPost,
+  type SocialPrivacySettings,
   type Supplement,
   type SupplementLog,
+  type SyncQueueItem,
   type WorkoutExercise,
   type WorkoutSession,
   type WorkoutSet
@@ -81,20 +90,13 @@ export type AppState = {
   bodyMetrics: BodyMetric[];
   activeTemplate: "ppl" | "upper-lower" | "full-body" | "custom";
   activeExerciseIndex: number;
-  recommendationDecisions: {
-    id: string;
-    title: string;
-    decision: "accepted" | "rejected";
-    reason?: string;
-    decidedAt: string;
-  }[];
-  syncQueue: {
-    id: string;
-    type: string;
-    status: "pending" | "synced" | "failed";
-    createdAt: string;
-    payload: unknown;
-  }[];
+  recommendationHistory: RecommendationHistoryItem[];
+  recommendationDecisions: RecommendationDecision[];
+  friends: Friend[];
+  healthIntegration: HealthIntegrationSettings;
+  socialPrivacy: SocialPrivacySettings;
+  sharedPosts: SharedPost[];
+  syncQueue: SyncQueueItem[];
   restEndsAt?: string;
   undo?: {
     label: string;
@@ -302,6 +304,15 @@ export const initialState: AppState = {
   ],
   activeTemplate: "ppl",
   activeExerciseIndex: 0,
+  recommendationHistory: [],
   recommendationDecisions: [],
+  friends: [
+    { id: "friend-minh", displayName: "Minh", handle: "@minh", status: "accepted", badgeStreakMonths: 4, score: 96, addedAt: now.toISOString() },
+    { id: "friend-an", displayName: "An", handle: "@an", status: "accepted", badgeStreakMonths: 2, score: 88, addedAt: now.toISOString() },
+    { id: "friend-linh", displayName: "Linh", handle: "@linh", status: "pending", badgeStreakMonths: 1, score: 72, addedAt: now.toISOString() }
+  ],
+  healthIntegration: defaultHealthIntegrationSettings(),
+  socialPrivacy: defaultSocialPrivacySettings(),
+  sharedPosts: [],
   syncQueue: []
 };

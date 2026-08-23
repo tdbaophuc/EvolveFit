@@ -724,19 +724,19 @@ Dữ liệu cá nhân quản lý rõ, restore an toàn.
 - Không chia sẻ dữ liệu nhạy cảm mặc định.
 - User opt-in trước khi publish.
 
-### Epic 26. Health Connect / Apple Health(chưa cần làm)
+### Epic 26. Health Connect / Apple Health
 
 #### Tasks
 
-- Nghiên cứu integration target.
-- Sync weight/workout/hydration nếu platform cho phép.
-- Mapping unit.
-- Permission screen.
+- [x] Nghiên cứu integration target.
+- [x] Sync weight/workout/hydration nếu platform cho phép.
+- [x] Mapping unit.
+- [x] Permission screen.
 
 #### Acceptance criteria
 
-- User chọn loại dữ liệu được sync.
-- Không sync ngầm.
+- [x] User chọn loại dữ liệu được sync.
+- [x] Không sync ngầm.
 
 ### Epic 27. Native mobile/watch app( chưa cần làm)
 
@@ -939,7 +939,7 @@ Dữ liệu cá nhân quản lý rõ, restore an toàn.
 - [ ] Warm-up/drop/failure/superset.
 - [ ] AI coach guarded.
 - [ ] Social/friend leaderboard private-first.
-- [ ] Health integration permissions.
+- [x] Health integration permissions.
 - [ ] Native/watch decision.
 - [ ] Progress photos private.
 - [ ] Nutrition tracking decision.
@@ -951,4 +951,3 @@ Dữ liệu cá nhân quản lý rõ, restore an toàn.
 - Dùng Phase 3 khi bắt đầu production backend.
 - Dùng Phase 4 làm product expansion, không kéo vào V1 nếu chưa ổn core.
 - Mỗi sprint nên tạo issue/PR riêng theo epic, không gom nhiều domain vào một PR lớn.
-

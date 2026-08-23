@@ -1,5 +1,6 @@
-import { progressiveOverloadRecommendation, type Recommendation, type WorkoutSet } from "./core";
+import { coachGuardrailCopy, progressiveOverloadRecommendation, type Recommendation, type WorkoutSet } from "./core";
 import { isWebPushConfigured } from "./push";
+import { normalizeSupabaseProjectUrl } from "./supabase-url";
 
 export type IntegrationStatus = {
   supabase: "configured" | "missing-env";
@@ -7,6 +8,7 @@ export type IntegrationStatus = {
   ai: "gemini" | "openai" | "rule-fallback";
   webPush: "configured" | "missing-env";
   cronSecret: "configured" | "missing-env";
+  healthPlatform: "native-bridge-required";
 };
 
 export function getIntegrationStatus(env: NodeJS.ProcessEnv = process.env): IntegrationStatus {
@@ -15,7 +17,8 @@ export function getIntegrationStatus(env: NodeJS.ProcessEnv = process.env): Inte
     supabaseServiceRole: env.SUPABASE_SERVICE_ROLE_KEY ? "configured" : "missing-env",
     ai: env.GEMINI_API_KEY ? "gemini" : env.OPENAI_API_KEY ? "openai" : "rule-fallback",
     webPush: isWebPushConfigured(env) ? "configured" : "missing-env",
-    cronSecret: env.CRON_SECRET ? "configured" : "missing-env"
+    cronSecret: env.CRON_SECRET ? "configured" : "missing-env",
+    healthPlatform: "native-bridge-required"
   };
 }
 
@@ -29,7 +32,7 @@ export function createSupabaseRestRequest(
   const anonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anonKey) throw new Error("Supabase env is missing");
 
-  return new Request(`${url.replace(/\/$/, "")}/rest/v1/${path.replace(/^\//, "")}`, {
+  return new Request(`${normalizeSupabaseProjectUrl(url)}/rest/v1/${path.replace(/^\//, "")}`, {
     ...init,
     headers: {
       apikey: anonKey,
@@ -46,7 +49,7 @@ export function createSupabaseServiceRoleRequest(path: string, init: RequestInit
   const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceRoleKey) throw new Error("Supabase service-role env is missing");
 
-  return new Request(`${url.replace(/\/$/, "")}/rest/v1/${path.replace(/^\//, "")}`, {
+  return new Request(`${normalizeSupabaseProjectUrl(url)}/rest/v1/${path.replace(/^\//, "")}`, {
     ...init,
     headers: {
       apikey: serviceRoleKey,
@@ -66,7 +69,24 @@ export async function verifySupabaseProduction(
   mode: "service-role" | "missing-env";
   checks: { table: string; ok: boolean; status?: number }[];
 }> {
-  const tables = ["profiles", "hydration_logs", "supplements", "supplement_logs", "workout_sets", "user_body_metrics"];
+  const tables = [
+    "profiles",
+    "drink_modules",
+    "hydration_logs",
+    "supplements",
+    "supplement_logs",
+    "routines",
+    "workout_days",
+    "routine_exercises",
+    "exercise_library",
+    "workout_sessions",
+    "workout_sets",
+    "body_metrics",
+    "achievements",
+    "leaderboard_profiles",
+    "push_subscriptions",
+    "sync_events"
+  ];
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
     return { ok: false, mode: "missing-env", checks: tables.map((table) => ({ table, ok: false })) };
   }
@@ -88,9 +108,10 @@ export async function aiCoachRecommendation(input: {
   recentSets: Pick<WorkoutSet, "actualWeightKg" | "actualReps" | "rpe">[];
   recoveryNote?: string;
   env?: NodeJS.ProcessEnv;
-}): Promise<Recommendation & { mode: IntegrationStatus["ai"] }> {
+}): Promise<Recommendation> {
   const env = input.env ?? process.env;
   const fallback = progressiveOverloadRecommendation(input);
+  if (!fallback.aiEligible) return fallback;
 
   if (env.GEMINI_API_KEY) {
     return callGemini(input, fallback, env.GEMINI_API_KEY);
@@ -113,7 +134,7 @@ async function callGemini(
   },
   fallback: Recommendation,
   apiKey: string
-): Promise<Recommendation & { mode: "gemini" }> {
+): Promise<Recommendation> {
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
     {
@@ -126,7 +147,7 @@ async function callGemini(
     }
   );
 
-  if (!response.ok) return { ...fallback, source: "ai-assisted", mode: "gemini" };
+  if (!response.ok) return fallback;
   const payload = (await response.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
   return parseAiRecommendation(payload.candidates?.[0]?.content?.parts?.[0]?.text, fallback, "gemini");
 }
@@ -141,7 +162,7 @@ async function callOpenAI(
   },
   fallback: Recommendation,
   apiKey: string
-): Promise<Recommendation & { mode: "openai" }> {
+): Promise<Recommendation> {
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -155,7 +176,7 @@ async function callOpenAI(
     })
   });
 
-  if (!response.ok) return { ...fallback, source: "ai-assisted", mode: "openai" };
+  if (!response.ok) return fallback;
   const payload = (await response.json()) as { output_text?: string };
   return parseAiRecommendation(payload.output_text, fallback, "openai");
 }
@@ -172,29 +193,42 @@ function coachPrompt(
 ) {
   return JSON.stringify({
     instruction:
-      "Return only JSON with title, reason, action, nextWeightKg. Keep advice conservative, training-focused, and not medical.",
+      "Return only JSON with title, reason, action, nextWeightKg, dataBasis, suggestedAction. Keep advice conservative, training-focused, and not medical. Do not diagnose, treat injuries, recommend ignoring pain, or replace a qualified professional.",
     input,
-    ruleFallback: fallback
+    ruleFirstInsight: fallback,
+    guardrail: coachGuardrailCopy()
   });
 }
 
-function parseAiRecommendation<TMode extends "gemini" | "openai">(
+function parseAiRecommendation(
   text: string | undefined,
   fallback: Recommendation,
-  mode: TMode
-): Recommendation & { mode: TMode } {
-  if (!text) return { ...fallback, source: "ai-assisted", mode };
+  mode: "gemini" | "openai"
+): Recommendation {
+  if (!text) return fallback;
   try {
     const parsed = JSON.parse(text) as Partial<Recommendation>;
+    const title = parsed.title ?? fallback.title;
+    const reason = parsed.reason ?? fallback.reason;
+    const suggestedAction = parsed.suggestedAction ?? fallback.suggestedAction;
+    if (containsUnsafeMedicalAdvice(`${title} ${reason} ${suggestedAction}`)) return fallback;
     return {
-      title: parsed.title ?? fallback.title,
-      reason: parsed.reason ?? fallback.reason,
+      title,
+      reason,
       source: "ai-assisted",
       action: parsed.action ?? fallback.action,
       nextWeightKg: Number.isFinite(parsed.nextWeightKg) ? Number(parsed.nextWeightKg) : fallback.nextWeightKg,
+      dataBasis: Array.isArray(parsed.dataBasis) && parsed.dataBasis.length ? parsed.dataBasis.map(String).slice(0, 5) : fallback.dataBasis,
+      suggestedAction,
+      guardrail: coachGuardrailCopy(),
+      aiEligible: true,
       mode
     };
   } catch {
-    return { ...fallback, source: "ai-assisted", mode };
+    return fallback;
   }
+}
+
+function containsUnsafeMedicalAdvice(text: string): boolean {
+  return /\b(diagnose|treat injury|ignore pain|push through pain|stop medication|medical emergency|chest pain.*continue)\b/i.test(text);
 }
