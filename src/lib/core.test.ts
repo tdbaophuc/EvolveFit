@@ -249,10 +249,10 @@ describe("routine import parser", () => {
     const preview = parseRoutineCsv("session,day,exercise,sets,reps max\nPush,Monday,Bench,3,10", "missing.csv");
 
     expect(preview.rows).toEqual([]);
-    expect(preview.errors).toContain("Missing required column: muscle group.");
-    expect(preview.errors).toContain("Missing required column: reps min.");
-    expect(preview.errors).toContain("Missing required column: weight.");
-    expect(preview.errors).toContain("Missing required column: rest seconds.");
+    expect(preview.errors).toContain("Thiếu cột bắt buộc: nhóm cơ.");
+    expect(preview.errors).toContain("Thiếu cột bắt buộc: rep tối thiểu.");
+    expect(preview.errors).toContain("Thiếu cột bắt buộc: tạ.");
+    expect(preview.errors).toContain("Thiếu cột bắt buộc: giây nghỉ.");
   });
 
   it("reports invalid row values with line and column context", () => {
@@ -265,11 +265,11 @@ describe("routine import parser", () => {
     expect(preview.rows).toEqual([]);
     expect(preview.errors).toEqual(
       expect.arrayContaining([
-        "Line 2, column exercise: value is required.",
-        "Line 2, column sets: must be a positive integer.",
-        "Line 2, column reps min: must be less than or equal to reps max.",
-        "Line 2, column weight: must be zero or positive.",
-        "Line 2, column rest seconds: must be at least 15."
+        "Dòng 2, cột bài tập: cần có giá trị.",
+        "Dòng 2, cột số set: phải là số nguyên dương.",
+        "Dòng 2, cột rep tối thiểu: phải nhỏ hơn hoặc bằng rep tối đa.",
+        "Dòng 2, cột tạ: phải bằng 0 hoặc lớn hơn.",
+        "Dòng 2, cột giây nghỉ: phải ít nhất 15."
       ])
     );
   });
@@ -284,7 +284,7 @@ describe("routine import parser", () => {
     const preview = parseRoutineCsv(csv, "duplicate.csv");
 
     expect(preview.rows).toHaveLength(2);
-    expect(preview.errors).toContain('Line 3, column exercise: duplicate exercise "Bench Press" in session "Push".');
+    expect(preview.errors).toContain('Dòng 3, cột bài tập: bài "Bench Press" bị trùng trong buổi "Push".');
   });
 });
 

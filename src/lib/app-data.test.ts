@@ -36,7 +36,7 @@ describe("app data import/export", () => {
     );
 
     expect(invalid.ok).toBe(false);
-    expect(!invalid.ok && invalid.errors[0]).toContain("hydrationLogs");
+    expect(!invalid.ok && invalid.errors[0]).toContain("Lịch sử nước");
 
     const malformedRoutine = parseImportedAppData(JSON.stringify({ metadata: { schemaVersion: 2 }, data: { routines: [{ id: "broken" }] } }));
     expect(malformedRoutine.ok).toBe(false);

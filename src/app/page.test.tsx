@@ -43,7 +43,7 @@ describe("Live Workout session queue", () => {
     await user.click(screen.getByRole("button", { name: /Hoàn thành set/i }));
 
     expect(await screen.findByRole("status", { name: "Thông báo PR live" })).toHaveTextContent("PR mới");
-    expect(screen.getByText(/New PR:/)).toBeInTheDocument();
+    expect(screen.getByText(/PR mới:/)).toBeInTheDocument();
   });
 });
 
@@ -221,7 +221,7 @@ describe("Settings import and privacy", () => {
     await user.click(screen.getByLabelText("Đồng ý quyền riêng tư sức khỏe"));
     await user.click(screen.getByRole("button", { name: "Yêu cầu quyền sức khỏe" }));
 
-    expect(await screen.findByText(/Cần native bridge trước khi đồng bộ/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Cần cầu nối ứng dụng trước khi đồng bộ/i)).toBeInTheDocument();
     expect(screen.getByText("Quyền: Đã lưu yêu cầu")).toBeInTheDocument();
     expect(screen.getByText("Cân nặng: Chưa đồng bộ")).toBeInTheDocument();
     expect(screen.getByText("Buổi tập: Chưa đồng bộ")).toBeInTheDocument();

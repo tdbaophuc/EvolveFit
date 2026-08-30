@@ -56,23 +56,23 @@ export function parseImportedAppData(text: string): ValidationResult<AppState> {
   try {
     parsed = JSON.parse(text);
   } catch {
-    return { ok: false, errors: ["File is not valid JSON."] };
+    return { ok: false, errors: ["File không phải JSON hợp lệ."] };
   }
   return migrateImportedAppData(parsed);
 }
 
 export function migrateImportedAppData(input: unknown): ValidationResult<AppState> {
-  if (!isRecord(input)) return { ok: false, errors: ["Import must be a JSON object."] };
+  if (!isRecord(input)) return { ok: false, errors: ["Dữ liệu nhập phải là một object JSON."] };
 
   const metadata = input.metadata;
   const envelope = isRecord(metadata) && "data" in input;
   if (envelope) {
-    if (typeof metadata.schemaVersion !== "number") return { ok: false, errors: ["metadata.schemaVersion is required."] };
-    if (metadata.schemaVersion > appDataSchemaVersion) return { ok: false, errors: ["Export schema is newer than this app."] };
+    if (typeof metadata.schemaVersion !== "number") return { ok: false, errors: ["Thiếu phiên bản dữ liệu trong metadata.schemaVersion."] };
+    if (metadata.schemaVersion > appDataSchemaVersion) return { ok: false, errors: ["Phiên bản dữ liệu xuất mới hơn phiên bản app hiện tại."] };
   }
 
   const candidate = envelope ? input.data : input;
-  if (!isRecord(candidate)) return { ok: false, errors: ["Export data must be a JSON object."] };
+  if (!isRecord(candidate)) return { ok: false, errors: ["Dữ liệu xuất phải là một object JSON."] };
 
   const errors = validateImportCandidate(candidate);
   if (errors.length) return { ok: false, errors };
@@ -217,19 +217,19 @@ function normalizeImportedState(parsed: Partial<AppState>): AppState {
 
 function validateImportCandidate(candidate: Record<string, unknown>) {
   const errors: string[] = [];
-  if ("profile" in candidate && !isRecord(candidate.profile)) errors.push("profile must be an object.");
-  if ("hydrationLogs" in candidate && !isHydrationLogs(candidate.hydrationLogs)) errors.push("hydrationLogs must be valid hydration log objects.");
-  if ("supplementLogs" in candidate && !Array.isArray(candidate.supplementLogs)) errors.push("supplementLogs must be an array.");
-  if ("workoutSets" in candidate && !isWorkoutSets(candidate.workoutSets)) errors.push("workoutSets must be valid workout set objects.");
-  if ("workoutSessions" in candidate && !Array.isArray(candidate.workoutSessions)) errors.push("workoutSessions must be an array.");
-  if ("routines" in candidate && !isRoutines(candidate.routines)) errors.push("routines must be valid routine objects.");
-  if ("bodyMetrics" in candidate && !isBodyMetrics(candidate.bodyMetrics)) errors.push("bodyMetrics must be valid body metric objects.");
-  if ("notificationSettings" in candidate && !isRecord(candidate.notificationSettings)) errors.push("notificationSettings must be an object.");
-  if ("plateSettings" in candidate && !isPlateSettings(candidate.plateSettings)) errors.push("plateSettings must be a valid plate calculator settings object.");
-  if ("drinkModules" in candidate && !Array.isArray(candidate.drinkModules)) errors.push("drinkModules must be an array.");
-  if ("supplements" in candidate && !Array.isArray(candidate.supplements)) errors.push("supplements must be an array.");
-  if ("quickAmounts" in candidate && !Array.isArray(candidate.quickAmounts)) errors.push("quickAmounts must be an array.");
-  if ("healthIntegration" in candidate && !isRecord(candidate.healthIntegration)) errors.push("healthIntegration must be an object.");
+  if ("profile" in candidate && !isRecord(candidate.profile)) errors.push("Hồ sơ phải là object hợp lệ.");
+  if ("hydrationLogs" in candidate && !isHydrationLogs(candidate.hydrationLogs)) errors.push("Lịch sử nước phải gồm các log hợp lệ.");
+  if ("supplementLogs" in candidate && !Array.isArray(candidate.supplementLogs)) errors.push("Lịch sử bổ sung phải là danh sách.");
+  if ("workoutSets" in candidate && !isWorkoutSets(candidate.workoutSets)) errors.push("Set tập phải gồm các mục hợp lệ.");
+  if ("workoutSessions" in candidate && !Array.isArray(candidate.workoutSessions)) errors.push("Buổi tập phải là danh sách.");
+  if ("routines" in candidate && !isRoutines(candidate.routines)) errors.push("Lịch tập phải gồm các mục hợp lệ.");
+  if ("bodyMetrics" in candidate && !isBodyMetrics(candidate.bodyMetrics)) errors.push("Chỉ số cơ thể phải gồm các mục hợp lệ.");
+  if ("notificationSettings" in candidate && !isRecord(candidate.notificationSettings)) errors.push("Cài đặt thông báo phải là object hợp lệ.");
+  if ("plateSettings" in candidate && !isPlateSettings(candidate.plateSettings)) errors.push("Cài đặt bộ tính đĩa tạ không hợp lệ.");
+  if ("drinkModules" in candidate && !Array.isArray(candidate.drinkModules)) errors.push("Module thức uống phải là danh sách.");
+  if ("supplements" in candidate && !Array.isArray(candidate.supplements)) errors.push("Bổ sung phải là danh sách.");
+  if ("quickAmounts" in candidate && !Array.isArray(candidate.quickAmounts)) errors.push("Lượng uống nhanh phải là danh sách.");
+  if ("healthIntegration" in candidate && !isRecord(candidate.healthIntegration)) errors.push("Cài đặt nền tảng sức khỏe phải là object hợp lệ.");
   return errors;
 }
 

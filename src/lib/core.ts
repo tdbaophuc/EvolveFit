@@ -1124,24 +1124,24 @@ export function parseRoutineCsv(text: string, fileName: string): RoutineImportPr
     .map((line) => line.trim())
     .filter(Boolean);
   const errors: string[] = [];
-  if (lines.length < 2) return { fileName, rows: [], errors: ["CSV needs a header row and at least one exercise row."] };
+  if (lines.length < 2) return { fileName, rows: [], errors: ["CSV cần có dòng tiêu đề và ít nhất một dòng bài tập."] };
 
   const headers = splitCsvLine(lines[0]);
   const indexes = routineHeaderIndexes(headers);
   const requiredColumns: [keyof typeof indexes, string][] = [
-    ["session", "session"],
-    ["day", "day"],
-    ["exercise", "exercise"],
-    ["muscleGroup", "muscle group"],
-    ["sets", "sets"],
-    ["repsMin", "reps min"],
-    ["repsMax", "reps max"],
-    ["weight", "weight"],
-    ["restSeconds", "rest seconds"]
+    ["session", "buổi"],
+    ["day", "ngày"],
+    ["exercise", "bài tập"],
+    ["muscleGroup", "nhóm cơ"],
+    ["sets", "số set"],
+    ["repsMin", "rep tối thiểu"],
+    ["repsMax", "rep tối đa"],
+    ["weight", "tạ"],
+    ["restSeconds", "giây nghỉ"]
   ];
 
   requiredColumns.forEach(([key, label]) => {
-    if (indexes[key] < 0) errors.push(`Missing required column: ${label}.`);
+    if (indexes[key] < 0) errors.push(`Thiếu cột bắt buộc: ${label}.`);
   });
   if (errors.length) return { fileName, rows: [], errors };
 
@@ -1166,19 +1166,19 @@ export function parseRoutineCsv(text: string, fileName: string): RoutineImportPr
     const duplicateKey = `${normalizeHeader(session)}::${normalizeHeader(name)}`;
     const duplicated = Boolean(session && name && seen.has(duplicateKey));
 
-    if (!session) errors.push(`Line ${sourceLine}, column session: value is required.`);
-    if (!day) errors.push(`Line ${sourceLine}, column day: value is required.`);
-    if (!name) errors.push(`Line ${sourceLine}, column exercise: value is required.`);
-    if (!muscleGroup) errors.push(`Line ${sourceLine}, column muscle group: value is required.`);
-    if (!Number.isInteger(targetSets) || targetSets < 1) errors.push(`Line ${sourceLine}, column sets: must be a positive integer.`);
-    if (!Number.isFinite(targetRepsMin) || targetRepsMin < 1) errors.push(`Line ${sourceLine}, column reps min: must be positive.`);
-    if (!Number.isFinite(targetRepsMax) || targetRepsMax < 1) errors.push(`Line ${sourceLine}, column reps max: must be positive.`);
+    if (!session) errors.push(`Dòng ${sourceLine}, cột buổi: cần có giá trị.`);
+    if (!day) errors.push(`Dòng ${sourceLine}, cột ngày: cần có giá trị.`);
+    if (!name) errors.push(`Dòng ${sourceLine}, cột bài tập: cần có giá trị.`);
+    if (!muscleGroup) errors.push(`Dòng ${sourceLine}, cột nhóm cơ: cần có giá trị.`);
+    if (!Number.isInteger(targetSets) || targetSets < 1) errors.push(`Dòng ${sourceLine}, cột số set: phải là số nguyên dương.`);
+    if (!Number.isFinite(targetRepsMin) || targetRepsMin < 1) errors.push(`Dòng ${sourceLine}, cột rep tối thiểu: phải lớn hơn 0.`);
+    if (!Number.isFinite(targetRepsMax) || targetRepsMax < 1) errors.push(`Dòng ${sourceLine}, cột rep tối đa: phải lớn hơn 0.`);
     if (Number.isFinite(targetRepsMin) && Number.isFinite(targetRepsMax) && targetRepsMin > targetRepsMax) {
-      errors.push(`Line ${sourceLine}, column reps min: must be less than or equal to reps max.`);
+      errors.push(`Dòng ${sourceLine}, cột rep tối thiểu: phải nhỏ hơn hoặc bằng rep tối đa.`);
     }
-    if (!Number.isFinite(targetWeightKg) || targetWeightKg < 0) errors.push(`Line ${sourceLine}, column weight: must be zero or positive.`);
-    if (!Number.isFinite(restSeconds) || restSeconds < 15) errors.push(`Line ${sourceLine}, column rest seconds: must be at least 15.`);
-    if (duplicated) errors.push(`Line ${sourceLine}, column exercise: duplicate exercise "${name}" in session "${session}".`);
+    if (!Number.isFinite(targetWeightKg) || targetWeightKg < 0) errors.push(`Dòng ${sourceLine}, cột tạ: phải bằng 0 hoặc lớn hơn.`);
+    if (!Number.isFinite(restSeconds) || restSeconds < 15) errors.push(`Dòng ${sourceLine}, cột giây nghỉ: phải ít nhất 15.`);
+    if (duplicated) errors.push(`Dòng ${sourceLine}, cột bài tập: bài "${name}" bị trùng trong buổi "${session}".`);
     if (session && name) seen.add(duplicateKey);
 
     const valid =
@@ -1265,7 +1265,7 @@ export function progressiveOverloadRecommendation(params: {
       action: "deload",
       nextWeightKg: Math.round(nextWeight * 2) / 2,
       dataBasis,
-      suggestedAction: `Use about ${Math.round(nextWeight * 2) / 2}kg next time and rebuild reps with controlled technique.`,
+      suggestedAction: `Dùng khoảng ${Math.round(nextWeight * 2) / 2}kg ở lần tới và xây lại reps với kỹ thuật kiểm soát.`,
       guardrail,
       aiEligible,
       mode: "rule-fallback"
@@ -1395,8 +1395,8 @@ export function canSyncHealthData(settings: HealthIntegrationSettings, dataType:
 }
 
 export function healthIntegrationPrivacyCopy(settings: HealthIntegrationSettings): string {
-  const platform = settings.provider === "apple-health" ? "Apple Health cần HealthKit trong app iOS." : "Health Connect cần Android Health Connect SDK.";
-  return `${platform} Web app này chỉ lưu lựa chọn đồng ý của bạn và không tự đồng bộ dữ liệu sức khỏe trong nền. Cân nặng, buổi tập và dữ liệu nước chỉ có thể đồng bộ sau khi bạn chọn nhóm dữ liệu và cầu nối native xác nhận quyền.`;
+  const platform = settings.provider === "apple-health" ? "Apple Health cần ứng dụng iOS hỗ trợ quyền sức khỏe." : "Health Connect cần ứng dụng Android hỗ trợ quyền sức khỏe.";
+  return `${platform} Bản web này chỉ lưu lựa chọn đồng ý của bạn và không tự đồng bộ dữ liệu sức khỏe trong nền. Cân nặng, buổi tập và dữ liệu nước chỉ có thể đồng bộ sau khi bạn chọn nhóm dữ liệu và ứng dụng di động xác nhận quyền.`;
 }
 
 function isHealthPermissionStatus(value: unknown): value is HealthPermissionStatus {
@@ -1621,10 +1621,10 @@ export function detectWorkoutSetPrs(previousSets: WorkoutSet[], nextSet: Workout
   const previousVolume = previous.length ? round(Math.max(...previous.map((set) => set.actualWeightKg * set.actualReps))) : 0;
   const prs: WorkoutSetPr[] = [];
 
-  if (nextSet.actualWeightKg > previousMaxWeight) prs.push({ type: "maxWeight", label: "Weight PR", previous: previousMaxWeight, next: nextSet.actualWeightKg });
-  if (nextSet.actualReps > previousMaxReps) prs.push({ type: "maxReps", label: "Rep PR", previous: previousMaxReps, next: nextSet.actualReps });
+  if (nextSet.actualWeightKg > previousMaxWeight) prs.push({ type: "maxWeight", label: "PR tạ", previous: previousMaxWeight, next: nextSet.actualWeightKg });
+  if (nextSet.actualReps > previousMaxReps) prs.push({ type: "maxReps", label: "PR rep", previous: previousMaxReps, next: nextSet.actualReps });
   if (nextE1Rm > previousE1Rm) prs.push({ type: "estimatedOneRepMax", label: "e1RM PR", previous: previousE1Rm, next: nextE1Rm });
-  if (nextVolume > previousVolume) prs.push({ type: "volume", label: "Volume PR", previous: previousVolume, next: nextVolume });
+  if (nextVolume > previousVolume) prs.push({ type: "volume", label: "PR volume", previous: previousVolume, next: nextVolume });
 
   return prs;
 }
@@ -2088,30 +2088,30 @@ export function monthlyAchievements(params: {
   return [
     {
       code: "monthly_hydration",
-      name: "Hydration Elite",
+      name: "Uống nước đều",
       status: statusFor(hydrationEnabled, hydrationActive, params.previousHydrationActive),
       progress: params.hydrationGoalDays,
       target: params.hydrationTargetDays,
       streakMonths: hydrationEnabled && hydrationActive ? (params.previousHydrationStreak ?? 0) + 1 : 0,
-      condition: `Hit hydration goal on ${params.hydrationTargetDays} days this month.`
+      condition: `Đạt mục tiêu nước trong ${params.hydrationTargetDays} ngày của tháng này.`
     },
     {
       code: "workout_consistency",
-      name: "Consistency Builder",
+      name: "Giữ nhịp tập",
       status: statusFor(workoutEnabled, workoutActive, params.previousWorkoutActive),
       progress: workoutCount,
       target: workoutTarget,
       streakMonths: workoutEnabled && workoutActive ? (params.previousWorkoutStreak ?? 0) + 1 : 0,
-      condition: `Finish ${workoutTarget} workouts this month.`
+      condition: `Hoàn tất ${workoutTarget} buổi tập trong tháng này.`
     },
     {
       code: "volume_progression",
-      name: "Volume Climber",
+      name: "Tăng volume",
       status: statusFor(volumeEnabled, volumeActive, params.previousVolumeActive),
       progress: Math.max(0, Math.round(params.volumeChangePercent)),
       target: 3,
       streakMonths: volumeEnabled && volumeActive ? (params.previousVolumeStreak ?? 0) + 1 : 0,
-      condition: "Increase monthly working volume by at least 3% vs previous month."
+      condition: "Tăng volume set chính hằng tháng ít nhất 3% so với tháng trước."
     }
   ];
 }
