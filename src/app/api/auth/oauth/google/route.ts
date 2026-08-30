@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createAppUrl } from "@/lib/app-url";
 import {
   createCodeChallenge,
   createCodeVerifier,
@@ -9,7 +10,7 @@ import {
 } from "@/lib/auth";
 
 export async function GET(request: Request) {
-  const redirectTo = new URL("/api/auth/callback", request.url).toString();
+  const redirectTo = createAppUrl("/api/auth/callback", request.url).toString();
   const verifier = createCodeVerifier();
   const challenge = await createCodeChallenge(verifier);
   const state = createOauthState();

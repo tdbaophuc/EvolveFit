@@ -281,7 +281,7 @@ function integrationStatusLabel(status: string) {
     configured: "Đã cấu hình",
     "missing-env": "Thiếu cấu hình",
     "rule-fallback": "Dùng luật nội bộ",
-    "native-bridge-required": "Cần native bridge",
+    "native-bridge-required": "Cần cầu nối ứng dụng",
     "supabase-ready": "Supabase sẵn sàng"
   };
   return labels[status] ?? status;
@@ -313,6 +313,12 @@ function recommendationActionLabel(action: string) {
 function audienceLabel(audience: SharedPost["audience"]) {
   if (audience === "private-friends") return "Bạn bè riêng tư";
   return audience;
+}
+
+function authModeLabel(mode: AppState["profile"]["authMode"]) {
+  if (mode === "email") return "Email";
+  if (mode === "google") return "Google";
+  return "Trên máy này";
 }
 
 function badgeStatusLabel(status: string) {
@@ -476,7 +482,7 @@ export default function AppPage() {
         if (result.status === "conflict" && result.conflict) {
           const conflict = result.conflict;
           setState((current) => ({ ...current, syncQueue: markSyncItemConflict(current.syncQueue, nextItem.id, conflict) }));
-          setToast("Routine conflict needs preview and confirm");
+          setToast("Lịch tập bị xung đột, cần xem trước rồi xác nhận");
           return;
         }
         setState((current) => ({ ...current, syncQueue: markSyncItemFailed(current.syncQueue, nextItem.id, result.error ?? "Đồng bộ thất bại") }));
@@ -495,7 +501,7 @@ export default function AppPage() {
     if (!mounted || !isOnline || !state.syncQueue.some((item) => item.status === "pending" && item.type === "__legacy_disabled__")) return;
     const id = window.setTimeout(() => {
       setState((current) => ({ ...current, syncQueue: markSyncQueue(current.syncQueue, "synced") }));
-      setToast("Queue ngoại tuyến đã thử lại local và đánh dấu đã đồng bộ");
+      setToast("Hàng đợi ngoại tuyến đã thử lại trên máy và đánh dấu đã đồng bộ");
     }, 1200);
     return () => window.clearTimeout(id);
   }, [mounted, isOnline, state.syncQueue]);
@@ -760,7 +766,8 @@ export default function AppPage() {
 
   function logWater(amountMl: number, pin = false, type: HydrationLog["drinkType"] = drinkType) {
     if (!isDrinkModuleActive(drinkModules, type)) {
-      setToast(`${type} is disabled in Drink settings.`);
+      const drinkName = drinkModules.find((module) => module.id === type)?.name ?? type;
+      setToast(`${drinkName} đang tắt trong Cài đặt thức uống.`);
       return;
     }
     const log = { id: cryptoSafeId(), amountMl, drinkType: type, loggedAt: new Date().toISOString() };
@@ -795,7 +802,7 @@ export default function AppPage() {
 
   function logCreatine(amount = state.profile.creatineAmountG, pin = false) {
     if (!creatineActive) {
-      setToast("Creatine is disabled in Drink settings.");
+      setToast("Creatine đang tắt trong Cài đặt thức uống.");
       return;
     }
     const creatine = state.supplements.find((supplement) => supplement.name.toLowerCase() === "creatine");
@@ -849,7 +856,7 @@ export default function AppPage() {
   function addSupplement() {
     const supplement: Supplement = {
       id: cryptoSafeId(),
-      name: newSupplementName.trim() || "Supplement",
+      name: newSupplementName.trim() || "Bổ sung",
       defaultAmount: newSupplementAmount,
       unit: "g",
       scheduleHours: [],
@@ -887,7 +894,7 @@ export default function AppPage() {
   }
 
   function deleteSupplement(id: string) {
-    commitSynced({ ...state, supplements: state.supplements.filter((supplement) => supplement.id !== id) }, "supplement.delete", { id }, "Đã xóa supplement");
+    commitSynced({ ...state, supplements: state.supplements.filter((supplement) => supplement.id !== id) }, "supplement.delete", { id }, "Đã xóa bổ sung");
   }
 
   function updateSupplementLocal(id: string, patch: Partial<Supplement>) {
@@ -909,7 +916,7 @@ export default function AppPage() {
       },
       "supplement.patch",
       { id, patch },
-      "Đã cập nhật supplement"
+      "Đã cập nhật bổ sung"
     );
   }
 
@@ -947,7 +954,7 @@ export default function AppPage() {
 
   function updateActiveWorkoutDay(
     patch: (day: AppState["routines"][number]["days"][number]) => AppState["routines"][number]["days"][number],
-    label = "Updated workout day"
+    label = "Đã cập nhật ngày tập"
   ) {
     if (!activeWorkoutDay) return;
     updateActiveRoutine(
@@ -995,20 +1002,20 @@ export default function AppPage() {
           const workbook = XLSX.read(buffer, { type: "array" });
           const firstSheetName = workbook.SheetNames[0];
           if (!firstSheetName) {
-            setRoutineImportPreview({ fileName: file.name, rows: [], errors: ["Workbook does not contain a worksheet."] });
+            setRoutineImportPreview({ fileName: file.name, rows: [], errors: ["File bảng tính không có sheet dữ liệu."] });
             return;
           }
           const rows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[firstSheetName], { header: 1, blankrows: false });
           setRoutineImportPreview(parseRoutineCsv(rowsToRoutineCsv(rows), file.name));
         })
-        .catch(() => setRoutineImportPreview({ fileName: file.name, rows: [], errors: ["Could not read the selected spreadsheet."] }));
+        .catch(() => setRoutineImportPreview({ fileName: file.name, rows: [], errors: ["Không đọc được file bảng tính đã chọn."] }));
       return;
     }
 
     file
       .text()
       .then((text) => setRoutineImportPreview(parseRoutineCsv(text, file.name)))
-      .catch(() => setRoutineImportPreview({ fileName: file.name, rows: [], errors: ["Could not read the selected file."] }));
+      .catch(() => setRoutineImportPreview({ fileName: file.name, rows: [], errors: ["Không đọc được file đã chọn."] }));
   }
 
   function confirmRoutineImport(mode: "replace" | "append") {
@@ -1061,7 +1068,7 @@ export default function AppPage() {
       }),
       "routine.update",
       { routineId: updatedRoutine.id, routine: updatedRoutine, baseUpdatedAt: nextRoutine.updatedAt, fileName: routineImportPreview.fileName, mode },
-      `Imported ${routineImportPreview.rows.length} exercises`
+      `Đã nhập ${routineImportPreview.rows.length} bài tập`
     );
     setRoutineImportPreview(null);
   }
@@ -1096,7 +1103,7 @@ export default function AppPage() {
     ordered.splice(nextIndex, 0, item);
     updateActiveWorkoutDay(
       (day) => ({ ...day, exercises: ordered.map((exercise, order) => ({ ...exercise, order })) }),
-      "Đã sắp xếp routine"
+      "Đã sắp xếp lịch tập"
     );
   }
 
@@ -1178,12 +1185,12 @@ export default function AppPage() {
       syncSelectedDay({ ...state, selectedWorkoutDayId: day.id, activeExerciseIndex: 0 }),
       "routine.day.select",
       { routineId: routine.id, dayId },
-      `Selected ${day.name}`
+      `Đã chọn ${day.name}`
     );
   }
 
   function updateRoutineName(name: string) {
-    updateActiveRoutine((routine) => ({ ...routine, name: name || "Untitled Routine" }), "Updated routine name");
+    updateActiveRoutine((routine) => ({ ...routine, name: name || "Lịch tập chưa đặt tên" }), "Đã cập nhật tên lịch tập");
   }
 
   function updateWorkoutDay(id: string, patch: Partial<AppState["routines"][number]["days"][number]>) {
@@ -1192,7 +1199,7 @@ export default function AppPage() {
         ...routine,
         days: routine.days.map((day) => (day.id === id ? { ...day, ...patch } : day))
       }),
-      "Updated workout day"
+      "Đã cập nhật ngày tập"
     );
   }
 
@@ -1201,13 +1208,13 @@ export default function AppPage() {
       const nextIndex = routine.days.length + 1;
       const day = {
         id: `day-${cryptoSafeId()}`,
-        name: `Day ${nextIndex}`,
+        name: `Ngày ${nextIndex}`,
         day: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][routine.days.length % 7],
         order: routine.days.length,
         exercises: []
       };
       return { ...routine, daysPerWeek: routine.days.length + 1, days: [...routine.days, day] };
-    }, "Added workout day");
+    }, "Đã thêm ngày tập");
   }
 
   function deleteWorkoutDay(id: string) {
@@ -1225,7 +1232,7 @@ export default function AppPage() {
       }),
       "routine.day.delete",
       { id },
-      "Deleted workout day"
+      "Đã xóa ngày tập"
     );
   }
 
@@ -1246,7 +1253,7 @@ export default function AppPage() {
         ...day,
         exercises: [...day.exercises, routineExerciseFromWorkout(exercise, day.exercises.length, definition.id)]
       }),
-      `Added ${definition.name}`
+      `Đã thêm ${definition.name}`
     );
   }
 
@@ -1261,7 +1268,7 @@ export default function AppPage() {
       { ...state, exerciseLibrary: [...state.exerciseLibrary, exercise] },
       "exercise.create",
       exercise,
-      `Created ${exercise.name}`
+      `Đã tạo ${exercise.name}`
     );
   }
 
@@ -1272,7 +1279,7 @@ export default function AppPage() {
       { ...state, exerciseLibrary: state.exerciseLibrary.map((exercise) => (exercise.id === id ? { ...exercise, ...patch, builtIn: false } : exercise)) },
       "exercise.update",
       { id, patch },
-      "Updated custom exercise"
+      "Đã cập nhật bài tùy chỉnh"
     );
   }
 
@@ -1283,7 +1290,7 @@ export default function AppPage() {
       { ...state, exerciseLibrary: state.exerciseLibrary.filter((exercise) => exercise.id !== id) },
       "exercise.delete",
       { id },
-      "Deleted custom exercise"
+      "Đã xóa bài tùy chỉnh"
     );
   }
 
@@ -1466,7 +1473,7 @@ export default function AppPage() {
       { ...state, profile: { ...state.profile, email: payload.data.email, authMode: payload.data.mode } },
       `auth.${mode}`,
       { email: payload.data.email, mergeMode: "keep-local" },
-      "Đã liên kết tài khoản; dữ liệu local được giữ để đồng bộ"
+      "Đã liên kết tài khoản; dữ liệu trên máy được giữ để đồng bộ"
     );
   }
 
@@ -1483,16 +1490,16 @@ export default function AppPage() {
           return;
         }
         if (!restoreSections.length) {
-          setToast("Chọn ít nhất một nhóm dữ liệu để restore");
+          setToast("Chọn ít nhất một nhóm dữ liệu để khôi phục");
           return;
         }
-        commit(applySelectiveRestore(state, imported.data, restoreSections), "Đã restore JSON theo lựa chọn");
+        commit(applySelectiveRestore(state, imported.data, restoreSections), "Đã khôi phục JSON theo lựa chọn");
       })
       .catch(() => setToast("Không import được JSON"));
   }
 
   function deleteLocalPersonalData() {
-    commit(deletePersonalData(state), "Đã xóa dữ liệu cá nhân local");
+    commit(deletePersonalData(state), "Đã xóa dữ liệu cá nhân trên máy");
   }
   function readTextFile(file: File) {
     if (typeof file.text === "function") return file.text();
@@ -1549,13 +1556,13 @@ export default function AppPage() {
   async function subscribeWebPush() {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
       setPushSubscriptionStatus("unsupported");
-      setToast("Trình duyệt không hỗ trợ Web Push, sẽ dùng nhắc trong app");
+      setToast("Trình duyệt không hỗ trợ Web Push, sẽ dùng nhắc dự phòng trong app");
       return;
     }
     const key = vapidPublicKey || process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
     if (!key || !pushConfigured) {
       setPushSubscriptionStatus("missing-env");
-      setToast("Thiếu VAPID public key hoặc cấu hình server, sẽ dùng nhắc trong app");
+      setToast("Thiếu VAPID public key hoặc cấu hình máy chủ, sẽ dùng nhắc trong app");
       return;
     }
     const registration = await getServiceWorkerRegistration();
@@ -1610,9 +1617,9 @@ export default function AppPage() {
     }
     registration?.active?.postMessage({
       type: "EVOLVEFIT_TEST_NOTIFICATION",
-      payload: { title: "EvolveFit test", body: "In-app/service worker fallback notification." }
+      payload: { title: "Thông báo thử EvolveFit", body: "Thông báo dự phòng trong app/dịch vụ nền." }
     });
-    setToast("Đã dùng thông báo thử bằng fallback");
+    setToast("Đã dùng thông báo thử bằng cơ chế dự phòng");
   }
 
   async function requestNotifications() {
@@ -1646,7 +1653,7 @@ export default function AppPage() {
 
   function commitWorkoutSet(completed: WorkoutSet, label: string, message: string) {
     const prs = detectWorkoutSetPrs(state.workoutSets, completed);
-    const commitMessage = prs.length ? `New PR: ${prs.map((pr) => pr.label).join(", ")}` : message;
+    const commitMessage = prs.length ? `PR mới: ${prs.map((pr) => pr.label).join(", ")}` : message;
     const countsTowardTarget = (completed.setType ?? "working") !== "warmup";
     const finishedExercise = countsTowardTarget && completedSetsForActive.length + 1 >= activeExercise.targetSets;
     const completedSession =
@@ -1696,7 +1703,7 @@ export default function AppPage() {
 
   function completeSet() {
     if (!state.workoutExercises.length) {
-      setToast("Add or import an exercise before logging a set.");
+      setToast("Thêm hoặc nhập bài tập trước khi ghi set.");
       return;
     }
     if (!activeWorkoutSession) {
@@ -1759,7 +1766,7 @@ export default function AppPage() {
 
   function startWorkout() {
     if (!state.workoutExercises.length) {
-      setToast("Add or import an exercise before starting a workout.");
+      setToast("Thêm hoặc nhập bài tập trước khi bắt đầu buổi tập.");
       return;
     }
     const session = createWorkoutSession({
@@ -1797,7 +1804,7 @@ export default function AppPage() {
         },
         "workout.session.finish",
         finished,
-        "Finished workout session"
+        "Đã kết thúc buổi tập"
       );
     }
     setWorkoutMode("finished");
@@ -1808,13 +1815,13 @@ export default function AppPage() {
       ? activeSessionQueue.findIndex((item) => item.exerciseId === id)
       : state.workoutExercises.findIndex((exercise) => exercise.id === id);
     if (index < 0) return;
-    commitSynced({ ...state, activeExerciseIndex: index }, "workout.session.selectExercise", { id }, "Selected exercise");
+    commitSynced({ ...state, activeExerciseIndex: index }, "workout.session.selectExercise", { id }, "Đã chọn bài tập");
   }
 
   function skipActiveExercise() {
     if (!activeWorkoutSession) {
       const nextIndex = Math.min(state.activeExerciseIndex + 1, state.workoutExercises.length - 1);
-      commitSynced({ ...state, activeExerciseIndex: nextIndex }, "workout.session.skipExercise", { from: activeExercise.id }, "Skipped exercise");
+      commitSynced({ ...state, activeExerciseIndex: nextIndex }, "workout.session.skipExercise", { from: activeExercise.id }, "Đã bỏ qua bài tập");
       return;
     }
     const parked = parkSessionExercise(activeWorkoutSession, activeExercise.id);
@@ -1823,7 +1830,7 @@ export default function AppPage() {
       { ...state, workoutSessions: replaceWorkoutSession(parked), activeExerciseIndex: nextIndex },
       "workout.session.skipExercise",
       { sessionId: activeWorkoutSession.id, from: activeExercise.id, queue: parked.exerciseQueue },
-      "Skipped exercise"
+      "Đã bỏ qua bài tập"
     );
   }
 
@@ -1835,7 +1842,7 @@ export default function AppPage() {
       { ...state, workoutSessions: replaceWorkoutSession(reordered), activeExerciseIndex: Math.max(0, activeIndex) },
       "workout.session.reorder",
       { sessionId: activeWorkoutSession.id, queue: reordered.exerciseQueue },
-      "Updated session queue"
+      "Đã cập nhật hàng đợi buổi tập"
     );
   }
 
@@ -1853,7 +1860,7 @@ export default function AppPage() {
       },
       "routine.saveSessionOrder",
       { routineId: updatedRoutine.id, workoutDayId: activeWorkoutSession.workoutDayId, queue: normalizedSession.exerciseQueue },
-      "Saved session order to routine"
+      "Đã lưu thứ tự buổi tập vào lịch"
     );
   }
 
@@ -1867,7 +1874,7 @@ export default function AppPage() {
         { ...state, workoutSessions: state.workoutSessions.map((session) => (session.id === paused.id ? paused : session)) },
         "workout.session.pause",
         paused,
-        "Pause workout session"
+        "Đã tạm dừng buổi tập"
       );
     }
   }
@@ -1884,9 +1891,9 @@ export default function AppPage() {
       restEndsAt: restPausedSeconds !== null ? new Date(Date.now() + restPausedSeconds * 1000).toISOString() : state.restEndsAt
     };
     if (activeWorkoutSession) {
-      commitSynced(nextState, "workout.session.resume", resumeWorkoutSession(activeWorkoutSession), "Resume workout session");
+      commitSynced(nextState, "workout.session.resume", resumeWorkoutSession(activeWorkoutSession), "Đã tiếp tục buổi tập");
     } else {
-      commit(nextState, "Resume rest timer");
+      commit(nextState, "Đã tiếp tục đồng hồ nghỉ");
     }
     setRestPausedSeconds(null);
     setNowMs(Date.now());
@@ -1939,7 +1946,7 @@ export default function AppPage() {
     const healthIntegration = requestHealthIntegrationPermission(state.healthIntegration, state.healthIntegration.selectedDataTypes);
     commitSynced({ ...state, healthIntegration }, "health.permission.request", healthIntegration, "Health permission request saved");
     if (!healthIntegration.nativeBridgeAvailable) {
-      setToast("Đã lưu lựa chọn quyền sức khỏe. Cần native bridge trước khi đồng bộ.");
+      setToast("Đã lưu lựa chọn quyền sức khỏe. Cần cầu nối ứng dụng trước khi đồng bộ.");
     }
   }
 
@@ -2001,7 +2008,7 @@ export default function AppPage() {
           item.id === id ? { ...item, status: "pending", nextRetryAt: undefined, lastError: undefined, updatedAt: new Date().toISOString() } : item
         )
       },
-      "Queued item for retry"
+      "Đã đưa mục vào hàng đợi thử lại"
     );
   }
 
@@ -2023,14 +2030,14 @@ export default function AppPage() {
             : item
         )
       },
-      "Routine conflict confirmed for sync"
+      "Đã xác nhận lịch tập để đồng bộ"
     );
   }
 
   function clearQueue(status?: SyncQueueItem["status"]) {
     commit(
       { ...state, syncQueue: status ? state.syncQueue.filter((item) => item.status !== status) : [] },
-      status ? `Đã xóa queue ${status}` : "Đã xóa toàn bộ sync queue"
+      status ? `Đã xóa mục ${syncQueueStatusLabel(status).toLowerCase()} trong hàng đợi` : "Đã xóa toàn bộ hàng đợi đồng bộ"
     );
   }
 
@@ -2135,12 +2142,12 @@ export default function AppPage() {
   return (
     <main className="app-shell">
       <header className="top-bar">
-        <div className="avatar" aria-label="User avatar">
+        <div className="avatar" aria-label="Ảnh đại diện người dùng">
           <User size={18} />
         </div>
         <div>
           <p className="top-date">{new Intl.DateTimeFormat("vi-VN", { weekday: "long", day: "2-digit", month: "short" }).format(now)}</p>
-          <p className="top-subtitle">Local-first PWA • {state.profile.timezone}</p>
+          <p className="top-subtitle">Lưu trên máy trước - {state.profile.timezone}</p>
           <span className={`sync-status ${syncStatus}`}>{syncStatusLabel(syncStatus)}</span>
         </div>
         <button className={`icon-button ${hydrationReminder || creatineReminder ? "attention" : ""}`} aria-label="Thông báo">
@@ -2451,7 +2458,7 @@ function OnboardingPanel(props: {
   const hoursOk = props.profile.wakeHour >= 0 && props.profile.wakeHour <= 23 && props.profile.sleepHour >= 0 && props.profile.sleepHour <= 23 && props.profile.wakeHour !== props.profile.sleepHour;
   const validationMessage =
     props.step === 0 && (!props.profile.name.trim() || !emailOk)
-      ? "Nhập tên và email hợp lệ, hoặc dùng local mode rồi cập nhật email sau."
+      ? "Nhập tên và email hợp lệ, hoặc dùng trên máy này rồi cập nhật email sau."
       : props.step === 1 && (props.profile.bodyWeightKg <= 0 || props.profile.heightCm <= 0 || props.profile.waterTargetMl < 1000 || props.profile.waterTargetMl > 6000)
         ? "Cân nặng, chiều cao và mục tiêu nước cần nằm trong ngưỡng hợp lý."
         : props.step === 2 && props.profile.workoutDays.length < 1
@@ -2464,12 +2471,12 @@ function OnboardingPanel(props: {
     <section className="card onboarding-card">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Onboarding nhanh</p>
+          <p className="eyebrow">Thiết lập nhanh</p>
           <h2>{steps[props.step]}</h2>
         </div>
         <CalendarCheck size={22} />
       </div>
-      <div className="step-dots" aria-label="Onboarding progress">
+      <div className="step-dots" aria-label="Tiến độ thiết lập ban đầu">
         {steps.map((label, index) => (
           <button key={label} className={props.step === index ? "active" : ""} onClick={() => props.setStep(index)}>
             {index + 1}
@@ -2532,7 +2539,7 @@ function OnboardingPanel(props: {
 
       {props.step === 2 && (
         <div className="stack compact-stack">
-          <div className="template-row" aria-label="Mẫu lịch tập onboarding">
+          <div className="template-row" aria-label="Mẫu lịch tập thiết lập ban đầu">
             {(Object.entries(templateLabels) as [AppState["activeTemplate"], string][]).map(([id, label]) => (
               <button key={id} className={props.activeTemplate === id ? "active" : ""} onClick={() => props.applyTemplate(id as AppState["activeTemplate"])}>
                 {label}
@@ -2583,7 +2590,7 @@ function OnboardingPanel(props: {
           </button>
         ) : (
           <button className="primary-button training-bg" onClick={props.completeOnboarding} disabled={Boolean(validationMessage)}>
-            Hoàn tất onboarding
+          Hoàn tất thiết lập
           </button>
         )}
       </div>
@@ -2647,7 +2654,7 @@ function TodayOverview(props: Parameters<typeof TodayView>[0] & { latestMetric?:
       <section className="card chart-card">
         <div className="section-heading">
           <h2>Hoạt động gần đây</h2>
-          <span className="sync-pill">Local trước</span>
+          <span className="sync-pill">Lưu máy trước</span>
         </div>
         <div className="timeline">
           {props.recentLogs.length ? (
@@ -2791,7 +2798,7 @@ function TodayView(props: {
       <section className="hydration-block">
         <div className="section-heading compact">
           <h2>Lịch sử hôm nay</h2>
-          <span className="sync-pill">{props.hydrationLogs.length} logs</span>
+          <span className="sync-pill">{props.hydrationLogs.length} log</span>
         </div>
         <div className="hydration-history">
           {props.hydrationLogs.length ? (
@@ -2891,9 +2898,9 @@ function TodayView(props: {
                 <div key={amount.id}>
                   <span>{amount.label}</span>
                   <button className={amount.pinned ? "tiny-chip logged" : "tiny-chip"} onClick={() => props.updateQuickAmount(amount.id, { pinned: !amount.pinned })}>
-                    {amount.pinned ? "Pinned" : "Pin"}
+                    {amount.pinned ? "Đã ghim" : "Ghim"}
                   </button>
-                  <button className="icon-mini danger" onClick={() => props.deleteQuickAmount(amount.id)} aria-label="Xóa quick amount">
+                  <button className="icon-mini danger" onClick={() => props.deleteQuickAmount(amount.id)} aria-label="Xóa lượng uống nhanh">
                     <Trash2 size={14} />
                   </button>
                 </div>
@@ -3142,8 +3149,8 @@ function WorkoutView(props: {
                   <label><span>Tên</span><input value={exercise.name} onChange={(event) => props.updateExerciseTarget(exercise.id, { name: event.target.value })} /></label>
                   <label><span>Nhóm cơ</span><input value={exercise.muscleGroup} onChange={(event) => props.updateExerciseTarget(exercise.id, { muscleGroup: event.target.value })} /></label>
                   <label><span>Set</span><input type="number" min="1" max="10" value={exercise.targetSets} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetSets: Number(event.target.value) })} /></label>
-                  <label><span>Reps min</span><input type="number" min="1" max="50" value={exercise.targetRepsMin} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetRepsMin: Number(event.target.value) })} /></label>
-                  <label><span>Reps max</span><input type="number" min="1" max="50" value={exercise.targetRepsMax} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetRepsMax: Number(event.target.value) })} /></label>
+                  <label><span>Rep tối thiểu</span><input type="number" min="1" max="50" value={exercise.targetRepsMin} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetRepsMin: Number(event.target.value) })} /></label>
+                  <label><span>Rep tối đa</span><input type="number" min="1" max="50" value={exercise.targetRepsMax} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetRepsMax: Number(event.target.value) })} /></label>
                   <label><span>Kg</span><input type="number" min="0" step="0.5" value={exercise.targetWeightKg} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetWeightKg: Number(event.target.value) })} /></label>
                   <label><span>Nghỉ</span><input type="number" min="15" step="15" value={exercise.restSeconds} onChange={(event) => props.updateExerciseTarget(exercise.id, { restSeconds: Number(event.target.value) })} /></label>
                   <label><span>Nhóm superset</span><input value={exercise.supersetGroup ?? ""} onChange={(event) => props.updateExerciseTarget(exercise.id, { supersetGroup: event.target.value.trim() || undefined })} placeholder="A1" /></label>
@@ -3316,19 +3323,19 @@ function WorkoutView(props: {
               <div className="row-actions">
                 <button
                   onClick={() => props.updateExerciseTarget(exercise.id, { targetWeightKg: Math.max(0, exercise.targetWeightKg - 2.5) })}
-                  aria-label="Giảm target weight"
+                  aria-label="Giảm tạ mục tiêu"
                 >
                   -kg
                 </button>
                 <button
                   onClick={() => props.updateExerciseTarget(exercise.id, { targetWeightKg: exercise.targetWeightKg + 2.5 })}
-                  aria-label="Tăng target weight"
+                  aria-label="Tăng tạ mục tiêu"
                 >
                   +kg
                 </button>
                 <button
                   onClick={() => props.updateExerciseTarget(exercise.id, { targetRepsMax: exercise.targetRepsMax + 1 })}
-                  aria-label="Tăng target reps"
+                  aria-label="Tăng rep mục tiêu"
                 >
                   +rep
                 </button>
@@ -3352,15 +3359,15 @@ function WorkoutView(props: {
                   <input value={exercise.muscleGroup} onChange={(event) => props.updateExerciseTarget(exercise.id, { muscleGroup: event.target.value })} />
                 </label>
                 <label>
-                  <span>Sets</span>
+                  <span>Set</span>
                   <input type="number" min="1" max="10" value={exercise.targetSets} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetSets: Number(event.target.value) })} />
                 </label>
                 <label>
-                  <span>Rep min</span>
+                  <span>Rep tối thiểu</span>
                   <input type="number" min="1" max="50" value={exercise.targetRepsMin} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetRepsMin: Number(event.target.value) })} />
                 </label>
                 <label>
-                  <span>Rep max</span>
+                  <span>Rep tối đa</span>
                   <input type="number" min="1" max="50" value={exercise.targetRepsMax} onChange={(event) => props.updateExerciseTarget(exercise.id, { targetRepsMax: Number(event.target.value) })} />
                 </label>
                 <label>
@@ -3546,7 +3553,7 @@ function WorkoutView(props: {
         <div className="section-heading">
           <div>
             <p className="eyebrow">Lịch sử tập</p>
-            <h2>Sets đã ghi</h2>
+            <h2>Set đã ghi</h2>
           </div>
           <Activity size={22} />
         </div>
@@ -4270,7 +4277,7 @@ function CoachView(props: {
         </div>
       </section>
       <section className="card">
-        <h2>Audit gợi ý</h2>
+        <h2>Kiểm tra gợi ý</h2>
         <div className="timeline compact">
           {props.decisions.length ? (
             props.decisions.map((decision) => (
@@ -4402,14 +4409,14 @@ function SettingsView(props: {
           <div className="settings-avatar">{(props.state.profile.name || "A").slice(0, 1).toUpperCase()}</div>
           <div>
             <strong>{props.state.profile.name || "Người tập"}</strong>
-            <p>{props.state.profile.email || "Hồ sơ local"} - mục tiêu: mạnh hơn mỗi ngày</p>
+            <p>{props.state.profile.email || "Hồ sơ trên máy"} - mục tiêu: mạnh hơn mỗi ngày</p>
           </div>
           <ChevronRight size={18} />
         </div>
         <h2>Hồ sơ</h2>
         <div className="setting-row">
           <span>Phiên</span>
-          <strong>{props.state.profile.authMode}</strong>
+          <strong>{authModeLabel(props.state.profile.authMode)}</strong>
         </div>
         <label className="setting-row">
           <span>Email</span>
@@ -4436,14 +4443,14 @@ function SettingsView(props: {
             Đăng nhập bằng email
           </button>
           <button className="secondary-button" onClick={props.startGoogleOAuth}>
-            Google OAuth
+            Đăng nhập bằng Google
           </button>
           <button className="secondary-button" onClick={() => props.signInLocal("local")}>
-            Chế độ local
+            Dùng trên máy này
           </button>
         </div>
         <button className="secondary-button export-button" onClick={props.reopenOnboarding}>
-          Mở lại onboarding
+        Mở lại thiết lập
         </button>
         <label className="setting-row">
           <span>Mục tiêu nước</span>
@@ -4475,14 +4482,14 @@ function SettingsView(props: {
         </label>
       </section>
       <section className="card">
-        <h2>Thức uống & supplement</h2>
+        <h2>Thức uống & bổ sung</h2>
         <div className="readiness-list drink-module-list">
           {props.drinkModules.map((module) => (
             <div key={module.id} className="drink-module-row">
               <label className="toggle-row">
                 <span>
                   {module.name}
-                  <em>{module.id === "water" ? "Chính" : module.category === "drink" ? "Thức uống" : "Supplement"}</em>
+                  <em>{module.id === "water" ? "Chính" : module.category === "drink" ? "Thức uống" : "Bổ sung"}</em>
                 </span>
                 <input
                   type="checkbox"
@@ -4564,14 +4571,14 @@ function SettingsView(props: {
       <section className="card">
         <h2>Quyền riêng tư</h2>
         <label className="toggle-row">
-          <span>Tham gia leaderboard</span>
+          <span>Tham gia bảng xếp hạng</span>
           <input
             type="checkbox"
             checked={props.state.profile.leaderboardPublic}
             onChange={(event) => props.updateProfile({ leaderboardPublic: event.target.checked })}
           />
         </label>
-        <p className="privacy-note">Mặc định riêng tư. Leaderboard chỉ hiển thị tên, avatar, rank và badge streak.</p>
+        <p className="privacy-note">Mặc định riêng tư. Bảng xếp hạng chỉ hiển thị tên, ảnh đại diện, thứ hạng và huy hiệu chuỗi.</p>
       </section>
       <section className="card">
         <h2>Quyền riêng tư xã hội</h2>
@@ -4691,7 +4698,7 @@ function SettingsView(props: {
         </div>
         <div className="readiness-list">
           <span>Quyền: {healthPermissionStatusLabel(props.state.healthIntegration.permissionStatus)}</span>
-          <span>Cầu nối native: {props.state.healthIntegration.nativeBridgeAvailable ? "khả dụng" : "cần thiết"}</span>
+          <span>Cầu nối ứng dụng: {props.state.healthIntegration.nativeBridgeAvailable ? "khả dụng" : "cần thiết"}</span>
           {healthSyncDataTypes.map((dataType) => (
             <span key={dataType}>
               {healthDataTypeLabels[dataType]}: {healthSyncContractLabel(props.state.healthIntegration, dataType)}
@@ -4718,7 +4725,7 @@ function SettingsView(props: {
         </button>
         <div className="setting-row">
           <span>Môi trường Web Push</span>
-          <strong>{props.pushConfigured ? "đã cấu hình" : "dùng fallback"}</strong>
+          <strong>{props.pushConfigured ? "đã cấu hình" : "dùng dự phòng"}</strong>
         </div>
         <div className="setting-row">
           <span>Đăng ký push</span>
@@ -4846,7 +4853,7 @@ function SettingsView(props: {
             />
           </label>
           <label className="toggle-row compact-toggle">
-            <span>Fallback trong app</span>
+            <span>Dự phòng trong app</span>
             <input
               type="checkbox"
               checked={props.state.notificationSettings.inAppFallbackEnabled}
@@ -4865,10 +4872,10 @@ function SettingsView(props: {
         <button className="secondary-button export-button" onClick={() => props.updateNotificationSettings({ snoozeUntil: undefined })}>
           Xóa tạm hoãn {props.state.notificationSettings.snoozeUntil ? `(${new Date(props.state.notificationSettings.snoozeUntil).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })})` : ""}
         </button>
-        <p className="privacy-note">Web Push thật cần VAPID/FCM credentials; app hiện đã có service worker action handler và API subscription contract.</p>
+        <p className="privacy-note">Web Push thật cần thông tin xác thực VAPID/FCM; app hiện đã có dịch vụ nền và API đăng ký thông báo.</p>
       </section>
       <section className="card">
-        <h2>Sẵn sàng backend</h2>
+        <h2>Sẵn sàng máy chủ</h2>
         <div className="readiness-list">
           <span>Lưu trữ: {props.healthDashboard?.storageAdapter ?? "đang kiểm tra"}</span>
           <span>Mã yêu cầu: {props.healthDashboard?.requestId ?? "đang kiểm tra"}</span>
@@ -4881,7 +4888,7 @@ function SettingsView(props: {
         </div>
       </section>
       <section className="card">
-        <h2>Queue đồng bộ ngoại tuyến</h2>
+        <h2>Hàng đợi đồng bộ ngoại tuyến</h2>
         <div className="readiness-list">
           <span>{pendingQueue} đang chờ</span>
           <span>{syncedQueue} đã đồng bộ</span>
@@ -4918,7 +4925,7 @@ function SettingsView(props: {
               {item.lastError && <small>{item.lastError}</small>}
               {item.conflict && (
                 <small>
-                  Xung đột: {item.conflict.message}. Bản xem trước từ server: {JSON.stringify(item.conflict.remote).slice(0, 140)}
+                  Xung đột: {item.conflict.message}. Bản xem trước từ máy chủ: {JSON.stringify(item.conflict.remote).slice(0, 140)}
                 </small>
               )}
               <small>{JSON.stringify(item.payload).slice(0, 180)}</small>
@@ -4932,14 +4939,14 @@ function SettingsView(props: {
               </div>
             </div>
           ))}
-          {!props.state.syncQueue.length && <div>Không có thay đổi nào trong queue</div>}
+          {!props.state.syncQueue.length && <div>Không có thay đổi nào trong hàng đợi</div>}
         </div>
-        <p className="privacy-note">Queue hiện lưu local-first để chuẩn bị sync backend và xử lý retry/conflict ở bước production.</p>
+        <p className="privacy-note">Hàng đợi hiện lưu trên máy trước để chuẩn bị đồng bộ máy chủ và xử lý thử lại/xung đột ở môi trường thật.</p>
       </section>
       <section className="card">
         <h2>Dữ liệu & quyền riêng tư</h2>
-        <p className="privacy-note">Export JSON gồm metadata appVersion, exportedAt, schemaVersion và local profile id. Import JSON được kiểm tra schema trước khi restore nên file sai không ghi đè dữ liệu hiện tại.</p>
-        <div className="restore-section-grid" aria-label="Chọn nhóm dữ liệu restore">
+        <p className="privacy-note">Xuất JSON gồm thông tin phiên bản, thời điểm xuất, phiên bản dữ liệu và mã hồ sơ trên máy. Nhập JSON được kiểm tra trước khi khôi phục nên file sai không ghi đè dữ liệu hiện tại.</p>
+        <div className="restore-section-grid" aria-label="Chọn nhóm dữ liệu khôi phục">
           {[
             ["profile", restoreSectionLabels.profile],
             ["hydration", restoreSectionLabels.hydration],
@@ -4968,15 +4975,15 @@ function SettingsView(props: {
             Nhập JSON
             <input type="file" accept="application/json" onChange={(event) => event.target.files?.[0] && props.importJsonExport(event.target.files[0])} />
           </label>
-          <button className="secondary-button danger-button" onClick={() => window.confirm("Xóa dữ liệu cá nhân local? Leaderboard sẽ tắt và dữ liệu profile, hydration, workout, body metrics, queue local sẽ bị xóa.") && props.deletePersonalData()}>
+          <button className="secondary-button danger-button" onClick={() => window.confirm("Xóa dữ liệu cá nhân trên máy? Bảng xếp hạng sẽ tắt và dữ liệu hồ sơ, nước, buổi tập, chỉ số cơ thể, hàng đợi trên máy sẽ bị xóa.") && props.deletePersonalData()}>
             Xóa dữ liệu cá nhân
           </button>
           <button className="secondary-button danger-button" onClick={() => window.confirm("Đặt lại dữ liệu demo? Luồng này khôi phục dữ liệu mẫu và tách riêng khỏi xóa dữ liệu cá nhân.") && props.reset()}>
             Đặt lại dữ liệu demo
           </button>
         </div>
-        <p className="privacy-note">Leaderboard mặc định tắt; khi bật chỉ gửi trạng thái public cho hồ sơ xếp hạng. Dữ liệu cá nhân như email, số đo cơ thể, lịch sử uống nước và workout chỉ nằm trong local/export JSON cho đến khi bạn restore hoặc xóa.</p>
-        <div className="dataset-export-grid" aria-label="Export CSV theo dataset">
+        <p className="privacy-note">Bảng xếp hạng mặc định tắt; khi bật chỉ gửi trạng thái công khai cho hồ sơ xếp hạng. Dữ liệu cá nhân như email, số đo cơ thể, lịch sử uống nước và buổi tập chỉ nằm trên máy hoặc trong file JSON xuất ra cho đến khi bạn khôi phục hoặc xóa.</p>
+        <div className="dataset-export-grid" aria-label="Xuất CSV theo nhóm dữ liệu">
           {[
             ["hydration", csvDatasetLabels.hydration],
             ["creatine", csvDatasetLabels.creatine],

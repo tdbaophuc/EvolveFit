@@ -727,6 +727,7 @@ button {
 .primary-button,
 .secondary-button,
 .sticky-complete {
+  min-width: 0;
   min-height: 48px;
   border-radius: 16px;
   border: 0;
@@ -735,6 +736,10 @@ button {
   align-items: center;
   justify-content: center;
   gap: 8px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+  text-align: center;
+  white-space: normal;
 }
 
 .quick-button {
@@ -770,7 +775,8 @@ input[type="range"] {
 
 .split-actions {
   display: grid;
-  grid-template-columns: 1fr 1.4fr;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px;
 }
 
 .primary-button {
@@ -1796,12 +1802,36 @@ button:disabled {
 }
 
 @media (max-width: 520px) {
+  .onboarding-grid,
+  .supplement-list > div,
+  .exercise-library > div,
+  .exercise-edit-grid,
+  .quick-manager div,
+  .timeline.compact div,
+  .inline-form,
+  .metric-form,
+  .settings-actions,
+  .restore-section-grid,
+  .dataset-export-grid,
+  .settings-inline-grid,
+  .sync-preview > div,
+  .settings-profile-head,
+  .timeline.editable div,
   .report-grid,
   .progress-kpi-grid,
   .report-kpi-grid,
   .pr-grid,
   .metric-goals {
     grid-template-columns: 1fr;
+  }
+
+  .supplement-list .icon-mini:nth-last-child(-n + 3) {
+    grid-row: auto;
+  }
+
+  .row-actions {
+    justify-content: flex-end;
+    flex-wrap: wrap;
   }
 }
 
@@ -2355,6 +2385,7 @@ button:disabled {
 }
 
 .bottom-tabs button {
+  min-width: 0;
   border: 0;
   border-radius: 16px;
   background: transparent;
@@ -2364,11 +2395,22 @@ button:disabled {
   gap: 3px;
   font-size: 11px;
   font-weight: 800;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .bottom-tabs button.active {
   color: #247242;
   background: #e9f8ed;
+}
+
+@media (max-width: 520px) {
+  .settings-profile-head,
+  .timeline.editable div,
+  .settings-inline-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (min-width: 760px) {

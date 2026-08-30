@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createAppUrl } from "./app-url";
 import {
   createCodeChallenge,
   createCodeVerifier,
@@ -139,5 +140,19 @@ describe("auth adapter", () => {
     const cookie = createSessionCookieValue(session);
     expect(parseSessionCookieValue(cookie)).toMatchObject({ email: "user@example.com", accessToken: "access" });
     expect(parseSessionCookieValue("not-json")).toBeUndefined();
+  });
+
+  it("builds OAuth callback URLs from the configured production site URL", () => {
+    expect(
+      createAppUrl("/api/auth/callback", "http://localhost:3000/api/auth/oauth/google", {
+        NEXT_PUBLIC_SITE_URL: "https://app.evolvefit.test/"
+      }).toString()
+    ).toBe("https://app.evolvefit.test/api/auth/callback");
+
+    expect(
+      createAppUrl("/", "http://localhost:3000/api/auth/callback", {
+        VERCEL_URL: "evolvefit.vercel.app"
+      }).toString()
+    ).toBe("https://evolvefit.vercel.app/");
   });
 });

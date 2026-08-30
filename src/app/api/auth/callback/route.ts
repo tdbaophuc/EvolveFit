@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createAppUrl } from "@/lib/app-url";
 import {
   authCookieName,
   createSessionCookieValue,
@@ -34,9 +35,9 @@ export async function GET(request: Request) {
       const session = await exchangeSupabaseOAuthCode({
         code,
         codeVerifier: verifier,
-        redirectTo: new URL("/api/auth/callback", request.url).toString()
+        redirectTo: createAppUrl("/api/auth/callback", request.url).toString()
       });
-      const response = NextResponse.redirect(new URL("/", request.url));
+      const response = NextResponse.redirect(createAppUrl("/", request.url));
       response.cookies.set(authCookieName, createSessionCookieValue(session), {
         httpOnly: true,
         sameSite: "lax",
@@ -69,7 +70,7 @@ export async function GET(request: Request) {
     expiresAt: Number.isFinite(expiresAt) ? expiresAt : undefined,
     mode: "google"
   });
-  const response = NextResponse.redirect(new URL("/", request.url));
+  const response = NextResponse.redirect(createAppUrl("/", request.url));
   response.cookies.set(authCookieName, createSessionCookieValue(session), {
     httpOnly: true,
     sameSite: "lax",

@@ -99,7 +99,7 @@ export default function HydrationDetailPage() {
           <ArrowLeft size={18} />
         </Link>
         <div>
-          <p className="top-date">Hydration</p>
+          <p className="top-date">Nước</p>
           <p className="top-subtitle">Theo dõi nhịp uống nước</p>
         </div>
         <div className="icon-button">
