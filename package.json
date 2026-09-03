@@ -3,24 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "next dev",
-    "dev:5173": "next dev -p 5173",
-    "build": "next build",
-    "start": "next start",
+    "dev": "npm run dev -w @evolvefit/web",
+    "dev:5173": "npm run dev:5173 -w @evolvefit/web",
+    "build": "npm run build -w @evolvefit/shared && npm run build -w @evolvefit/web",
+    "start": "npm run start -w @evolvefit/web",
     "openapi": "node scripts/openapi.mjs",
     "lint": "eslint .",
     "test": "vitest run",
     "smoke": "node scripts/smoke.mjs",
     "check": "npm run lint && npm test && npm run build"
-  },
-  "dependencies": {
-    "lucide-react": "^0.468.0",
-    "next": "^15.1.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "web-push": "^3.6.7",
-    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.3",

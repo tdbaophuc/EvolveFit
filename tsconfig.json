@@ -13,12 +13,12 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
-    "plugins": [{ "name": "next" }],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./apps/web/src/*"],
+      "@evolvefit/shared": ["./packages/shared/src/index.ts"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", "evolve-fit"]
+  "include": ["apps/web/**/*.ts", "apps/web/**/*.tsx", "packages/shared/**/*.ts", "scripts/**/*.mjs", "vitest.setup.ts"],
+  "exclude": ["node_modules", "evolve-fit", "apps/web/.next"]
 }

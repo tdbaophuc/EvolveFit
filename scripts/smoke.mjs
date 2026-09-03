@@ -1,7 +1,11 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
 
 const port = process.env.PORT ?? "5173";
 const baseUrl = `http://127.0.0.1:${port}`;
+const nextCli = require.resolve("next/dist/bin/next");
 const routes = [
   "/",
   "/hydration",
@@ -14,11 +18,12 @@ const routes = [
   "/api/hydration/today"
 ];
 
-const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "dev", "-p", port], {
+const server = spawn(process.execPath, [nextCli, "dev", "apps/web", "-p", port], {
   cwd: process.cwd(),
   env: normalizedEnv({ ...process.env, PORT: port }),
   stdio: ["ignore", "pipe", "pipe"]
 });
+server.unref();
 
 let output = "";
 server.stdout.on("data", (chunk) => {
@@ -90,8 +95,5 @@ function stopServer() {
   server.stderr.destroy();
   if (server.exitCode !== null) return;
 
-  server.kill(process.platform === "win32" ? "SIGTERM" : "SIGTERM");
-  if (process.platform === "win32") {
-    spawnSync("taskkill", ["/pid", String(server.pid), "/T", "/F"], { stdio: "ignore", timeout: 2_000 });
-  }
+  server.kill("SIGTERM");
 }
