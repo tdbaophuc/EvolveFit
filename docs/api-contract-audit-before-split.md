@@ -9,6 +9,14 @@ Cap nhat sau Phase 1 monorepo:
 - Shared package hien export `core.ts`, `app-data.ts`, `seed.ts` qua `@evolvefit/shared`; package nay khong duoc chua `window`, `localStorage`, `next/*`, cookie runtime, `process.env`, Web Push, Supabase REST adapter, observability server hoac response helper server.
 - OpenAPI validator hien doi chieu `docs/api-v1.openapi.json` voi route files trong `apps/web/src/app/api`.
 
+Cap nhat sau Phase 2 backend:
+
+- Backend Node.js/Fastify doc lap nam trong `apps/api`.
+- Route registry backend nam o `apps/api/src/routes/api-routes.ts` va port toan bo nhom endpoint chinh theo contract hien co.
+- Server-only modules duoc port sang `apps/api/src/lib/**`; cac module nay import domain/type tu `@evolvefit/shared` va khong import Next/React/browser runtime.
+- Backend chay local bang `npm run dev:api` hoac `npm run dev -w @evolvefit/api`, mac dinh `PORT=4000`.
+- Backend route tests chay bang `npm run test -w @evolvefit/api`; TypeScript build chay bang `npm run build -w @evolvefit/api`.
+
 Pham vi audit:
 
 - Doc `docs/backend-frontend-split-plan.md`, `docs/api-v1.openapi.json`, `docs/final-audit-matrix.md`, `docs/final-gap-report.md`, `package.json`.

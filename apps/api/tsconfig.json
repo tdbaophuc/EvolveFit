@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
+    "paths": {
+      "@evolvefit/shared": ["../../packages/shared/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["dist", "node_modules"]
+}

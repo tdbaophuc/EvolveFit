@@ -9,12 +9,15 @@
   ],
   "scripts": {
     "dev": "npm run dev -w @evolvefit/web",
+    "dev:api": "npm run dev -w @evolvefit/api",
     "dev:5173": "npm run dev:5173 -w @evolvefit/web",
-    "build": "npm run build -w @evolvefit/shared && npm run build -w @evolvefit/web",
+    "build": "npm run build -w @evolvefit/shared && npm run build -w @evolvefit/api && npm run build -w @evolvefit/web",
     "start": "npm run start -w @evolvefit/web",
+    "start:api": "npm run start -w @evolvefit/api",
     "openapi": "node scripts/openapi.mjs",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:api": "npm run test -w @evolvefit/api",
     "smoke": "node scripts/smoke.mjs",
     "check": "npm run lint && npm test && npm run build"
   },

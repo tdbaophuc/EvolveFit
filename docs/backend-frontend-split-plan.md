@@ -112,6 +112,23 @@ Output mong muon:
 
 Muc tieu: co app backend doc lap nhung endpoint van tra response nhu cu.
 
+Trang thai: da hoan thanh ngay 2026-09-03. Backend Fastify doc lap hien nam trong `apps/api`, port cac endpoint contract hien co tu Next API routes sang `apps/api/src/routes/api-routes.ts`. Server-only modules duoc port sang `apps/api/src/lib/**` va import domain/type tu `@evolvefit/shared`; backend khong import Next/React/browser API.
+
+Cach chay local:
+
+```bash
+npm run dev:api
+```
+
+Mac dinh backend nghe `PORT=4000`. Co the cau hinh `.env`/deployment env theo `apps/api/.env.example`, trong do `API_CORS_ORIGIN` chap nhan mot hoac nhieu origin cach nhau bang dau phay, vi du `http://localhost:3000,http://localhost:5173`.
+
+Lenh kiem tra rieng:
+
+```bash
+npm run test -w @evolvefit/api
+npm run build -w @evolvefit/api
+```
+
 Viec can lam:
 
 - Tao `apps/api` voi TypeScript va Fastify.
@@ -143,7 +160,7 @@ Viec can lam:
 
 Output mong muon:
 
-- `apps/api` chay doc lap, vi du `npm run dev -w apps/api`.
+- `apps/api` chay doc lap, vi du `npm run dev -w @evolvefit/api` hoac root alias `npm run dev:api`.
 - `/api/health` va cac route chinh tra cung shape response nhu cu.
 - Route tests chay o backend khong can Next runtime.
 

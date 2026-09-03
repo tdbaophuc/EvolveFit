@@ -12,7 +12,7 @@ const compat = new FlatCompat({
 
 const eslintConfig = [
   { settings: { next: { rootDir: "apps/web/" } } },
-  { ignores: [".next/**", "apps/web/.next/**", "node_modules/**", "coverage/**", "next-env.d.ts", "apps/web/next-env.d.ts"] },
+  { ignores: [".next/**", "apps/web/.next/**", "apps/api/dist/**", "node_modules/**", "coverage/**", "next-env.d.ts", "apps/web/next-env.d.ts"] },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   { rules: { "@next/next/no-html-link-for-pages": "off" } }
 ];
