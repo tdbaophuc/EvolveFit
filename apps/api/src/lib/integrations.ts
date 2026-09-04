@@ -85,6 +85,7 @@ export async function verifySupabaseProduction(
     "achievements",
     "leaderboard_profiles",
     "push_subscriptions",
+    "notification_events",
     "sync_events"
   ];
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {

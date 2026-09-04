@@ -29,6 +29,7 @@ import {
   recalculateProgression,
   reorderWorkoutSession,
   resumeWorkoutSessionById,
+  runScheduledCronJob,
   sendCreatineReminderEvents,
   sendHydrationReminderEvents,
   sendMonthlyAchievementEvents,
@@ -90,6 +91,14 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
         storageAdapter: env.NEXT_PUBLIC_SUPABASE_URL && env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? "supabase-ready" : "memory-fallback"
       })
     )
+  );
+
+  app.get("/api/ready", (request, reply) =>
+    withApiErrorHandling({ method: "GET", path: "/api/ready", request, reply }, async () => {
+      const readiness = await readinessStatus(env);
+      if (!readiness.ready) return jsonFail({ method: "GET", path: "/api/ready", request, reply }, readiness.reason ?? "Backend dependencies are not ready", 503);
+      return jsonOk({ method: "GET", path: "/api/ready", request, reply }, readiness);
+    })
   );
 
   app.get("/api/integrations/status", (request, reply) =>
@@ -299,15 +308,15 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
 
   app.post("/api/cron/hydration-reminders", async (request, reply) => {
     if (!requireCronAuth(request, reply, env)) return reply;
-    return withDataContext(request, reply, () => sendHydrationReminderEvents(), { persist: true, allowDemoFallback: true });
+    return withDataContext(request, reply, () => runScheduledCronJob("hydration-reminders", () => sendHydrationReminderEvents()), { persist: true, allowDemoFallback: true });
   });
   app.post("/api/cron/creatine-reminders", async (request, reply) => {
     if (!requireCronAuth(request, reply, env)) return reply;
-    return withDataContext(request, reply, () => sendCreatineReminderEvents(), { persist: true, allowDemoFallback: true });
+    return withDataContext(request, reply, () => runScheduledCronJob("creatine-reminders", () => sendCreatineReminderEvents()), { persist: true, allowDemoFallback: true });
   });
   app.post("/api/cron/monthly-achievements", async (request, reply) => {
     if (!requireCronAuth(request, reply, env)) return reply;
-    return withDataContext(request, reply, () => sendMonthlyAchievementEvents(), { allowDemoFallback: true });
+    return withDataContext(request, reply, () => runScheduledCronJob("monthly-achievements", () => sendMonthlyAchievementEvents()), { allowDemoFallback: true });
   });
 
   app.get("/api/observability/logs", (request, reply) =>
@@ -377,6 +386,15 @@ async function resolveApiUser(request: FastifyRequest, allowDemoFallback = false
     return demoUser(session?.email ?? getAuthSession().email);
   }
 
+  if (allowDemoFallback && isCronAuthorized(request, request.apiEnv) && request.apiEnv.CRON_USER_ID) {
+    return {
+      id: request.apiEnv.CRON_USER_ID,
+      email: request.apiEnv.CRON_USER_EMAIL ?? "cron@evolvefit.app",
+      accessToken: request.apiEnv.SUPABASE_SERVICE_ROLE_KEY,
+      mode: "supabase"
+    };
+  }
+
   const session = parseSessionCookieValue(request.cookies[authCookieName]);
   const token = bearerTokenFromAuthorization(request.headers.authorization) ?? session?.accessToken;
   if (!token) {
@@ -404,14 +422,43 @@ function bodyAs<T>(request: FastifyRequest): T {
 function requireCronAuth(request: FastifyRequest, reply: FastifyReply, env: NodeJS.ProcessEnv) {
   const secret = env.CRON_SECRET;
   if (!secret) {
-    reply.code(503).send({ ok: false, error: "CRON_SECRET is not configured" });
+    reply.code(503).send({ ok: false, error: "CRON_SECRET is not configured", requestId: request.requestId });
     return false;
   }
-  if (request.headers.authorization !== `Bearer ${secret}`) {
-    reply.code(401).send({ ok: false, error: "Unauthorized" });
+  if (!isCronAuthorized(request, env)) {
+    reply.code(401).send({ ok: false, error: "Unauthorized", requestId: request.requestId });
     return false;
   }
   return true;
+}
+
+function isCronAuthorized(request: FastifyRequest, env: NodeJS.ProcessEnv) {
+  const secret = env.CRON_SECRET;
+  return Boolean(secret && (request.headers.authorization === `Bearer ${secret}` || request.headers["x-cron-secret"] === secret));
+}
+
+async function readinessStatus(env: NodeJS.ProcessEnv) {
+  if (env.API_DATA_MODE !== "supabase") {
+    return {
+      ready: true,
+      mode: "memory",
+      storageAdapter: "memory",
+      checkedAt: new Date().toISOString(),
+      integrations: getIntegrationStatus(env)
+    };
+  }
+
+  const supabase = await verifySupabaseProduction(env);
+  const ready = Boolean(env.NEXT_PUBLIC_SUPABASE_URL && env.NEXT_PUBLIC_SUPABASE_ANON_KEY && env.SUPABASE_SERVICE_ROLE_KEY && supabase.ok);
+  return {
+    ready,
+    mode: "supabase",
+    storageAdapter: "supabase",
+    checkedAt: new Date().toISOString(),
+    reason: ready ? "ready" : "Supabase production dependencies are not ready",
+    integrations: getIntegrationStatus(env),
+    supabase
+  };
 }
 
 function setSessionCookie(reply: FastifyReply, session: { accessToken?: string; expiresAt?: number }) {

@@ -20,6 +20,7 @@ describe("Fastify API contract", () => {
     expect(health.headers["x-request-id"]).toBe("req_api_contract");
     expect(health.json()).toMatchObject({ ok: true, requestId: "req_api_contract", data: { app: "evolvefit", runtime: "nodejs-fastify" } });
 
+    expect((await app.inject("/api/ready")).json()).toMatchObject({ ok: true, data: { ready: true, mode: "memory" } });
     expect((await app.inject("/api/integrations/status")).json()).toMatchObject({ ok: true });
     expect((await app.inject("/api/supabase/verify")).json()).toMatchObject({ ok: true });
     expect((await app.inject("/api/docs/openapi")).json()).toMatchObject({ openapi: "3.1.0", info: { title: "EvolveFit API V1" } });
@@ -154,15 +155,22 @@ describe("Fastify API contract", () => {
       ok: true
     });
 
-    expect((await app.inject("/api/notifications/config")).json()).toMatchObject({ ok: true });
-    expect((await app.inject("/api/notifications/status?localProfileId=api")).json()).toMatchObject({ ok: true });
+    expect((await app.inject("/api/notifications/config")).json()).toMatchObject({ ok: true, data: { configured: false, fallbackMode: "in-app" } });
+    expect((await app.inject("/api/notifications/status?localProfileId=api")).json()).toMatchObject({ ok: true, data: { subscriptionCount: 0 } });
     expect((await app.inject({ method: "POST", url: "/api/notifications/subscribe", payload: { endpoint: "https://push.example/api", keys: { p256dh: "p", auth: "a" }, localProfileId: "api" } })).json()).toMatchObject({ ok: true });
-    expect((await app.inject({ method: "POST", url: "/api/notifications/test", payload: { localProfileId: "api" } })).json()).toMatchObject({ ok: true });
+    expect((await app.inject("/api/notifications/status?localProfileId=api")).json()).toMatchObject({ ok: true, data: { subscriptionCount: 1 } });
+    expect((await app.inject({ method: "POST", url: "/api/notifications/test", payload: { localProfileId: "api" } })).json()).toMatchObject({ ok: true, data: { missingEnv: 1, fallback: "in-app" } });
     expect((await app.inject({ method: "POST", url: "/api/notifications/unsubscribe", payload: { endpoint: "https://push.example/api" } })).json()).toMatchObject({ ok: true });
+    expect((await app.inject("/api/notifications/status?localProfileId=api")).json()).toMatchObject({ ok: true, data: { subscriptionCount: 0 } });
 
     expect((await app.inject({ method: "POST", url: "/api/cron/hydration-reminders" })).statusCode).toBe(401);
-    expect((await app.inject({ method: "POST", url: "/api/cron/hydration-reminders", headers: { authorization: "Bearer cron-test" } })).json()).toMatchObject({ ok: true });
-    expect((await app.inject({ method: "POST", url: "/api/cron/creatine-reminders", headers: { authorization: "Bearer cron-test" } })).json()).toMatchObject({ ok: true });
-    expect((await app.inject({ method: "POST", url: "/api/cron/monthly-achievements", headers: { authorization: "Bearer cron-test" } })).json()).toMatchObject({ ok: true });
+    const hydrationCron = (await app.inject({ method: "POST", url: "/api/cron/hydration-reminders", headers: { authorization: "Bearer cron-test" } })).json();
+    expect(hydrationCron).toMatchObject({ ok: true, data: { cron: { status: "ran" } } });
+    expect((await app.inject({ method: "POST", url: "/api/cron/hydration-reminders", headers: { "x-cron-secret": "cron-test" } })).json()).toMatchObject({
+      ok: true,
+      data: { skipped: true, reason: "already-processed", cron: { status: "skipped" } }
+    });
+    expect((await app.inject({ method: "POST", url: "/api/cron/creatine-reminders", headers: { authorization: "Bearer cron-test" } })).json()).toMatchObject({ ok: true, data: { cron: { status: "ran" } } });
+    expect((await app.inject({ method: "POST", url: "/api/cron/monthly-achievements", headers: { authorization: "Bearer cron-test" } })).json()).toMatchObject({ ok: true, data: { cron: { status: "ran" } } });
   });
 });

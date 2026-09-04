@@ -209,6 +209,7 @@ Ngoai ra, OpenAPI truoc day khai bao `ApiError.requestId` la bat buoc, nhung nhi
 | Endpoint | Method | Handler | Service/lib | Persistence | Env/secret | Response/test |
 |---|---|---|---|---|---|---|
 | `/api/health` | GET | `health/route.ts` | `getIntegrationStatus`, `server-response` | None | Supabase/VAPID/AI/cron env status only | `{ ok,true,data:{app,version,runtime,checkedAt,integrations,storageAdapter},requestId }`; OpenAPI covered; route regression added. |
+| `/api/ready` | GET | `apps/api/src/routes/api-routes.ts` | `verifySupabaseProduction`, `getIntegrationStatus` | None | Supabase URL/anon/service role in `API_DATA_MODE=supabase` | `{ ok,true,data:{ready,mode,storageAdapter,integrations},requestId }` or 503 `{ ok:false,error,requestId }`; OpenAPI covered. |
 | `/api/integrations/status` | GET | `integrations/status/route.ts` | `getIntegrationStatus`, `server-response` | None | Supabase service role/anon, AI, VAPID, cron env | `{ ok,data:IntegrationStatus,requestId }`; OpenAPI covered. |
 | `/api/supabase/verify` | GET | `supabase/verify/route.ts` | `verifySupabaseProduction` | Makes service role read checks | `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | `{ ok,data:{configured,tables},requestId }`; OpenAPI covered. |
 | `/api/docs/openapi` | GET | `docs/openapi/route.ts` | Imports `docs/api-v1.openapi.json` | Static JSON | None | Returns raw OpenAPI spec with `x-request-id`; OpenAPI now describes raw spec response. |
@@ -220,7 +221,8 @@ Ngoai ra, OpenAPI truoc day khai bao `ApiError.requestId` la bat buoc, nhung nhi
 Production source of truth is not yet enforced in API handlers:
 
 - `src/lib/api.ts` clones `initialState` into `serverState` once per process.
-- Notification subscriptions live in process memory array `notificationSubscriptions`.
+- Notification subscriptions now flow through `AppRepository`: memory for local/test and Supabase `push_subscriptions` for production.
+- Cron reminders and monthly achievements now use repository-backed idempotency: memory map for local/test and Supabase `notification_events.lock_key` for production.
 - Sync idempotency lives in process memory `idempotencyResults Map`.
 - Auth `localSession` lives in module memory unless cookie/Supabase token path is used.
 - Observability request logs/client errors live in process memory.

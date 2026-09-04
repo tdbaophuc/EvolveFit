@@ -792,7 +792,25 @@ export async function sendMonthlyAchievementEvents() {
   return sendToSubscriptions(payload);
 }
 
+export async function runScheduledCronJob(
+  type: "hydration-reminders" | "creatine-reminders" | "monthly-achievements",
+  handler: () => Promise<ApiResult<unknown>>,
+  date = new Date()
+): Promise<ApiResult<unknown>> {
+  const runtime = currentApiRuntime();
+  const lockKey = cronLockKey(type, date);
+  const result = await runtime.repository.runCronOnce(runtime.user, lockKey, type, handler);
+  if (result.status === "skipped") return ok({ sent: 0, skipped: true, reason: result.reason, cron: { lockKey, status: result.status } });
+  if (!result.data.ok) return result.data;
+  return ok({ ...(result.data.data as Record<string, unknown>), cron: { lockKey, status: "ran" } });
+}
+
 export function updateLeaderboardVisibility(isPublic: boolean) {
   serverState().profile.leaderboardPublic = isPublic;
   return ok({ isPublic });
+}
+
+function cronLockKey(type: string, date: Date) {
+  if (type === "monthly-achievements") return `${type}:${date.toISOString().slice(0, 7)}`;
+  return `${type}:${date.toISOString().slice(0, 13)}`;
 }

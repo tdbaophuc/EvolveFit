@@ -13,6 +13,7 @@ const routes = [
   "/",
   "/hydration",
   "/api/health",
+  "/api/ready",
   "/api/integrations/status",
   "/api/docs/openapi",
   "/api/observability/logs",

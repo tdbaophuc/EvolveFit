@@ -11,9 +11,8 @@ import type {
   WorkoutSession,
   WorkoutSet
 } from "@evolvefit/shared";
-import { initialState } from "@evolvefit/shared";
+import { cryptoSafeId, initialState } from "@evolvefit/shared";
 import { createSupabaseRestRequest } from "./integrations";
-import { cryptoSafeId } from "@evolvefit/shared";
 
 export type ApiUser = {
   id: string;
@@ -41,6 +40,10 @@ export type StoredNotificationSubscription = {
   createdAt: string;
 };
 
+export type CronLockResult<T> =
+  | { status: "ran"; lockKey: string; data: T }
+  | { status: "skipped"; lockKey: string; reason: "already-processed" | "locked" };
+
 export type AppRepository = {
   readonly mode: "memory" | "supabase";
   loadUserState(user: ApiUser): Promise<AppState>;
@@ -50,6 +53,7 @@ export type AppRepository = {
   listNotificationSubscriptions(user: ApiUser, filter?: { endpoint?: string; localProfileId?: string }): Promise<StoredNotificationSubscription[]>;
   upsertNotificationSubscription(user: ApiUser, subscription: StoredNotificationSubscription): Promise<StoredNotificationSubscription>;
   revokeNotificationSubscription(user: ApiUser, endpoint: string): Promise<{ endpoint: string }>;
+  runCronOnce<T>(user: ApiUser, lockKey: string, type: string, handler: () => Promise<T>): Promise<CronLockResult<T>>;
 };
 
 export class MemoryAppRepository implements AppRepository {
@@ -57,6 +61,7 @@ export class MemoryAppRepository implements AppRepository {
   private readonly states = new Map<string, AppState>();
   private readonly syncResults = new Map<string, PersistedSyncResult>();
   private readonly subscriptions = new Map<string, StoredNotificationSubscription>();
+  private readonly cronLocks = new Map<string, { status: "processing" | "sent" | "failed"; lockedUntil: number }>();
 
   async loadUserState(user: ApiUser): Promise<AppState> {
     const existing = this.states.get(user.id);
@@ -96,6 +101,23 @@ export class MemoryAppRepository implements AppRepository {
   async revokeNotificationSubscription(user: ApiUser, endpoint: string): Promise<{ endpoint: string }> {
     this.subscriptions.delete(syncKey(user, endpoint));
     return { endpoint };
+  }
+
+  async runCronOnce<T>(user: ApiUser, lockKey: string, _type: string, handler: () => Promise<T>): Promise<CronLockResult<T>> {
+    const key = syncKey(user, lockKey);
+    const existing = this.cronLocks.get(key);
+    const now = Date.now();
+    if (existing?.status === "sent") return { status: "skipped", lockKey, reason: "already-processed" };
+    if (existing?.status === "processing" && existing.lockedUntil > now) return { status: "skipped", lockKey, reason: "locked" };
+    this.cronLocks.set(key, { status: "processing", lockedUntil: now + cronLockTtlMs() });
+    try {
+      const data = await handler();
+      this.cronLocks.set(key, { status: "sent", lockedUntil: Date.now() + cronLockTtlMs() });
+      return { status: "ran", lockKey, data };
+    } catch (error) {
+      this.cronLocks.set(key, { status: "failed", lockedUntil: Date.now() });
+      throw error;
+    }
   }
 }
 
@@ -226,6 +248,48 @@ export class SupabaseAppRepository implements AppRepository {
     return { endpoint };
   }
 
+  async runCronOnce<T>(user: ApiUser, lockKey: string, type: string, handler: () => Promise<T>): Promise<CronLockResult<T>> {
+    const now = new Date();
+    const lock = await this.acquireCronLock(user, lockKey, type, new Date(now.getTime() + cronLockTtlMs()).toISOString());
+    if (!lock.acquired) return { status: "skipped", lockKey, reason: lock.reason };
+
+    const eventId = lock.eventId;
+
+    try {
+      const data = await handler();
+      await this.upsert(user, "notification_events?on_conflict=user_id,lock_key", [
+        {
+          id: eventId,
+          user_id: user.id,
+          type,
+          lock_key: lockKey,
+          scheduled_for: now.toISOString(),
+          locked_at: now.toISOString(),
+          locked_until: new Date(now.getTime() + cronLockTtlMs()).toISOString(),
+          sent_at: new Date().toISOString(),
+          status: "sent",
+          payload_json: data
+        }
+      ]);
+      return { status: "ran", lockKey, data };
+    } catch (error) {
+      await this.upsert(user, "notification_events?on_conflict=user_id,lock_key", [
+        {
+          id: eventId,
+          user_id: user.id,
+          type,
+          lock_key: lockKey,
+          scheduled_for: now.toISOString(),
+          locked_at: now.toISOString(),
+          locked_until: now.toISOString(),
+          status: "failed",
+          payload_json: { error: error instanceof Error ? error.message : "Cron failed" }
+        }
+      ]);
+      throw error;
+    }
+  }
+
   private async saveRoutines(user: ApiUser, routines: Routine[]): Promise<void> {
     await this.replaceUserRows(user, "routine_exercises", []);
     await this.replaceUserRows(user, "routines", routines.map((item) => routineToRow(user.id, item)));
@@ -255,6 +319,34 @@ export class SupabaseAppRepository implements AppRepository {
       createSupabaseRestRequest(table, { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(rows) }, this.env, user.accessToken)
     );
     if (!response.ok) throw new Error(`Supabase upsert ${table} failed: ${response.status}`);
+  }
+
+  private async acquireCronLock(user: ApiUser, lockKey: string, type: string, lockedUntil: string): Promise<{ acquired: boolean; eventId: string; reason: "already-processed" | "locked" }> {
+    const response = await this.fetchImpl(
+      createSupabaseRestRequest(
+        "rpc/evolvefit_acquire_notification_event_lock",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            p_user_id: user.id,
+            p_lock_key: lockKey,
+            p_type: type,
+            p_locked_until: lockedUntil
+          })
+        },
+        this.env,
+        user.accessToken
+      )
+    );
+    if (!response.ok) throw new Error(`Supabase acquire cron lock failed: ${response.status}`);
+    const rows = (await response.json()) as CronLockRow[];
+    const lock = rows[0];
+    if (!lock) throw new Error("Supabase acquire cron lock returned no result");
+    return {
+      acquired: lock.acquired,
+      eventId: lock.event_id,
+      reason: lock.reason === "already-processed" ? "already-processed" : "locked"
+    };
   }
 }
 
@@ -379,9 +471,14 @@ type RecommendationRow = { id: string; user_id: string; exercise_id?: string | n
 type LeaderboardProfileRow = { id: string; user_id: string; display_name: string; score: number | string; badge_streak_months: number; is_public: boolean };
 type SyncEventRow = { id: string; idempotency_key: string; event_type: string; payload: PersistedSyncResult; status: PersistedSyncResult["status"]; error?: string | null };
 type PushSubscriptionRow = { user_id: string; endpoint: string; p256dh: string; auth: string; platform?: string | null; local_profile_id?: string | null; created_at: string };
+type CronLockRow = { acquired: boolean; event_id: string; reason?: "already-processed" | "locked" | null };
 
 function syncKey(user: ApiUser, key: string) {
   return `${user.id}:${key}`;
+}
+
+function cronLockTtlMs() {
+  return 10 * 60 * 1000;
 }
 
 function profileToRow(userId: string, state: AppState) {

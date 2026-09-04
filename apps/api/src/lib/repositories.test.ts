@@ -19,6 +19,15 @@ describe("backend repository boundary", () => {
     await repository.saveSyncResult(userA, "idem-1", "hydration.log", { id: "sync-a", type: "hydration.log", status: "synced" });
     expect(await repository.getSyncResult(userA, "idem-1")).toMatchObject({ id: "sync-a", status: "synced" });
     expect(await repository.getSyncResult(userB, "idem-1")).toBeUndefined();
+
+    const firstCron = await repository.runCronOnce(userA, "hydration-reminders:2026-09-04T08", "hydration-reminders", async () => ({ sent: 1 }));
+    expect(firstCron).toMatchObject({ status: "ran", lockKey: "hydration-reminders:2026-09-04T08" });
+    await expect(
+      repository.runCronOnce(userA, "hydration-reminders:2026-09-04T08", "hydration-reminders", async () => ({ sent: 2 }))
+    ).resolves.toMatchObject({ status: "skipped", reason: "already-processed" });
+    await expect(
+      repository.runCronOnce(userB, "hydration-reminders:2026-09-04T08", "hydration-reminders", async () => ({ sent: 2 }))
+    ).resolves.toMatchObject({ status: "ran" });
   });
 
   it("scopes Supabase REST reads/writes by authenticated user id", async () => {
@@ -30,6 +39,9 @@ describe("backend repository boundary", () => {
         init: { method: request.method, headers: Object.fromEntries(request.headers.entries()) },
         body: request.method === "POST" || request.method === "PATCH" ? await request.clone().json().catch(() => undefined) : undefined
       });
+      if (request.url.includes("/rpc/evolvefit_acquire_notification_event_lock")) {
+        return Response.json([{ acquired: true, event_id: "00000000-0000-4000-8000-000000000001", reason: null }]);
+      }
       return request.method === "GET" ? Response.json([]) : new Response(null, { status: 204 });
     });
     const repository = new SupabaseAppRepository(
@@ -40,6 +52,7 @@ describe("backend repository boundary", () => {
 
     await repository.loadUserState(user);
     await repository.saveSyncResult(user, "idem-1", "hydration.log", { id: "item-1", type: "hydration.log", status: "synced" });
+    await repository.runCronOnce(user, "monthly-achievements:2026-09", "monthly-achievements", async () => ({ sent: 0 }));
 
     const getUrls = calls.filter((call) => call.init.method === "GET").map((call) => call.url);
     expect(getUrls.length).toBeGreaterThan(5);
@@ -47,6 +60,9 @@ describe("backend repository boundary", () => {
     expect(calls.every((call) => (call.init.headers as Record<string, string>).authorization === "Bearer jwt-a")).toBe(true);
     expect(calls.some((call) => call.url.includes("sync_events?on_conflict=user_id,idempotency_key"))).toBe(true);
     expect(calls.some((call) => Array.isArray(call.body) && call.body[0]?.user_id === "user-a" && call.body[0]?.idempotency_key === "idem-1")).toBe(true);
+    expect(calls.some((call) => call.url.includes("rpc/evolvefit_acquire_notification_event_lock"))).toBe(true);
+    expect(calls.some((call) => call.url.includes("notification_events?on_conflict=user_id,lock_key"))).toBe(true);
+    expect(calls.some((call) => Array.isArray(call.body) && call.body[0]?.user_id === "user-a" && call.body[0]?.lock_key === "monthly-achievements:2026-09")).toBe(true);
   });
 
   it("requires auth for data endpoints in Supabase mode but keeps health public", async () => {
@@ -58,6 +74,7 @@ describe("backend repository boundary", () => {
     await app.ready();
 
     expect((await app.inject("/api/health")).statusCode).toBe(200);
+    expect((await app.inject("/api/ready")).statusCode).toBe(503);
     const hydration = await app.inject("/api/hydration/today");
     expect(hydration.statusCode).toBe(401);
     expect(hydration.json()).toMatchObject({ ok: false, error: "Unauthorized" });

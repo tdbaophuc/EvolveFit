@@ -400,6 +400,20 @@
         "security": []
       }
     },
+    "/api/ready": {
+      "get": {
+        "summary": "Readiness check for DB, env, and backend dependencies",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
     "/api/integrations/status": {
       "get": {
         "summary": "Integration status",

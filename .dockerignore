@@ -1,0 +1,16 @@
+node_modules
+apps/*/node_modules
+packages/*/node_modules
+.next
+apps/web/.next
+dist
+apps/api/dist
+packages/shared/dist
+.git
+.env
+.env.*
+!.env.example
+!apps/*/.env.example
+!packages/*/.env.example
+coverage
+*.log

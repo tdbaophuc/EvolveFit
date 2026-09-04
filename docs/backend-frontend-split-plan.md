@@ -265,6 +265,8 @@ Output mong muon:
 
 ## Phase 5 - Cron, notification va deployment
 
+Status: implemented in `apps/api` with protected cron endpoints, repository-backed cron idempotency, Web Push persistence, `/api/ready`, Dockerfiles, CI, and `docs/deploy-runbook.md`.
+
 Muc tieu: backend san sang deploy rieng.
 
 Viec can lam:
