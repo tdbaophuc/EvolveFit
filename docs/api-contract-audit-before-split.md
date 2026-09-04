@@ -1,6 +1,6 @@
 # Audit contract API truoc khi tach backend/frontend
 
-Cap nhat: 2026-09-03
+Cap nhat: 2026-09-04
 
 Cap nhat sau Phase 1 monorepo:
 
@@ -17,6 +17,13 @@ Cap nhat sau Phase 2 backend:
 - Backend chay local bang `npm run dev:api` hoac `npm run dev -w @evolvefit/api`, mac dinh `PORT=4000`.
 - Backend route tests chay bang `npm run test -w @evolvefit/api`; TypeScript build chay bang `npm run build -w @evolvefit/api`.
 
+Cap nhat sau Phase 3 frontend -> backend:
+
+- `apps/web` khong con chua `src/app/api/**`, `middleware.ts`, hoac cac module server-only `api.ts`, `auth.ts`, `data-adapter.ts`, `integrations.ts`, `push.ts`, `observability.ts`, `server-response.ts`, `rate-limit.ts`.
+- Frontend goi API qua `apps/web/src/lib/api-client.ts`; client lay base URL tu `NEXT_PUBLIC_API_BASE_URL` va gui `credentials: "include"` cho auth cookie.
+- `apps/web/next.config.ts` co rewrite chuyen tiep `/api/:path*` sang `${NEXT_PUBLIC_API_BASE_URL}/api/:path*`, nhung UI khong con import/chay Next API handlers.
+- OpenAPI validator hien doi chieu `docs/api-v1.openapi.json` voi Fastify route registry `apps/api/src/routes/api-routes.ts`.
+
 Pham vi audit:
 
 - Doc `docs/backend-frontend-split-plan.md`, `docs/api-v1.openapi.json`, `docs/final-audit-matrix.md`, `docs/final-gap-report.md`, `package.json`.
@@ -30,16 +37,16 @@ Pham vi audit:
 | Lenh | Ket qua | Ghi chu |
 |---|---:|---|
 | `npm run lint` | Pass | ESLint khong bao loi. |
-| `npm run openapi` | Pass | OpenAPI V1 hien co 46 paths va validator doi chieu 54 route operations tu `apps/web/src/app/api/**/route.ts`. |
-| `npm run build` | Pass | Next build thanh cong, liet ke 46 route API dynamic. |
-| `npm test` | Pass | 130 tests pass sau khi UI tests seed trang thai da onboard de khop hanh vi hien tai. |
-| `npx vitest run apps/web/src/app/api/contract-routes.test.ts` | Pass | 6 regression route tests moi pass rieng. |
+| `npm run openapi` | Pass | OpenAPI V1 hien co 46 paths va validator doi chieu 54 Fastify route operations tu `apps/api/src/routes/api-routes.ts`. |
+| `npm run build` | Pass | Build shared, api va web thanh cong; web khong con route API Next. |
+| `npm test` | Pass | 84 tests pass sau khi Next API route tests duoc thay bang Fastify route tests va API client tests. |
+| `npm run test -w @evolvefit/api` | Pass | Fastify route tests cover contract chinh sau khi Next API routes duoc xoa khoi web. |
 | `npm run build -w @evolvefit/shared` | Pass | Shared package build TypeScript rieng. |
 | `npm run test -w @evolvefit/shared` | Pass | Shared package test rieng. |
 
 ## Tong quan contract hien tai
 
-EvolveFit hien la monorepo co Next.js web app. API handlers tam thoi van nam trong Next tai `apps/web/src/app/api/**/route.ts`, phan lon goi service layer `apps/web/src/lib/api.ts`, mot so route moi dung `apps/web/src/lib/server-response.ts` de co request id/log/error envelope.
+EvolveFit hien la monorepo co Next.js web app va backend Fastify doc lap. API handlers nam trong `apps/api/src/routes/api-routes.ts`, goi service layer `apps/api/src/lib/api.ts` va cac module server-only trong `apps/api/src/lib/**`. Frontend `apps/web` chi goi API qua `EvolveFitApiClient`.
 
 Contract thuc te dang co 46 path API trong Next build. `docs/api-v1.openapi.json` da duoc cap nhat de bao phu du 46 paths, bao gom cac path truoc do bi thieu:
 
@@ -71,15 +78,15 @@ Ngoai ra, OpenAPI truoc day khai bao `ApiError.requestId` la bat buoc, nhung nhi
 | `packages/shared/src/core.ts` | Type domain, pure calculation, workout/session logic, reminders, reports, sync queue helpers, coach guardrails. | Shared giua web va backend sau nay. | Pure, khong dung runtime server/browser. |
 | `packages/shared/src/app-data.ts` | Export/import/restore app data, schema version. | Shared; caller truyen app version tu runtime rieng. | Pure, khong doc `process.env`. |
 | `apps/web/src/lib/storage.ts` | LocalStorage cho PWA local-first. | Frontend only. | Dung `window.localStorage`. |
-| `apps/web/src/lib/api-client.ts` | Client goi `/api/**`. | Frontend client package/web lib. | Co `baseUrl`, hien chua tu doc `NEXT_PUBLIC_API_BASE_URL`. |
-| `apps/web/src/lib/api.ts` | Service layer cho route Next: CRUD, sync, coach, notification, achievements. | Backend service layer sau khi tach. | Dang dung `serverState = structuredClone(initialState)`, `notificationSubscriptions[]`, `idempotencyResults Map`. |
-| `apps/web/src/lib/auth.ts` | Local session, Supabase email auth, OAuth URL/PKCE/cookie payload. | Backend auth service + mot phan shared type. | Dung local module state va Supabase anon env. |
-| `apps/web/src/lib/data-adapter.ts` | Memory adapter va Supabase REST adapter generic. | Backend repository/adapters. | Chon Supabase khi co `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`, fallback memory. |
-| `apps/web/src/lib/integrations.ts` | Integration status, Supabase REST/service role request, Supabase verify, AI coach provider. | Backend only tru mot so type status. | Dung `NEXT_PUBLIC_SUPABASE_URL`, anon key, service role, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `CRON_SECRET`. |
-| `apps/web/src/lib/push.ts` | Web Push VAPID/send. | Backend only. | Dung `NEXT_PUBLIC_VAPID_PUBLIC_KEY` hoac `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. |
-| `apps/web/src/lib/observability.ts` | Request id, request logs, client errors, snapshot. | Backend observability service. | Memory logs/client errors. |
-| `apps/web/src/lib/server-response.ts` | `jsonOk`, `jsonFail`, error handling va request id header. | Backend HTTP adapter/hook pattern. | Phu thuoc `next/server`, can viet lai khi sang Fastify. |
-| `apps/web/src/lib/rate-limit.ts` | Memory rate limit buckets. | Backend plugin/hook hoac thay bang `@fastify/rate-limit`. | Memory `Map`. |
+| `apps/web/src/lib/api-client.ts` | Client goi `/api/**` tren backend rieng. | Frontend client package/web lib. | Doc `NEXT_PUBLIC_API_BASE_URL`; dung `credentials: "include"`. |
+| `apps/api/src/lib/api.ts` | Service layer backend: CRUD, sync, coach, notification, achievements. | Backend only. | Dang dung `serverState = structuredClone(initialState)`, `notificationSubscriptions[]`, `idempotencyResults Map`. |
+| `apps/api/src/lib/auth.ts` | Local session, Supabase email auth, OAuth URL/PKCE/cookie payload. | Backend auth service + mot phan shared type. | Dung local module state va Supabase anon env. |
+| `apps/api/src/lib/data-adapter.ts` | Memory adapter va Supabase REST adapter generic. | Backend repository/adapters. | Chon Supabase khi co `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`, fallback memory. |
+| `apps/api/src/lib/integrations.ts` | Integration status, Supabase REST/service role request, Supabase verify, AI coach provider. | Backend only tru mot so type status. | Dung Supabase env, service role, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `CRON_SECRET`. |
+| `apps/api/src/lib/push.ts` | Web Push VAPID/send. | Backend only. | Dung `NEXT_PUBLIC_VAPID_PUBLIC_KEY` hoac `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. |
+| `apps/api/src/lib/observability.ts` | Request id, request logs, client errors, snapshot. | Backend observability service. | Memory logs/client errors. |
+| `apps/api/src/lib/server-response.ts` | `jsonOk`, `jsonFail`, error handling va request id header. | Backend HTTP adapter/hook pattern. | Fastify reply/request. |
+| `apps/api/src/lib/rate-limit.ts` | Memory rate limit buckets. | Backend plugin/hook hoac thay bang `@fastify/rate-limit`. | Memory `Map`. |
 | `packages/shared/src/seed.ts` | `initialState`, fixtures, templates. | Shared fixture/test/demo only; khong lam production source of truth. | Duoc clone vao memory serverState. |
 
 ## Endpoint inventory

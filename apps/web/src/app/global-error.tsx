@@ -2,21 +2,20 @@
 
 import { AlertTriangle } from "lucide-react";
 import { useEffect } from "react";
+import { evolveFitApiClient } from "@/lib/api-client";
 import "./globals.css";
 
 export default function GlobalError({ error }: { error: Error & { digest?: string } }) {
   useEffect(() => {
-    fetch("/api/client-errors", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    evolveFitApiClient
+      .reportClientError({
         message: error.message || "Lỗi nghiêm trọng",
         digest: error.digest,
         stack: error.stack,
         path: window.location.pathname,
         userAgent: navigator.userAgent
       })
-    }).catch(() => undefined);
+      .catch(() => undefined);
   }, [error]);
 
   return (

@@ -2,12 +2,13 @@
 
 ## Ket luan hien trang
 
-Du an co the tach backend rieng va frontend rieng. Sau Phase 1, repo da duoc chuan bi thanh npm workspaces:
+Du an co the tach backend rieng va frontend rieng. Trang thai hien tai:
 
-- Web hien nam trong `apps/web` va van giu Next.js UI + Next API routes tam thoi de khong doi hanh vi nguoi dung.
+- Web hien nam trong `apps/web` va khong con chua Next API routes. UI goi backend Fastify qua `EvolveFitApiClient` va `NEXT_PUBLIC_API_BASE_URL`.
+- Backend Node.js/Fastify hien nam trong `apps/api` va expose day du API contract hien co.
 - Shared package hien nam trong `packages/shared`, gom `core.ts`, `app-data.ts`, `seed.ts` va entrypoint `src/index.ts`.
-- Root scripts `lint`, `test`, `build`, `openapi`, `smoke`, `check` van la diem goi chinh; `build` build shared truoc web.
-- OpenAPI validator doc route tu `apps/web/src/app/api/**/route.ts`.
+- Root scripts `lint`, `test`, `build`, `openapi`, `smoke`, `check` van la diem goi chinh; `build` build shared, api, roi web.
+- OpenAPI validator doc route tu `apps/api/src/routes/api-routes.ts`.
 
 Truoc Phase 1, EvolveFit la Next.js monolith:
 
@@ -167,6 +168,22 @@ Output mong muon:
 ## Phase 3 - Noi frontend sang backend rieng
 
 Muc tieu: frontend khong phu thuoc Next API routes.
+
+Trang thai: da hoan thanh ngay 2026-09-04. Frontend `apps/web` da goi backend qua `EvolveFitApiClient` voi base URL tu `NEXT_PUBLIC_API_BASE_URL`; `apps/web/src/app/api/**` va cac module server-only trong `apps/web/src/lib/**` da duoc loai bo. `next.config.ts` van co rewrite chuyen tiep `/api/:path*` sang backend de giam rui ro cho URL cu, nhung UI khong con import hoac chay handler Next API.
+
+Cach chay local hai app:
+
+```bash
+npm run dev:api
+NEXT_PUBLIC_API_BASE_URL=http://localhost:4000 npm run dev
+```
+
+Mac dinh backend nghe `PORT=4000`; web Next co the chay `PORT=3000` hoac `npm run dev:5173`. Dat `API_CORS_ORIGIN` o backend theo origin web, vi du `http://localhost:3000,http://localhost:5173`.
+
+Bien moi truong sau khi tach:
+
+- `apps/web/.env.example`: chi giu public vars nhu `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`.
+- `apps/api/.env.example`: giu server secrets nhu `SUPABASE_SERVICE_ROLE_KEY`, `VAPID_PRIVATE_KEY`, `CRON_SECRET`, `GEMINI_API_KEY`, `OPENAI_API_KEY`.
 
 Viec can lam:
 

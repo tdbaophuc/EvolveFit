@@ -126,6 +126,7 @@ import {
   type RestoreSection
 } from "@evolvefit/shared";
 import { initialState, routineTemplates, type AppState } from "@evolvefit/shared";
+import { evolveFitApiClient } from "@/lib/api-client";
 import { loadState, resetState, saveState } from "@/lib/storage";
 
 type Tab = "today" | "hydration" | "workout" | "progress" | "settings";
@@ -397,10 +398,10 @@ export default function AppPage() {
 
   useEffect(() => {
     if (!mounted) return;
-    fetch("/api/health")
-      .then(async (response) => {
-        const body = (await response.json()) as { ok?: boolean; data?: HealthDashboard; requestId?: string };
-        if (body.ok && body.data) setHealthDashboard({ ...body.data, requestId: body.requestId ?? response.headers.get("x-request-id") ?? undefined });
+    evolveFitApiClient
+      .health()
+      .then((body) => {
+        if (body.ok && body.data) setHealthDashboard({ ...(body.data as HealthDashboard), requestId: body.requestId });
       })
       .catch(() => undefined);
   }, [mounted]);
@@ -449,28 +450,13 @@ export default function AppPage() {
     let cancelled = false;
     setState((current) => ({ ...current, syncQueue: markSyncItemSyncing(current.syncQueue, nextItem.id) }));
 
-    fetch("/api/sync/batch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    evolveFitApiClient
+      .syncBatch({
         idempotencyKey: nextItem.idempotencyKey ?? nextItem.id,
         items: [{ id: nextItem.id, type: nextItem.type, payload: nextItem.payload, idempotencyKey: nextItem.idempotencyKey ?? nextItem.id }]
       })
-    })
-      .then(async (response) => {
-        const body = (await response.json()) as {
-          ok?: boolean;
-          data?: {
-            results?: {
-              id: string;
-              status: "synced" | "failed" | "conflict";
-              error?: string;
-              conflict?: NonNullable<SyncQueueItem["conflict"]>;
-            }[];
-          };
-          error?: string;
-        };
-        if (!response.ok || !body.ok) throw new Error(body.error ?? "Yêu cầu đồng bộ thất bại");
+      .then((body) => {
+        if (!body.ok) throw new Error(body.error ?? "Yêu cầu đồng bộ thất bại");
         return body.data?.results?.[0];
       })
       .then((result) => {
@@ -1459,13 +1445,11 @@ export default function AppPage() {
       setToast("Email hoặc mật khẩu chưa hợp lệ");
       return;
     }
-    const response = await fetch(mode === "sign-up" ? "/api/auth/sign-up" : "/api/auth/sign-in", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: state.profile.email.trim(), password: authPassword, mode: "email" })
-    });
-    const payload = (await response.json()) as { ok: boolean; data?: { email: string; mode: AppState["profile"]["authMode"] }; error?: string };
-    if (!payload.ok || !payload.data) {
+    const payload =
+      mode === "sign-up"
+        ? await evolveFitApiClient.signUp({ email: state.profile.email.trim(), password: authPassword })
+        : await evolveFitApiClient.signIn({ email: state.profile.email.trim(), password: authPassword, mode: "email" });
+    if (!payload.ok) {
       setToast(payload.error ?? "Đăng nhập thất bại");
       return;
     }
@@ -1478,7 +1462,7 @@ export default function AppPage() {
   }
 
   function startGoogleOAuth() {
-    window.location.href = "/api/auth/oauth/google";
+    window.location.href = evolveFitApiClient.googleOAuthUrl();
   }
 
   function importJsonExport(file: File) {
@@ -1540,14 +1524,14 @@ export default function AppPage() {
       return;
     }
     try {
-      const response = await fetch(`/api/notifications/config?localProfileId=${encodeURIComponent(localProfileId())}`);
-      const result = (await response.json()) as { ok?: boolean; data?: { vapidPublicKey?: string; configured?: boolean } };
-      const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || result.data?.vapidPublicKey || null;
+      const result = await evolveFitApiClient.notificationConfig(localProfileId());
+      const config = result.ok ? result.data : undefined;
+      const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || config?.vapidPublicKey || null;
       setVapidPublicKey(key);
-      setPushConfigured(Boolean(result.data?.configured && key));
+      setPushConfigured(Boolean(config?.configured && key));
       const registration = await getServiceWorkerRegistration();
       const subscription = await registration?.pushManager.getSubscription();
-      setPushSubscriptionStatus(!key || !result.data?.configured ? "missing-env" : subscription ? "subscribed" : "unsubscribed");
+      setPushSubscriptionStatus(!key || !config?.configured ? "missing-env" : subscription ? "subscribed" : "unsubscribed");
     } catch {
       setPushSubscriptionStatus("missing-env");
     }
@@ -1573,11 +1557,7 @@ export default function AppPage() {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToArrayBuffer(key)
       }));
-    await fetch("/api/notifications/subscribe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...subscription.toJSON(), localProfileId: localProfileId(), platform: navigator.userAgent })
-    });
+    await evolveFitApiClient.subscribeNotifications({ ...subscription.toJSON(), localProfileId: localProfileId(), platform: navigator.userAgent });
     setPushSubscriptionStatus("subscribed");
     setToast("Đã đăng ký Web Push");
   }
@@ -1588,11 +1568,7 @@ export default function AppPage() {
     const endpoint = subscription?.endpoint;
     await subscription?.unsubscribe();
     if (endpoint) {
-      await fetch("/api/notifications/unsubscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ endpoint })
-      });
+      await evolveFitApiClient.unsubscribeNotifications(endpoint);
     }
     setPushSubscriptionStatus(pushConfigured ? "unsubscribed" : "missing-env");
     setToast("Đã hủy đăng ký Web Push");
@@ -1605,12 +1581,7 @@ export default function AppPage() {
     }
     const registration = await getServiceWorkerRegistration();
     const subscription = await registration?.pushManager.getSubscription();
-    const response = await fetch("/api/notifications/test", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ endpoint: subscription?.endpoint, localProfileId: localProfileId() })
-    });
-    const result = (await response.json()) as { ok?: boolean; data?: { sent?: number } };
+    const result = await evolveFitApiClient.sendTestNotification({ endpoint: subscription?.endpoint, localProfileId: localProfileId() });
     if (result.ok && result.data?.sent) {
       setToast("Đã gửi thử Web Push");
       return;

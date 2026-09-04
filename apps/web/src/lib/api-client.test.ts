@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { EvolveFitApiClient } from "./api-client";
+import { EvolveFitApiClient, evolveFitApiBaseUrl } from "./api-client";
 
 describe("EvolveFitApiClient", () => {
   it("calls typed hydration endpoint", async () => {
@@ -9,9 +9,14 @@ describe("EvolveFitApiClient", () => {
     const client = new EvolveFitApiClient("https://app.test");
     const result = await client.hydrationToday();
 
-    expect(fetchMock).toHaveBeenCalledWith("https://app.test/api/hydration/today", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenCalledWith("https://app.test/api/hydration/today", expect.objectContaining({ method: "GET", credentials: "include" }));
     expect(result).toEqual({ ok: true, data: { totalMl: 500 } });
     vi.unstubAllGlobals();
+  });
+
+  it("normalizes API base URL from env", () => {
+    expect(evolveFitApiBaseUrl("http://localhost:4000///")).toBe("http://localhost:4000");
+    expect(evolveFitApiBaseUrl("")).toBe("");
   });
 
   it("posts leaderboard visibility", async () => {
@@ -45,6 +50,21 @@ describe("EvolveFitApiClient", () => {
     vi.unstubAllGlobals();
   });
 
+  it("supports auth session, sign out, google OAuth URL, and error envelopes", async () => {
+    const fetchMock = vi.fn(async () => Response.json({ ok: false, error: "Unauthorized", requestId: "req_client" }, { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new EvolveFitApiClient("https://api.test");
+
+    const session = await client.session();
+    await client.signOut();
+
+    expect(session).toEqual({ ok: false, error: "Unauthorized", requestId: "req_client" });
+    expect(client.googleOAuthUrl()).toBe("https://api.test/api/auth/oauth/google");
+    expect(fetchMock).toHaveBeenCalledWith("https://api.test/api/auth/session", expect.objectContaining({ method: "GET", credentials: "include" }));
+    expect(fetchMock).toHaveBeenCalledWith("https://api.test/api/auth/sign-out", expect.objectContaining({ method: "POST", credentials: "include" }));
+    vi.unstubAllGlobals();
+  });
+
   it("supports health, Supabase verify, and supplement status contracts", async () => {
     const fetchMock = vi.fn(async () => Response.json({ ok: true, data: {} }));
     vi.stubGlobal("fetch", fetchMock);
@@ -64,6 +84,28 @@ describe("EvolveFitApiClient", () => {
         body: JSON.stringify({ supplementId: "sup1", name: "Creatine", amount: 0, status: "skipped", skippedReason: "late" })
       })
     );
+    expect(fetchMock).toHaveBeenCalledWith("/api/supplements/sup1/reminder", expect.objectContaining({ method: "PUT" }));
+    vi.unstubAllGlobals();
+  });
+
+  it("supports notification and client error flows", async () => {
+    const fetchMock = vi.fn(async () => Response.json({ ok: true, data: { sent: 1 } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new EvolveFitApiClient("http://localhost:4000");
+
+    await client.notificationConfig("profile@example.com");
+    await client.notificationStatus("profile@example.com");
+    await client.subscribeNotifications({ endpoint: "https://push.example", keys: { p256dh: "p", auth: "a" } });
+    await client.unsubscribeNotifications("https://push.example");
+    await client.sendTestNotification({ endpoint: "https://push.example", localProfileId: "profile@example.com" });
+    await client.reportClientError({ message: "boom", path: "/" });
+
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/api/notifications/config?localProfileId=profile%40example.com", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/api/notifications/status?localProfileId=profile%40example.com", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/api/notifications/subscribe", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/api/notifications/unsubscribe", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/api/notifications/test", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/api/client-errors", expect.objectContaining({ method: "POST" }));
     vi.unstubAllGlobals();
   });
 

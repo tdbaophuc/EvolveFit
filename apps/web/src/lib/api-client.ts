@@ -10,11 +10,43 @@ import type {
   WorkoutSession,
   WorkoutSet
 } from "@evolvefit/shared";
-import type { AuthMode, AuthSession } from "./auth";
-import type { IntegrationStatus } from "./integrations";
-import type { SyncBatchItem, SyncBatchResult } from "./api";
 
-type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
+export type ApiResult<T> = { ok: true; data: T; requestId?: string } | { ok: false; error: string; requestId?: string };
+export type AuthMode = "local" | "email" | "google";
+export type AuthSession = {
+  mode: AuthMode;
+  email: string;
+  accessToken?: string;
+  refreshToken?: string;
+  expiresAt?: number;
+  oauthUrl?: string;
+};
+export type IntegrationStatus = {
+  supabase: "configured" | "missing-env";
+  supabaseServiceRole: "configured" | "missing-env";
+  ai: "configured" | "rule-fallback";
+  webPush: "configured" | "missing-env";
+  cronSecret: "configured" | "missing-env";
+  healthPlatform: "native-bridge-required";
+};
+export type SyncBatchItem = {
+  id?: string;
+  type: string;
+  payload: unknown;
+  idempotencyKey?: string;
+};
+export type SyncBatchResult = {
+  id: string;
+  type: string;
+  status: "synced" | "conflict" | "failed";
+  data?: unknown;
+  error?: string;
+  conflict?: { kind: "routine"; local: unknown; remote: unknown; message: string };
+};
+
+export function evolveFitApiBaseUrl(envValue = process.env.NEXT_PUBLIC_API_BASE_URL): string {
+  return (envValue ?? "").replace(/\/+$/, "");
+}
 
 export class EvolveFitApiClient {
   constructor(private readonly baseUrl = "") {}
@@ -78,7 +110,7 @@ export class EvolveFitApiClient {
     id: string,
     input: Partial<Pick<Supplement, "name" | "defaultAmount" | "reminderHour" | "scheduleHours" | "active">>
   ): Promise<ApiResult<Supplement>> {
-    return this.patch(`/api/supplements/${id}/reminder`, input);
+    return this.put(`/api/supplements/${id}/reminder`, input);
   }
 
   async workoutToday(): Promise<ApiResult<{ routineName: string; exercises: unknown[]; sets: WorkoutSet[] }>> {
@@ -196,6 +228,36 @@ export class EvolveFitApiClient {
     return this.get("/api/supabase/verify");
   }
 
+  async notificationConfig(localProfileId?: string): Promise<ApiResult<{ vapidPublicKey?: string; configured?: boolean; browserEnv?: boolean; fallbackMode?: string }>> {
+    const query = localProfileId ? `?localProfileId=${encodeURIComponent(localProfileId)}` : "";
+    return this.get(`/api/notifications/config${query}`);
+  }
+
+  async notificationStatus(localProfileId?: string): Promise<ApiResult<{ configured: boolean; fallbackMode: string; subscriptionCount: number }>> {
+    const query = localProfileId ? `?localProfileId=${encodeURIComponent(localProfileId)}` : "";
+    return this.get(`/api/notifications/status${query}`);
+  }
+
+  async subscribeNotifications(input: unknown): Promise<ApiResult<unknown>> {
+    return this.post("/api/notifications/subscribe", input);
+  }
+
+  async unsubscribeNotifications(endpoint: string): Promise<ApiResult<{ endpoint: string }>> {
+    return this.post("/api/notifications/unsubscribe", { endpoint });
+  }
+
+  async sendTestNotification(input: { endpoint?: string; localProfileId?: string }): Promise<ApiResult<{ sent?: number; missingEnv?: number; failed?: string[]; fallback?: string | null; reason?: string }>> {
+    return this.post("/api/notifications/test", input);
+  }
+
+  async reportClientError(input: { message: string; digest?: string; stack?: string; path?: string; userAgent?: string }): Promise<ApiResult<{ requestId: string; reportedAt: string }>> {
+    return this.post("/api/client-errors", input);
+  }
+
+  googleOAuthUrl(): string {
+    return `${this.baseUrl}/api/auth/oauth/google`;
+  }
+
   private async get<T>(path: string): Promise<T> {
     return this.request(path, { method: "GET" });
   }
@@ -208,6 +270,10 @@ export class EvolveFitApiClient {
     return this.request(path, { method: "PATCH", body: JSON.stringify(body) });
   }
 
+  private async put<T>(path: string, body: unknown): Promise<T> {
+    return this.request(path, { method: "PUT", body: JSON.stringify(body) });
+  }
+
   private async delete<T>(path: string): Promise<T> {
     return this.request(path, { method: "DELETE" });
   }
@@ -215,6 +281,7 @@ export class EvolveFitApiClient {
   private async request<T>(path: string, init: RequestInit): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       ...init,
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
         ...(init.headers ?? {})
@@ -223,3 +290,5 @@ export class EvolveFitApiClient {
     return (await response.json()) as T;
   }
 }
+
+export const evolveFitApiClient = new EvolveFitApiClient(evolveFitApiBaseUrl());

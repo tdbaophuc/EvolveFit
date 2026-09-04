@@ -2,6 +2,7 @@
 
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { useEffect } from "react";
+import { evolveFitApiClient } from "@/lib/api-client";
 
 export default function AppError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
@@ -26,15 +27,13 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
 }
 
 function reportClientError(error: Error & { digest?: string }) {
-  fetch("/api/client-errors", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  evolveFitApiClient
+    .reportClientError({
       message: error.message || "Lỗi ứng dụng",
       digest: error.digest,
       stack: error.stack,
       path: window.location.pathname,
       userAgent: navigator.userAgent
     })
-  }).catch(() => undefined);
+    .catch(() => undefined);
 }
