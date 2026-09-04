@@ -58,7 +58,7 @@ describe("Fastify API contract", () => {
       ok: true,
       data: { amountMl: 425 }
     });
-    expect((await app.inject({ method: "DELETE", url: `/api/hydration/log/${hydrationPayload.data.id}` })).json()).toEqual({
+    expect((await app.inject({ method: "DELETE", url: `/api/hydration/log/${hydrationPayload.data.id}` })).json()).toMatchObject({
       ok: true,
       data: { id: hydrationPayload.data.id }
     });
@@ -114,10 +114,39 @@ describe("Fastify API contract", () => {
 
     expect((await app.inject({ method: "POST", url: "/api/sync/batch", payload: { items: "bad" } })).statusCode).toBe(400);
     expect((await app.inject({ method: "POST", url: "/api/sync/batch", payload: { items: [] } })).json()).toMatchObject({ ok: true, data: { results: [] } });
+    const syncOnce = (await app.inject({
+      method: "POST",
+      url: "/api/sync/batch",
+      payload: {
+        items: [
+          {
+            id: "offline-hydration",
+            idempotencyKey: "idem-hydration",
+            type: "hydration.log",
+            payload: { id: "offline-hydration", amountMl: 250, drinkType: "water", loggedAt: "2026-09-04T00:00:00.000Z" }
+          }
+        ]
+      }
+    })).json();
+    const syncDuplicate = (await app.inject({
+      method: "POST",
+      url: "/api/sync/batch",
+      payload: {
+        items: [
+          {
+            id: "offline-hydration",
+            idempotencyKey: "idem-hydration",
+            type: "hydration.log",
+            payload: { id: "offline-hydration", amountMl: 999, drinkType: "water", loggedAt: "2026-09-04T00:01:00.000Z" }
+          }
+        ]
+      }
+    })).json();
+    expect(syncDuplicate.data.results[0]).toEqual(syncOnce.data.results[0]);
     expect((await app.inject("/api/achievements/me")).json()).toMatchObject({ ok: true });
     expect((await app.inject({ method: "POST", url: "/api/achievements/recalculate" })).json()).toMatchObject({ ok: true });
     expect((await app.inject("/api/leaderboards")).json()).toMatchObject({ ok: true });
-    expect((await app.inject({ method: "PATCH", url: "/api/leaderboards/visibility", payload: { isPublic: true } })).json()).toEqual({ ok: true, data: { isPublic: true } });
+    expect((await app.inject({ method: "PATCH", url: "/api/leaderboards/visibility", payload: { isPublic: true } })).json()).toMatchObject({ ok: true, data: { isPublic: true } });
 
     const coach = (await app.inject({ method: "POST", url: "/api/coach/recommend", payload: {} })).json();
     expect(coach).toMatchObject({ ok: true, requestId: expect.any(String) });

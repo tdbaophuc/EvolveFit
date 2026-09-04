@@ -5,191 +5,1353 @@
     "version": "1.0.0",
     "description": "Local-first EvolveFit API contract for hydration, supplements, routines, workouts, sync, auth, and observability."
   },
-  "servers": [{ "url": "/" }],
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "security": [
+    {
+      "SupabaseBearer": []
+    }
+  ],
   "components": {
+    "securitySchemes": {
+      "SupabaseBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Supabase JWT",
+        "description": "Production data endpoints require a Supabase JWT via Authorization: Bearer <token> or an httpOnly session cookie containing the access token."
+      }
+    },
     "headers": {
       "RequestId": {
         "description": "Stable request id for correlating responses and structured logs.",
-        "schema": { "type": "string" }
+        "schema": {
+          "type": "string"
+        }
       }
     },
     "schemas": {
       "ApiError": {
         "type": "object",
-        "required": ["ok", "error"],
+        "required": [
+          "ok",
+          "error"
+        ],
         "properties": {
-          "ok": { "const": false },
-          "error": { "type": "string" },
-          "requestId": { "type": "string" }
+          "ok": {
+            "const": false
+          },
+          "error": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          }
         }
       },
       "ApiOk": {
         "type": "object",
-        "required": ["ok", "data"],
+        "required": [
+          "ok",
+          "data"
+        ],
         "properties": {
-          "ok": { "const": true },
+          "ok": {
+            "const": true
+          },
           "data": {},
-          "requestId": { "type": "string" }
+          "requestId": {
+            "type": "string"
+          }
         }
       },
       "HydrationLog": {
         "type": "object",
-        "required": ["id", "amountMl", "drinkType", "loggedAt"],
+        "required": [
+          "id",
+          "amountMl",
+          "drinkType",
+          "loggedAt"
+        ],
         "properties": {
-          "id": { "type": "string" },
-          "amountMl": { "type": "number" },
-          "drinkType": { "type": "string" },
-          "loggedAt": { "type": "string", "format": "date-time" }
+          "id": {
+            "type": "string"
+          },
+          "amountMl": {
+            "type": "number"
+          },
+          "drinkType": {
+            "type": "string"
+          },
+          "loggedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "ExerciseDefinition": {
         "type": "object",
-        "required": ["id", "name", "muscleGroup", "equipment", "movementPattern", "builtIn"],
+        "required": [
+          "id",
+          "name",
+          "muscleGroup",
+          "equipment",
+          "movementPattern",
+          "builtIn"
+        ],
         "properties": {
-          "id": { "type": "string" },
-          "name": { "type": "string" },
-          "muscleGroup": { "type": "string" },
-          "equipment": { "enum": ["barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "other"] },
-          "movementPattern": { "enum": ["push", "pull", "squat", "hinge", "lunge", "carry", "isolation", "core"] },
-          "builtIn": { "type": "boolean" },
-          "notes": { "type": "string" }
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "muscleGroup": {
+            "type": "string"
+          },
+          "equipment": {
+            "enum": [
+              "barbell",
+              "dumbbell",
+              "cable",
+              "machine",
+              "bodyweight",
+              "kettlebell",
+              "other"
+            ]
+          },
+          "movementPattern": {
+            "enum": [
+              "push",
+              "pull",
+              "squat",
+              "hinge",
+              "lunge",
+              "carry",
+              "isolation",
+              "core"
+            ]
+          },
+          "builtIn": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "string"
+          }
         }
       },
       "Routine": {
         "type": "object",
-        "required": ["id", "name", "daysPerWeek", "days", "createdAt", "updatedAt"],
+        "required": [
+          "id",
+          "name",
+          "daysPerWeek",
+          "days",
+          "createdAt",
+          "updatedAt"
+        ],
         "properties": {
-          "id": { "type": "string" },
-          "name": { "type": "string" },
-          "daysPerWeek": { "type": "integer" },
-          "days": { "type": "array", "items": { "type": "object" } },
-          "createdAt": { "type": "string", "format": "date-time" },
-          "updatedAt": { "type": "string", "format": "date-time" }
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "daysPerWeek": {
+            "type": "integer"
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "WorkoutSession": {
         "type": "object",
-        "required": ["id", "routineId", "workoutDayId", "sessionName", "startedAt", "durationSeconds", "status", "sessionExerciseOrder", "exerciseQueue"],
+        "required": [
+          "id",
+          "routineId",
+          "workoutDayId",
+          "sessionName",
+          "startedAt",
+          "durationSeconds",
+          "status",
+          "sessionExerciseOrder",
+          "exerciseQueue"
+        ],
         "properties": {
-          "id": { "type": "string" },
-          "routineId": { "type": "string" },
-          "workoutDayId": { "type": "string" },
-          "sessionName": { "type": "string" },
-          "startedAt": { "type": "string", "format": "date-time" },
-          "endedAt": { "type": "string", "format": "date-time" },
-          "durationSeconds": { "type": "integer" },
-          "status": { "enum": ["active", "paused", "finished", "cancelled"] },
-          "sessionExerciseOrder": { "type": "array", "items": { "type": "string" } },
-          "exerciseQueue": { "type": "array", "items": { "$ref": "#/components/schemas/SessionExerciseQueueItem" } }
+          "id": {
+            "type": "string"
+          },
+          "routineId": {
+            "type": "string"
+          },
+          "workoutDayId": {
+            "type": "string"
+          },
+          "sessionName": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "durationSeconds": {
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "paused",
+              "finished",
+              "cancelled"
+            ]
+          },
+          "sessionExerciseOrder": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "exerciseQueue": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionExerciseQueueItem"
+            }
+          }
         }
       },
       "SessionExerciseQueueItem": {
         "type": "object",
-        "required": ["exerciseId", "status"],
+        "required": [
+          "exerciseId",
+          "status"
+        ],
         "properties": {
-          "exerciseId": { "type": "string" },
-          "status": { "enum": ["queued", "completed", "parked"] }
+          "exerciseId": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "completed",
+              "parked"
+            ]
+          }
         }
       },
       "WorkoutSet": {
         "type": "object",
-        "required": ["id", "exerciseId", "exerciseName", "targetWeightKg", "targetReps", "actualWeightKg", "actualReps"],
+        "required": [
+          "id",
+          "exerciseId",
+          "exerciseName",
+          "targetWeightKg",
+          "targetReps",
+          "actualWeightKg",
+          "actualReps"
+        ],
         "properties": {
-          "id": { "type": "string" },
-          "sessionId": { "type": "string" },
-          "exerciseId": { "type": "string" },
-          "exerciseName": { "type": "string" },
-          "setType": { "enum": ["warmup", "working", "drop", "failure"] },
-          "targetWeightKg": { "type": "number" },
-          "targetReps": { "type": "integer" },
-          "actualWeightKg": { "type": "number" },
-          "actualReps": { "type": "integer" },
-          "rpe": { "type": "number" },
-          "completedAt": { "type": "string", "format": "date-time" }
+          "id": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "exerciseId": {
+            "type": "string"
+          },
+          "exerciseName": {
+            "type": "string"
+          },
+          "setType": {
+            "enum": [
+              "warmup",
+              "working",
+              "drop",
+              "failure"
+            ]
+          },
+          "targetWeightKg": {
+            "type": "number"
+          },
+          "targetReps": {
+            "type": "integer"
+          },
+          "actualWeightKg": {
+            "type": "number"
+          },
+          "actualReps": {
+            "type": "integer"
+          },
+          "rpe": {
+            "type": "number"
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "SyncBatchItem": {
         "type": "object",
-        "required": ["type", "payload"],
+        "required": [
+          "type",
+          "payload"
+        ],
         "properties": {
-          "id": { "type": "string" },
-          "type": { "type": "string" },
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
           "payload": {},
-          "idempotencyKey": { "type": "string" }
+          "idempotencyKey": {
+            "type": "string"
+          }
         }
       },
       "ClientErrorReport": {
         "type": "object",
-        "required": ["message"],
+        "required": [
+          "message"
+        ],
         "properties": {
-          "requestId": { "type": "string" },
-          "message": { "type": "string" },
-          "digest": { "type": "string" },
-          "stack": { "type": "string" },
-          "path": { "type": "string" },
-          "userAgent": { "type": "string" }
+          "requestId": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "stack": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "userAgent": {
+            "type": "string"
+          }
         }
       }
     },
     "responses": {
       "Ok": {
         "description": "Successful API result.",
-        "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } },
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiOk" } } }
+        "headers": {
+          "x-request-id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiOk"
+            }
+          }
+        }
       },
       "Error": {
         "description": "Failed API result.",
-        "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } },
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+        "headers": {
+          "x-request-id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
       }
     }
   },
   "paths": {
-    "/api/health": { "get": { "summary": "Health and integration readiness", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
-    "/api/integrations/status": { "get": { "summary": "Integration status", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
-    "/api/docs/openapi": { "get": { "summary": "OpenAPI V1 spec", "responses": { "200": { "description": "Raw OpenAPI document.", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "type": "object", "required": ["openapi", "info", "paths"], "properties": { "openapi": { "type": "string" }, "info": { "type": "object" }, "paths": { "type": "object" } } } } } } } } },
-    "/api/observability/logs": { "get": { "summary": "Recent structured logs, optionally filtered by requestId", "parameters": [{ "name": "requestId", "in": "query", "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
-    "/api/client-errors": { "post": { "summary": "Report client error", "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ClientErrorReport" } } } }, "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" } } } },
-    "/api/coach/recommend": { "post": { "summary": "Generate guarded coach recommendation. Rule insight runs first; AI appears only with sufficient data and configured provider.", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" }, "429": { "$ref": "#/components/responses/Error" } } } },
-    "/api/coach/recommendations/{id}/feedback": { "post": { "summary": "Accept or reject a coach recommendation with optional feedback.", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "requestBody": { "content": { "application/json": { "schema": { "type": "object", "required": ["decision"], "properties": { "decision": { "enum": ["accepted", "rejected"] }, "feedback": { "type": "string" } } } } } }, "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" }, "404": { "$ref": "#/components/responses/Error" }, "429": { "$ref": "#/components/responses/Error" } } } },
-    "/api/auth/session": { "get": { "summary": "Current auth session", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
-    "/api/auth/sign-in": { "post": { "summary": "Sign in", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "401": { "$ref": "#/components/responses/Error" }, "429": { "$ref": "#/components/responses/Error" } } } },
-    "/api/auth/sign-up": { "post": { "summary": "Sign up", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" }, "429": { "$ref": "#/components/responses/Error" } } } },
-    "/api/auth/sign-out": { "post": { "summary": "Sign out", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
-    "/api/auth/oauth/google": { "get": { "summary": "Start Supabase Google OAuth PKCE flow.", "responses": { "302": { "description": "Redirect to provider authorization URL." }, "503": { "$ref": "#/components/responses/Error" } } } },
-    "/api/auth/callback": { "get": { "summary": "Complete Supabase OAuth callback using PKCE code or token query parameters.", "parameters": [{ "name": "code", "in": "query", "schema": { "type": "string" } }, { "name": "state", "in": "query", "schema": { "type": "string" } }, { "name": "access_token", "in": "query", "schema": { "type": "string" } }, { "name": "refresh_token", "in": "query", "schema": { "type": "string" } }, { "name": "email", "in": "query", "schema": { "type": "string" } }, { "name": "expires_at", "in": "query", "schema": { "type": "number" } }], "responses": { "302": { "description": "Redirect to the app after setting session cookies." }, "400": { "$ref": "#/components/responses/Error" } } } },
-    "/api/hydration/today": { "get": { "summary": "Hydration summary for today", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
-    "/api/hydration/log": { "post": { "summary": "Create hydration log", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" } } } },
-    "/api/hydration/log/{id}": { "patch": { "summary": "Update hydration log", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "404": { "$ref": "#/components/responses/Error" } } }, "delete": { "summary": "Delete hydration log", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "404": { "$ref": "#/components/responses/Error" } } } },
-    "/api/supplements": { "get": { "summary": "List supplements", "responses": { "200": { "$ref": "#/components/responses/Ok" } } }, "post": { "summary": "Create supplement", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" } } } },
-    "/api/supplements/log": { "post": { "summary": "Create supplement log", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" } } } },
-    "/api/supplements/{id}/reminder": { "patch": { "summary": "Update a supplement reminder hour.", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" } } }, "put": { "summary": "Update supplement details and schedule fields.", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
-    "/api/routines": { "get": { "summary": "List routines", "responses": { "200": { "$ref": "#/components/responses/Ok" } } }, "post": { "summary": "Create routine", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" }, "429": { "$ref": "#/components/responses/Error" } } } },
-    "/api/routines/{id}": { "patch": { "summary": "Update routine, may return conflict preview", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" } } }, "delete": { "summary": "Delete routine", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "404": { "$ref": "#/components/responses/Error" } } } },
-    "/api/exercises": { "get": { "summary": "List exercise definitions", "responses": { "200": { "$ref": "#/components/responses/Ok" } } }, "post": { "summary": "Create exercise definition", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" }, "429": { "$ref": "#/components/responses/Error" } } } },
-    "/api/exercises/{id}": { "patch": { "summary": "Update exercise definition", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" } } }, "delete": { "summary": "Delete exercise definition", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "404": { "$ref": "#/components/responses/Error" } } } },
-    "/api/workouts/today": { "get": { "summary": "Workout summary for today.", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
-    "/api/workouts/sessions": { "post": { "summary": "Start workout session", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" }, "429": { "$ref": "#/components/responses/Error" } } } },
-    "/api/workouts/sessions/{id}/finish": { "post": { "summary": "Finish workout session", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "404": { "$ref": "#/components/responses/Error" } } } },
-    "/api/workouts/sessions/{id}/pause": { "post": { "summary": "Pause workout session", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "404": { "$ref": "#/components/responses/Error" } } } },
-    "/api/workouts/sessions/{id}/resume": { "post": { "summary": "Resume workout session", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "404": { "$ref": "#/components/responses/Error" } } } },
-    "/api/workouts/sessions/{id}/reorder": { "post": { "summary": "Reorder session exercise queue", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" } } } },
-    "/api/workouts/sets": { "post": { "summary": "Create workout set", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" }, "429": { "$ref": "#/components/responses/Error" } } } },
-    "/api/workouts/sets/{id}": { "patch": { "summary": "Update workout set", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "404": { "$ref": "#/components/responses/Error" } } }, "delete": { "summary": "Delete workout set", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" }, "404": { "$ref": "#/components/responses/Error" } } } },
-    "/api/sync/batch": { "post": { "summary": "Sync queued local mutations with idempotency keys", "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "idempotencyKey": { "type": "string" }, "items": { "type": "array", "items": { "$ref": "#/components/schemas/SyncBatchItem" } } } } } } }, "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" }, "429": { "$ref": "#/components/responses/Error" } } } },
-    "/api/progression/recalculate": { "post": { "summary": "Recalculate progressive overload recommendation for one exercise.", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
-    "/api/achievements/me": { "get": { "summary": "Current achievements and leaderboard snapshot.", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
-    "/api/achievements/recalculate": { "post": { "summary": "Recalculate current achievements and leaderboard snapshot.", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
-    "/api/leaderboards": { "get": { "summary": "Current leaderboard snapshot.", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
-    "/api/leaderboards/visibility": { "patch": { "summary": "Update current profile leaderboard visibility.", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
-    "/api/notifications/config": { "get": { "summary": "Browser notification and VAPID public-key configuration.", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
-    "/api/notifications/status": { "get": { "summary": "Notification subscription status for a local profile.", "parameters": [{ "name": "localProfileId", "in": "query", "schema": { "type": "string" } }], "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
-    "/api/notifications/subscribe": { "post": { "summary": "Subscribe a browser push endpoint.", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
-    "/api/notifications/unsubscribe": { "post": { "summary": "Unsubscribe a browser push endpoint.", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
-    "/api/notifications/test": { "post": { "summary": "Send a test Web Push notification or return in-app fallback metadata.", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
-    "/api/cron/hydration-reminders": { "post": { "summary": "Run hydration reminder cron job.", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "401": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } } } },
-    "/api/cron/creatine-reminders": { "post": { "summary": "Run creatine reminder cron job.", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "401": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } } } },
-    "/api/cron/monthly-achievements": { "post": { "summary": "Run monthly achievements cron job.", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "401": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } } } },
-    "/api/supabase/verify": { "get": { "summary": "Verify Supabase production tables using service-role credentials.", "responses": { "200": { "$ref": "#/components/responses/Ok" }, "503": { "$ref": "#/components/responses/Error" } } } }
+    "/api/health": {
+      "get": {
+        "summary": "Health and integration readiness",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/integrations/status": {
+      "get": {
+        "summary": "Integration status",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/docs/openapi": {
+      "get": {
+        "summary": "OpenAPI V1 spec",
+        "responses": {
+          "200": {
+            "description": "Raw OpenAPI document.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "openapi",
+                    "info",
+                    "paths"
+                  ],
+                  "properties": {
+                    "openapi": {
+                      "type": "string"
+                    },
+                    "info": {
+                      "type": "object"
+                    },
+                    "paths": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/observability/logs": {
+      "get": {
+        "summary": "Recent structured logs, optionally filtered by requestId",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/client-errors": {
+      "post": {
+        "summary": "Report client error",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientErrorReport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/coach/recommend": {
+      "post": {
+        "summary": "Generate guarded coach recommendation. Rule insight runs first; AI appears only with sufficient data and configured provider.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/coach/recommendations/{id}/feedback": {
+      "post": {
+        "summary": "Accept or reject a coach recommendation with optional feedback.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "decision"
+                ],
+                "properties": {
+                  "decision": {
+                    "enum": [
+                      "accepted",
+                      "rejected"
+                    ]
+                  },
+                  "feedback": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/auth/session": {
+      "get": {
+        "summary": "Current auth session",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/auth/sign-in": {
+      "post": {
+        "summary": "Sign in",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/auth/sign-up": {
+      "post": {
+        "summary": "Sign up",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/auth/sign-out": {
+      "post": {
+        "summary": "Sign out",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/auth/oauth/google": {
+      "get": {
+        "summary": "Start Supabase Google OAuth PKCE flow.",
+        "responses": {
+          "302": {
+            "description": "Redirect to provider authorization URL."
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/auth/callback": {
+      "get": {
+        "summary": "Complete Supabase OAuth callback using PKCE code or token query parameters.",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "access_token",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "refresh_token",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "expires_at",
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to the app after setting session cookies."
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/hydration/today": {
+      "get": {
+        "summary": "Hydration summary for today",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        }
+      }
+    },
+    "/api/hydration/log": {
+      "post": {
+        "summary": "Create hydration log",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/hydration/log/{id}": {
+      "patch": {
+        "summary": "Update hydration log",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete hydration log",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/supplements": {
+      "get": {
+        "summary": "List supplements",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create supplement",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/supplements/log": {
+      "post": {
+        "summary": "Create supplement log",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/supplements/{id}/reminder": {
+      "patch": {
+        "summary": "Update a supplement reminder hour.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update supplement details and schedule fields.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        }
+      }
+    },
+    "/api/routines": {
+      "get": {
+        "summary": "List routines",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create routine",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/routines/{id}": {
+      "patch": {
+        "summary": "Update routine, may return conflict preview",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete routine",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/exercises": {
+      "get": {
+        "summary": "List exercise definitions",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create exercise definition",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/exercises/{id}": {
+      "patch": {
+        "summary": "Update exercise definition",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete exercise definition",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/workouts/today": {
+      "get": {
+        "summary": "Workout summary for today.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        }
+      }
+    },
+    "/api/workouts/sessions": {
+      "post": {
+        "summary": "Start workout session",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/workouts/sessions/{id}/finish": {
+      "post": {
+        "summary": "Finish workout session",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/workouts/sessions/{id}/pause": {
+      "post": {
+        "summary": "Pause workout session",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/workouts/sessions/{id}/resume": {
+      "post": {
+        "summary": "Resume workout session",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/workouts/sessions/{id}/reorder": {
+      "post": {
+        "summary": "Reorder session exercise queue",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/workouts/sets": {
+      "post": {
+        "summary": "Create workout set",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/workouts/sets/{id}": {
+      "patch": {
+        "summary": "Update workout set",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete workout set",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/sync/batch": {
+      "post": {
+        "summary": "Sync queued local mutations with idempotency keys",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "idempotencyKey": {
+                    "type": "string"
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/SyncBatchItem"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/progression/recalculate": {
+      "post": {
+        "summary": "Recalculate progressive overload recommendation for one exercise.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        }
+      }
+    },
+    "/api/achievements/me": {
+      "get": {
+        "summary": "Current achievements and leaderboard snapshot.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        }
+      }
+    },
+    "/api/achievements/recalculate": {
+      "post": {
+        "summary": "Recalculate current achievements and leaderboard snapshot.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        }
+      }
+    },
+    "/api/leaderboards": {
+      "get": {
+        "summary": "Current leaderboard snapshot.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        }
+      }
+    },
+    "/api/leaderboards/visibility": {
+      "patch": {
+        "summary": "Update current profile leaderboard visibility.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        }
+      }
+    },
+    "/api/notifications/config": {
+      "get": {
+        "summary": "Browser notification and VAPID public-key configuration.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/notifications/status": {
+      "get": {
+        "summary": "Notification subscription status for a local profile.",
+        "parameters": [
+          {
+            "name": "localProfileId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        }
+      }
+    },
+    "/api/notifications/subscribe": {
+      "post": {
+        "summary": "Subscribe a browser push endpoint.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        }
+      }
+    },
+    "/api/notifications/unsubscribe": {
+      "post": {
+        "summary": "Unsubscribe a browser push endpoint.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        }
+      }
+    },
+    "/api/notifications/test": {
+      "post": {
+        "summary": "Send a test Web Push notification or return in-app fallback metadata.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          }
+        }
+      }
+    },
+    "/api/cron/hydration-reminders": {
+      "post": {
+        "summary": "Run hydration reminder cron job.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/cron/creatine-reminders": {
+      "post": {
+        "summary": "Run creatine reminder cron job.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/cron/monthly-achievements": {
+      "post": {
+        "summary": "Run monthly achievements cron job.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/supabase/verify": {
+      "get": {
+        "summary": "Verify Supabase production tables using service-role credentials.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    }
   }
 }

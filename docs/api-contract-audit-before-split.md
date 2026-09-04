@@ -24,6 +24,14 @@ Cap nhat sau Phase 3 frontend -> backend:
 - `apps/web/next.config.ts` co rewrite chuyen tiep `/api/:path*` sang `${NEXT_PUBLIC_API_BASE_URL}/api/:path*`, nhung UI khong con import/chay Next API handlers.
 - OpenAPI validator hien doi chieu `docs/api-v1.openapi.json` voi Fastify route registry `apps/api/src/routes/api-routes.ts`.
 
+Cap nhat sau Phase 4 repository/auth:
+
+- Backend co `AppRepository` voi memory adapter cho demo/test va Supabase adapter cho production khi `API_DATA_MODE=supabase`.
+- Data endpoints chay trong request context; Supabase mode require Supabase JWT qua `Authorization: Bearer <token>` hoac cookie session co `accessToken`.
+- Moi read/write Supabase duoc scope theo `user_id`; route tests va repository tests cover unauthorized, multi-user memory isolation, Supabase request scoping va sync idempotency.
+- `/api/sync/batch` khong con dung module-global `Map`; idempotency di qua repository va production luu vao `sync_events`.
+- Push subscriptions production di qua `push_subscriptions`; memory subscription store chi dung trong memory adapter.
+
 Pham vi audit:
 
 - Doc `docs/backend-frontend-split-plan.md`, `docs/api-v1.openapi.json`, `docs/final-audit-matrix.md`, `docs/final-gap-report.md`, `package.json`.
@@ -79,7 +87,9 @@ Ngoai ra, OpenAPI truoc day khai bao `ApiError.requestId` la bat buoc, nhung nhi
 | `packages/shared/src/app-data.ts` | Export/import/restore app data, schema version. | Shared; caller truyen app version tu runtime rieng. | Pure, khong doc `process.env`. |
 | `apps/web/src/lib/storage.ts` | LocalStorage cho PWA local-first. | Frontend only. | Dung `window.localStorage`. |
 | `apps/web/src/lib/api-client.ts` | Client goi `/api/**` tren backend rieng. | Frontend client package/web lib. | Doc `NEXT_PUBLIC_API_BASE_URL`; dung `credentials: "include"`. |
-| `apps/api/src/lib/api.ts` | Service layer backend: CRUD, sync, coach, notification, achievements. | Backend only. | Dang dung `serverState = structuredClone(initialState)`, `notificationSubscriptions[]`, `idempotencyResults Map`. |
+| `apps/api/src/lib/api.ts` | Service layer backend: CRUD, sync, coach, notification, achievements. | Backend only. | Dung request-local `AppState` tu repository context; memory chi dung khi `API_DATA_MODE=memory`. |
+| `apps/api/src/lib/repositories.ts` | Repository boundary cho production/demo persistence. | Backend only. | Supabase REST adapter scope theo `user_id`; memory adapter cho demo/test. |
+| `apps/api/src/lib/api-runtime.ts` | Request context cho user/repository/state. | Backend only. | AsyncLocalStorage, khong la production source of truth. |
 | `apps/api/src/lib/auth.ts` | Local session, Supabase email auth, OAuth URL/PKCE/cookie payload. | Backend auth service + mot phan shared type. | Dung local module state va Supabase anon env. |
 | `apps/api/src/lib/data-adapter.ts` | Memory adapter va Supabase REST adapter generic. | Backend repository/adapters. | Chon Supabase khi co `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`, fallback memory. |
 | `apps/api/src/lib/integrations.ts` | Integration status, Supabase REST/service role request, Supabase verify, AI coach provider. | Backend only tru mot so type status. | Dung Supabase env, service role, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `CRON_SECRET`. |

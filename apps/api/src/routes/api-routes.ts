@@ -53,6 +53,7 @@ import {
   createSessionCookieValue,
   createSupabaseOAuthUrl,
   exchangeSupabaseOAuthCode,
+  bearerTokenFromAuthorization,
   getAuthSession,
   oauthCodeVerifierCookieName,
   oauthStateCookieName,
@@ -61,13 +62,16 @@ import {
   signIn,
   signOut,
   signUp,
+  verifySupabaseJwt,
   type AuthMode
 } from "../lib/auth";
+import { runWithApiRuntime } from "../lib/api-runtime";
 import { getIntegrationStatus, verifySupabaseProduction } from "../lib/integrations";
 import { listClientErrors, listRequestLogs, recordClientError, requestIdResponseHeader } from "../lib/observability";
 import { jsonFail, jsonOk, withApiErrorHandling } from "../lib/server-response";
 import { observabilitySnapshot } from "../lib/observability";
 import type { ApiResult } from "../types";
+import { demoUser, type ApiUser } from "../lib/repositories";
 
 type IdParams = { id: string };
 const openApiSpecPath = existsSync(join(process.cwd(), "docs/api-v1.openapi.json"))
@@ -106,8 +110,19 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
     return spec;
   });
 
-  app.get("/api/auth/session", (request, reply) => {
+  app.get("/api/auth/session", async (request, reply) => {
     const cookie = request.cookies[authCookieName];
+    const token = bearerTokenFromAuthorization(request.headers.authorization) ?? parseSessionCookieValue(cookie)?.accessToken;
+    if (token && env.NEXT_PUBLIC_SUPABASE_URL && env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      try {
+        const user = await verifySupabaseJwt({ token, env });
+        reply.header(requestIdResponseHeader(), request.requestId);
+        return { ok: true, data: { mode: "email", email: user.email, accessToken: token }, requestId: request.requestId };
+      } catch {
+        reply.header(requestIdResponseHeader(), request.requestId).code(401);
+        return { ok: false, error: "Unauthorized", requestId: request.requestId };
+      }
+    }
     reply.header(requestIdResponseHeader(), request.requestId);
     return { ok: true, data: parseSessionCookieValue(cookie) ?? getAuthSession(), requestId: request.requestId };
   });
@@ -208,96 +223,91 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
     return reply.redirect(createAppUrl("/", fullUrl(request), env).toString());
   });
 
-  app.get("/api/hydration/today", (_request, reply) => sendResult(reply, getHydrationToday()));
-  app.post("/api/hydration/log", (request, reply) => sendResult(reply, logHydration(Number(bodyAs<{ amountMl?: number }>(request)?.amountMl)), 400));
+  app.get("/api/hydration/today", (request, reply) => withDataContext(request, reply, () => getHydrationToday()));
+  app.post("/api/hydration/log", (request, reply) => withDataContext(request, reply, () => logHydration(Number(bodyAs<{ amountMl?: number }>(request)?.amountMl)), { errorStatus: 400, persist: true }));
   app.patch<{ Params: IdParams }>("/api/hydration/log/:id", (request, reply) =>
-    sendResult(reply, patchHydrationLog(request.params.id, Number(bodyAs<{ amountMl?: number }>(request)?.amountMl)))
+    withDataContext(request, reply, () => patchHydrationLog(request.params.id, Number(bodyAs<{ amountMl?: number }>(request)?.amountMl)), { persist: true })
   );
-  app.delete<{ Params: IdParams }>("/api/hydration/log/:id", (request, reply) => sendResult(reply, deleteHydrationLog(request.params.id)));
+  app.delete<{ Params: IdParams }>("/api/hydration/log/:id", (request, reply) => withDataContext(request, reply, () => deleteHydrationLog(request.params.id), { persist: true }));
 
-  app.get("/api/supplements", (_request, reply) => sendResult(reply, listSupplements()));
-  app.post("/api/supplements", (request, reply) => sendResult(reply, createSupplement(bodyAs(request)), 400));
-  app.post("/api/supplements/log", (request, reply) => sendResult(reply, logSupplement(bodyAs(request)), 400));
+  app.get("/api/supplements", (request, reply) => withDataContext(request, reply, () => listSupplements()));
+  app.post("/api/supplements", (request, reply) => withDataContext(request, reply, () => createSupplement(bodyAs(request)), { errorStatus: 400, persist: true }));
+  app.post("/api/supplements/log", (request, reply) => withDataContext(request, reply, () => logSupplement(bodyAs(request)), { errorStatus: 400, persist: true }));
   app.patch<{ Params: IdParams }>("/api/supplements/:id/reminder", (request, reply) =>
-    sendResult(reply, updateSupplementReminder(request.params.id, Number(bodyAs<{ reminderHour?: number }>(request)?.reminderHour)))
+    withDataContext(request, reply, () => updateSupplementReminder(request.params.id, Number(bodyAs<{ reminderHour?: number }>(request)?.reminderHour)), { persist: true })
   );
   app.put<{ Params: IdParams }>("/api/supplements/:id/reminder", (request, reply) =>
-    sendResult(reply, updateSupplement(request.params.id, bodyAs(request)))
+    withDataContext(request, reply, () => updateSupplement(request.params.id, bodyAs(request)), { persist: true })
   );
 
-  app.get("/api/routines", (_request, reply) => sendResult(reply, listRoutines()));
-  app.post("/api/routines", (request, reply) => sendResult(reply, createRoutine(bodyAs(request)), 400));
-  app.patch<{ Params: IdParams }>("/api/routines/:id", (request, reply) => sendResult(reply, updateRoutine(request.params.id, bodyAs(request)), 400));
-  app.delete<{ Params: IdParams }>("/api/routines/:id", (request, reply) => sendResult(reply, deleteRoutine(request.params.id), 404));
+  app.get("/api/routines", (request, reply) => withDataContext(request, reply, () => listRoutines()));
+  app.post("/api/routines", (request, reply) => withDataContext(request, reply, () => createRoutine(bodyAs(request)), { errorStatus: 400, persist: true }));
+  app.patch<{ Params: IdParams }>("/api/routines/:id", (request, reply) => withDataContext(request, reply, () => updateRoutine(request.params.id, bodyAs(request)), { errorStatus: 400, persist: true }));
+  app.delete<{ Params: IdParams }>("/api/routines/:id", (request, reply) => withDataContext(request, reply, () => deleteRoutine(request.params.id), { errorStatus: 404, persist: true }));
 
-  app.get("/api/exercises", (_request, reply) => sendResult(reply, listExercises()));
-  app.post("/api/exercises", (request, reply) => sendResult(reply, createExercise(bodyAs(request)), 400));
-  app.patch<{ Params: IdParams }>("/api/exercises/:id", (request, reply) => sendResult(reply, updateExercise(request.params.id, bodyAs(request)), 400));
-  app.delete<{ Params: IdParams }>("/api/exercises/:id", (request, reply) => sendResult(reply, deleteExercise(request.params.id), 404));
+  app.get("/api/exercises", (request, reply) => withDataContext(request, reply, () => listExercises()));
+  app.post("/api/exercises", (request, reply) => withDataContext(request, reply, () => createExercise(bodyAs(request)), { errorStatus: 400, persist: true }));
+  app.patch<{ Params: IdParams }>("/api/exercises/:id", (request, reply) => withDataContext(request, reply, () => updateExercise(request.params.id, bodyAs(request)), { errorStatus: 400, persist: true }));
+  app.delete<{ Params: IdParams }>("/api/exercises/:id", (request, reply) => withDataContext(request, reply, () => deleteExercise(request.params.id), { errorStatus: 404, persist: true }));
 
-  app.get("/api/workouts/today", (_request, reply) => sendResult(reply, getWorkoutToday()));
-  app.post("/api/workouts/sessions", (request, reply) => sendResult(reply, startWorkoutSession(bodyAs(request)), 400));
-  app.post<{ Params: IdParams }>("/api/workouts/sessions/:id/finish", (request, reply) => sendResult(reply, finishWorkoutSessionById(request.params.id), 404));
-  app.post<{ Params: IdParams }>("/api/workouts/sessions/:id/pause", (request, reply) => sendResult(reply, pauseWorkoutSessionById(request.params.id), 404));
-  app.post<{ Params: IdParams }>("/api/workouts/sessions/:id/resume", (request, reply) => sendResult(reply, resumeWorkoutSessionById(request.params.id), 404));
+  app.get("/api/workouts/today", (request, reply) => withDataContext(request, reply, () => getWorkoutToday()));
+  app.post("/api/workouts/sessions", (request, reply) => withDataContext(request, reply, () => startWorkoutSession(bodyAs(request)), { errorStatus: 400, persist: true }));
+  app.post<{ Params: IdParams }>("/api/workouts/sessions/:id/finish", (request, reply) => withDataContext(request, reply, () => finishWorkoutSessionById(request.params.id), { errorStatus: 404, persist: true }));
+  app.post<{ Params: IdParams }>("/api/workouts/sessions/:id/pause", (request, reply) => withDataContext(request, reply, () => pauseWorkoutSessionById(request.params.id), { errorStatus: 404, persist: true }));
+  app.post<{ Params: IdParams }>("/api/workouts/sessions/:id/resume", (request, reply) => withDataContext(request, reply, () => resumeWorkoutSessionById(request.params.id), { errorStatus: 404, persist: true }));
   app.post<{ Params: IdParams }>("/api/workouts/sessions/:id/reorder", (request, reply) =>
-    sendResult(reply, reorderWorkoutSession(request.params.id, bodyAs<{ queue?: never[] }>(request)?.queue ?? []), 400)
+    withDataContext(request, reply, () => reorderWorkoutSession(request.params.id, bodyAs<{ queue?: never[] }>(request)?.queue ?? []), { errorStatus: 400, persist: true })
   );
-  app.post("/api/workouts/sets", (request, reply) => sendResult(reply, createWorkoutSet(bodyAs(request)), 400));
-  app.patch<{ Params: IdParams }>("/api/workouts/sets/:id", (request, reply) => sendResult(reply, updateWorkoutSet(request.params.id, bodyAs(request)), 404));
-  app.delete<{ Params: IdParams }>("/api/workouts/sets/:id", (request, reply) => sendResult(reply, deleteWorkoutSet(request.params.id), 404));
+  app.post("/api/workouts/sets", (request, reply) => withDataContext(request, reply, () => createWorkoutSet(bodyAs(request)), { errorStatus: 400, persist: true }));
+  app.patch<{ Params: IdParams }>("/api/workouts/sets/:id", (request, reply) => withDataContext(request, reply, () => updateWorkoutSet(request.params.id, bodyAs(request)), { errorStatus: 404, persist: true }));
+  app.delete<{ Params: IdParams }>("/api/workouts/sets/:id", (request, reply) => withDataContext(request, reply, () => deleteWorkoutSet(request.params.id), { errorStatus: 404, persist: true }));
 
   app.post("/api/progression/recalculate", (request, reply) =>
-    sendResult(reply, recalculateProgression(String(bodyAs<{ exerciseId?: string }>(request)?.exerciseId ?? "")), 400)
+    withDataContext(request, reply, () => recalculateProgression(String(bodyAs<{ exerciseId?: string }>(request)?.exerciseId ?? "")), { errorStatus: 400 })
   );
-  app.post("/api/sync/batch", (request, reply) => sendResult(reply, syncBatch(bodyAs(request)), 400));
+  app.post("/api/sync/batch", (request, reply) => withDataContext(request, reply, () => syncBatch(bodyAs(request)), { errorStatus: 400, persist: true }));
 
-  app.get("/api/achievements/me", (_request, reply) => sendResult(reply, getAchievementsAndLeaderboard()));
-  app.post("/api/achievements/recalculate", (_request, reply) => sendResult(reply, recalculateAchievements()));
-  app.get("/api/leaderboards", (_request, reply) => sendResult(reply, getAchievementsAndLeaderboard()));
+  app.get("/api/achievements/me", (request, reply) => withDataContext(request, reply, () => getAchievementsAndLeaderboard()));
+  app.post("/api/achievements/recalculate", (request, reply) => withDataContext(request, reply, () => recalculateAchievements(), { persist: true }));
+  app.get("/api/leaderboards", (request, reply) => withDataContext(request, reply, () => getAchievementsAndLeaderboard()));
   app.patch("/api/leaderboards/visibility", (request, reply) =>
-    sendResult(reply, updateLeaderboardVisibility(Boolean(bodyAs<{ isPublic?: boolean }>(request)?.isPublic)))
+    withDataContext(request, reply, () => updateLeaderboardVisibility(Boolean(bodyAs<{ isPublic?: boolean }>(request)?.isPublic)), { persist: true })
   );
 
   app.post("/api/coach/recommend", (request, reply) =>
-    withApiErrorHandling({ method: "POST", path: "/api/coach/recommend", request, reply }, async () =>
-      jsonOk({ method: "POST", path: "/api/coach/recommend", request, reply }, await unwrap(coachRecommend()))
-    )
+    withDataContext(request, reply, async () => coachRecommend(), { persist: true })
   );
   app.post<{ Params: IdParams }>("/api/coach/recommendations/:id/feedback", (request, reply) =>
-    withApiErrorHandling({ method: "POST", path: "/api/coach/recommendations/:id/feedback", request, reply }, async () => {
-      const result = coachRecommendationFeedback({
+    withDataContext(request, reply, () =>
+      coachRecommendationFeedback({
         recommendationId: request.params.id,
         decision: bodyAs<{ decision?: never }>(request)?.decision ?? "accepted",
         feedback: bodyAs<{ feedback?: string }>(request)?.feedback
-      });
-      return result.ok
-        ? jsonOk({ method: "POST", path: "/api/coach/recommendations/:id/feedback", request, reply }, result.data)
-        : jsonFail({ method: "POST", path: "/api/coach/recommendations/:id/feedback", request, reply }, result.error, 404);
-    })
+      }), { errorStatus: 404, persist: true }
+    )
   );
 
   app.get("/api/notifications/config", (_request, reply) => sendResult(reply, notificationConfig(env)));
   app.get("/api/notifications/status", (request, reply) =>
-    sendResult(reply, notificationStatus(String((request.query as { localProfileId?: string }).localProfileId ?? ""), env))
+    withDataContext(request, reply, () => notificationStatus(String((request.query as { localProfileId?: string }).localProfileId ?? ""), env))
   );
-  app.post("/api/notifications/subscribe", (request, reply) => sendResult(reply, subscribeNotifications(bodyAs(request)), 400));
+  app.post("/api/notifications/subscribe", (request, reply) => withDataContext(request, reply, () => subscribeNotifications(bodyAs(request)), { errorStatus: 400, persist: true }));
   app.post("/api/notifications/unsubscribe", (request, reply) =>
-    sendResult(reply, unsubscribeNotifications(String(bodyAs<{ endpoint?: string }>(request)?.endpoint ?? "")), 400)
+    withDataContext(request, reply, () => unsubscribeNotifications(String(bodyAs<{ endpoint?: string }>(request)?.endpoint ?? "")), { errorStatus: 400, persist: true })
   );
-  app.post("/api/notifications/test", async (request, reply) => sendResult(reply, await sendTestNotification(bodyAs(request))));
+  app.post("/api/notifications/test", (request, reply) => withDataContext(request, reply, () => sendTestNotification(bodyAs(request))));
 
   app.post("/api/cron/hydration-reminders", async (request, reply) => {
     if (!requireCronAuth(request, reply, env)) return reply;
-    return sendResult(reply, await sendHydrationReminderEvents());
+    return withDataContext(request, reply, () => sendHydrationReminderEvents(), { persist: true, allowDemoFallback: true });
   });
   app.post("/api/cron/creatine-reminders", async (request, reply) => {
     if (!requireCronAuth(request, reply, env)) return reply;
-    return sendResult(reply, await sendCreatineReminderEvents());
+    return withDataContext(request, reply, () => sendCreatineReminderEvents(), { persist: true, allowDemoFallback: true });
   });
   app.post("/api/cron/monthly-achievements", async (request, reply) => {
     if (!requireCronAuth(request, reply, env)) return reply;
-    return sendResult(reply, await sendMonthlyAchievementEvents());
+    return withDataContext(request, reply, () => sendMonthlyAchievementEvents(), { allowDemoFallback: true });
   });
 
   app.get("/api/observability/logs", (request, reply) =>
@@ -331,19 +341,64 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
   );
 }
 
+async function withDataContext(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  handler: () => ApiResult<unknown> | Promise<ApiResult<unknown>>,
+  options: { errorStatus?: number; persist?: boolean; allowDemoFallback?: boolean } = {}
+) {
+  try {
+    const user = await resolveApiUser(request, options.allowDemoFallback);
+    const state = await request.apiRepository.loadUserState(user);
+    const result = await runWithApiRuntime({ user, repository: request.apiRepository, state }, handler);
+    if (options.persist && result.ok) {
+      await request.apiRepository.saveUserState(user, state);
+    }
+    return sendResult(reply, result, options.errorStatus ?? 200);
+  } catch (error) {
+    const status = error instanceof AuthRequiredError ? error.status : 500;
+    reply.code(status);
+    return { ok: false, error: error instanceof Error ? error.message : "Unexpected API error", requestId: request.requestId };
+  }
+}
+
+class AuthRequiredError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+  }
+}
+
+async function resolveApiUser(request: FastifyRequest, allowDemoFallback = false): Promise<ApiUser> {
+  if (request.apiRepository.mode === "memory") {
+    const session = parseSessionCookieValue(request.cookies[authCookieName]);
+    return demoUser(session?.email ?? getAuthSession().email);
+  }
+
+  const session = parseSessionCookieValue(request.cookies[authCookieName]);
+  const token = bearerTokenFromAuthorization(request.headers.authorization) ?? session?.accessToken;
+  if (!token) {
+    if (allowDemoFallback) return demoUser();
+    throw new AuthRequiredError("Unauthorized", 401);
+  }
+  try {
+    const user = await verifySupabaseJwt({ token, env: request.apiEnv });
+    return { id: user.id, email: user.email, accessToken: token, mode: "supabase" };
+  } catch {
+    if (allowDemoFallback) return demoUser();
+    throw new AuthRequiredError("Unauthorized", 401);
+  }
+}
+
 function sendResult(reply: FastifyReply, result: ApiResult<unknown>, errorStatus = 200) {
   if (!result.ok) reply.code(errorStatus);
-  return result;
+  return { ...result, requestId: reply.getHeader(requestIdResponseHeader()) };
 }
 
 function bodyAs<T>(request: FastifyRequest): T {
   return (request.body ?? {}) as T;
-}
-
-async function unwrap<T>(result: Promise<ApiResult<T>> | ApiResult<T>): Promise<T> {
-  const resolved = await result;
-  if (!resolved.ok) throw new Error(resolved.error);
-  return resolved.data;
 }
 
 function requireCronAuth(request: FastifyRequest, reply: FastifyReply, env: NodeJS.ProcessEnv) {

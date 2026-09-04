@@ -122,6 +122,35 @@ export function parseSessionCookieValue(value: string | undefined): AuthSession 
   }
 }
 
+export function bearerTokenFromAuthorization(value: string | undefined): string | undefined {
+  const match = value?.match(/^Bearer\s+(.+)$/i);
+  return match?.[1];
+}
+
+export async function verifySupabaseJwt(input: {
+  token: string;
+  env?: NodeJS.ProcessEnv;
+  fetchImpl?: typeof fetch;
+}): Promise<{ id: string; email: string }> {
+  const env = input.env ?? process.env;
+  const fetchImpl = input.fetchImpl ?? fetch;
+  if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    throw new Error("Supabase auth env is missing");
+  }
+  const supabaseUrl = normalizeSupabaseProjectUrl(env.NEXT_PUBLIC_SUPABASE_URL);
+  const response = await fetchImpl(`${supabaseUrl}/auth/v1/user`, {
+    headers: {
+      apikey: env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${input.token}`
+    }
+  });
+  if (!response.ok) throw new Error(`Supabase JWT verification failed with status ${response.status}`);
+  const payload = (await response.json()) as { id?: string; sub?: string; email?: string };
+  const id = payload.id ?? payload.sub;
+  if (!id) throw new Error("Supabase JWT payload is missing user id");
+  return { id, email: payload.email ?? "user@evolvefit.app" };
+}
+
 export function sessionFromSupabaseTokens(input: {
   email?: string;
   accessToken: string;

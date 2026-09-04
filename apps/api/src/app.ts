@@ -3,17 +3,22 @@ import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { createRequestId, normalizeErrorCode, recordRequestLog, requestIdResponseHeader } from "./lib/observability";
+import { createAppRepository, demoUser, type ApiUser, type AppRepository } from "./lib/repositories";
 import { registerApiRoutes } from "./routes/api-routes";
 
 declare module "fastify" {
   interface FastifyRequest {
     requestId: string;
     startTime: number;
+    apiEnv: NodeJS.ProcessEnv;
+    apiRepository: AppRepository;
+    apiUser?: ApiUser;
   }
 }
 
 export async function buildApp(env: NodeJS.ProcessEnv = process.env): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
+  const repository = createAppRepository(env);
 
   await app.register(cors, {
     origin: corsOrigin(env.API_CORS_ORIGIN),
@@ -28,6 +33,9 @@ export async function buildApp(env: NodeJS.ProcessEnv = process.env): Promise<Fa
   app.addHook("onRequest", async (request, reply) => {
     request.requestId = request.headers["x-request-id"]?.toString() ?? createRequestId();
     request.startTime = Date.now();
+    request.apiEnv = env;
+    request.apiRepository = repository;
+    request.apiUser = demoUser();
     reply.header(requestIdResponseHeader(), request.requestId);
   });
 

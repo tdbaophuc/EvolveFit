@@ -226,6 +226,19 @@ Output mong muon:
 
 Muc tieu: backend co source of truth production.
 
+Trang thai: da hoan thanh buoc repository boundary ngay 2026-09-04. Backend hien co `apps/api/src/lib/repositories.ts` voi `AppRepository`, `MemoryAppRepository` va `SupabaseAppRepository`; service layer chay trong request context `apps/api/src/lib/api-runtime.ts`. Khi `API_DATA_MODE=supabase`, data endpoints load/save state qua Supabase REST theo `user_id`, verify Supabase JWT tu `Authorization: Bearer <token>` hoac cookie session co `accessToken`, va tra `401 Unauthorized` neu thieu token. Khi `API_DATA_MODE=memory`, backend dung memory repository cho demo/local/test.
+
+Migration `supabase/migrations/0003_backend_repository_contract.sql` bo sung cac field contract can thiet:
+
+- `supplement_logs.skipped_reason` va check amount cho skipped log.
+- `routines.updated_at`.
+- `routine_exercises.name`, `routine_exercises.muscle_group`.
+- `push_subscriptions.local_profile_id`.
+
+Offline sync da chuyen idempotency qua `AppRepository.getSyncResult/saveSyncResult`; trong Supabase mode ket qua nam o `sync_events` voi unique `(user_id, idempotency_key)`. Push subscriptions production nam o `push_subscriptions`.
+
+Gioi han con lai: service layer van dung mot request-local `AppState` lam aggregate de giam rui ro thay doi behavior. Production source of truth khong con la module-global `serverState`, nhung co the tach tiep thanh repository/service rieng cho tung aggregate (`HydrationRepository`, `RoutineRepository`, `WorkoutRepository`, ...) neu can toi uu query va transaction.
+
 Viec can lam:
 
 - Loai bo dan `serverState = structuredClone(initialState)` trong backend production.
