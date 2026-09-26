@@ -2,7 +2,8 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import AppPage from "./page";
-import { initialState } from "@evolvefit/shared";
+import { createAppDataExport, initialState } from "@evolvefit/shared";
+import { vi } from "vitest";
 
 describe("Live Workout session queue", () => {
   beforeEach(() => {
@@ -171,6 +172,42 @@ describe("Settings import and privacy", () => {
     expect(JSON.parse(window.localStorage.getItem("evolvefit-state-v1") ?? "{}").profile.name).toBe("Current Athlete");
     expect(screen.getByRole("button", { name: "Xóa dữ liệu cá nhân" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Đặt lại dữ liệu demo" })).toBeInTheDocument();
+  });
+
+  it("links an email account and merges local data to cloud with idempotent sync items", async () => {
+    const user = userEvent.setup();
+    const localState = {
+      ...initialState,
+      profile: { ...initialState.profile, email: "merge@example.com", onboardingCompleted: true },
+      hydrationLogs: [{ id: "merge-water", amountMl: 500, drinkType: "water" as const, loggedAt: "2026-08-21T00:00:00.000Z" }]
+    };
+    window.localStorage.setItem("evolvefit-state-v1", JSON.stringify(localState));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/sign-in")) return Response.json({ ok: true, data: { mode: "email", email: "merge@example.com" } });
+      if (url.endsWith("/api/sync/batch")) return Response.json({ ok: true, data: { results: [] } });
+      if (url.endsWith("/api/account/export")) return Response.json({ ok: true, data: createAppDataExport(localState) });
+      if (url.endsWith("/api/health")) return Response.json({ ok: true, data: {} });
+      return Response.json({ ok: true, data: {} });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AppPage />);
+
+    await user.click(screen.getByRole("button", { name: "Cài đặt" }));
+    await user.type(document.querySelector('input[type="password"]') as HTMLInputElement, "secret123");
+    await user.click(screen.getAllByRole("button", { name: /email/i })[1]);
+    await user.click(await screen.findByRole("button", { name: "merge-local-to-cloud" }));
+
+    const syncCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/api/sync/batch"));
+    expect(syncCall).toBeTruthy();
+    expect(JSON.parse(String(syncCall?.[1]?.body))).toMatchObject({
+      items: expect.arrayContaining([
+        expect.objectContaining({ type: "hydration.log", idempotencyKey: "account-merge:merge@example.com:hydration.log:merge-water" })
+      ])
+    });
+    expect(JSON.parse(window.localStorage.getItem("evolvefit-state-v1") ?? "{}").profile).toMatchObject({ email: "merge@example.com", authMode: "email" });
+    vi.unstubAllGlobals();
   });
 
   it("keeps social sharing private by default and requires opt-in before publishing", async () => {

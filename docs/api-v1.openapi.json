@@ -631,6 +631,86 @@
         "security": []
       }
     },
+    "/api/auth/refresh": {
+      "post": {
+        "summary": "Refresh an auth session using a refresh token or session cookie.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/auth/password/forgot": {
+      "post": {
+        "summary": "Request a password reset email.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/auth/password/reset": {
+      "post": {
+        "summary": "Reset account password using a recovery access token.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/account/export": {
+      "get": {
+        "summary": "Export the current account state with schema metadata.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/auth/account": {
+      "delete": {
+        "summary": "Delete current account data and, when service-role credentials are configured, the Supabase auth user.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/auth/oauth/google": {
       "get": {
         "summary": "Start Supabase Google OAuth PKCE flow.",

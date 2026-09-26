@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   applySelectiveRestore,
+  buildCloudMergePreview,
+  buildLocalToCloudSyncItems,
   createAppDataExport,
   deletePersonalData,
+  mergeLocalDataIntoCloud,
   migrateImportedAppData,
   parseImportedAppData,
   stringifyAppDataExport
@@ -111,5 +114,58 @@ describe("app data import/export", () => {
     expect(deleted.workoutSets).toEqual([]);
     expect(deleted.bodyMetrics).toEqual([]);
     expect(deleted.routines.length).toBeGreaterThan(0);
+  });
+
+  it("previews and builds idempotent local-to-cloud merge items", () => {
+    const local = {
+      ...initialState,
+      hydrationLogs: [{ id: "water-local", amountMl: 500, drinkType: "water" as const, loggedAt: "2026-08-21T00:00:00.000Z" }],
+      workoutSets: [
+        {
+          id: "set-local",
+          exerciseId: "ex1",
+          exerciseName: "Bench",
+          targetWeightKg: 50,
+          targetReps: 8,
+          actualWeightKg: 50,
+          actualReps: 8,
+          completedAt: "2026-08-21T00:00:00.000Z"
+        }
+      ]
+    };
+    const cloud = { ...initialState, routines: [{ ...initialState.routines[0], updatedAt: "2026-08-20T00:00:00.000Z" }] };
+
+    const preview = buildCloudMergePreview(local, cloud);
+    const items = buildLocalToCloudSyncItems(local, "merge-test");
+
+    expect(preview).toMatchObject({ hasLocalData: true, hydrationLogs: 1, workoutSets: 1, routines: 1 });
+    expect(preview.conflicts[0]).toContain("lịch tập");
+    expect(items.some((item) => item.type === "hydration.log" && item.idempotencyKey === "merge-test:hydration.log:water-local")).toBe(true);
+    expect(items.some((item) => item.type === "workout.set.create" && item.idempotencyKey === "merge-test:workout.set.create:set-local")).toBe(true);
+  });
+
+  it("merges local data into cloud state using newer records by id", () => {
+    const cloud = {
+      ...initialState,
+      profile: { ...initialState.profile, name: "Cloud", waterTargetMl: 2000 },
+      hydrationLogs: [{ id: "same-water", amountMl: 250, drinkType: "water" as const, loggedAt: "2026-08-20T00:00:00.000Z" }],
+      bodyMetrics: []
+    };
+    const local = {
+      ...initialState,
+      profile: { ...initialState.profile, name: "Local", waterTargetMl: 2600 },
+      hydrationLogs: [
+        { id: "same-water", amountMl: 600, drinkType: "water" as const, loggedAt: "2026-08-21T00:00:00.000Z" },
+        { id: "new-water", amountMl: 300, drinkType: "water" as const, loggedAt: "2026-08-21T01:00:00.000Z" }
+      ],
+      bodyMetrics: [{ id: "metric-local", measuredAt: "2026-08-21T00:00:00.000Z", weightKg: 72, heightCm: 174 }]
+    };
+
+    const merged = mergeLocalDataIntoCloud(local, cloud);
+
+    expect(merged.profile).toMatchObject({ name: "Local", waterTargetMl: 2600 });
+    expect(merged.hydrationLogs.find((log) => log.id === "same-water")?.amountMl).toBe(600);
+    expect(merged.hydrationLogs.some((log) => log.id === "new-water")).toBe(true);
+    expect(merged.bodyMetrics).toHaveLength(1);
   });
 });

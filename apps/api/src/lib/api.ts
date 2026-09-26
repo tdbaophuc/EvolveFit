@@ -13,6 +13,7 @@ import {
   expectedHydrationByNow,
   isWorkingVolumeSet,
   type HydrationLog,
+  type BodyMetric,
   type ExerciseDefinition,
   type Friend,
   type RecommendationDecision,
@@ -430,6 +431,10 @@ function applySyncItem(item: SyncBatchItem): ApiResult<unknown> {
     });
   }
   if (item.type === "hydration.delete") return deleteHydrationLog(String(payload.id ?? ""));
+  if (item.type === "profile.update") {
+    serverState().profile = { ...serverState().profile, ...(payload as Partial<ReturnType<typeof serverState>["profile"]>) };
+    return ok(serverState().profile);
+  }
   if (item.type === "supplement.log" || item.type === "supplement.skip") return upsertSupplementLog(payload as SupplementLog);
   if (item.type === "workout.set.create" || item.type === "workout.set.skip") return createWorkoutSet(payload as WorkoutSet);
   if (item.type === "workout.set.patch") return updateWorkoutSet(String(payload.id ?? ""), payload.patch as Partial<WorkoutSet>);
@@ -457,6 +462,7 @@ function applySyncItem(item: SyncBatchItem): ApiResult<unknown> {
   if (item.type === "exercise.create") return createExercise(payload as Partial<ExerciseDefinition>);
   if (item.type === "exercise.update") return updateExercise(String(payload.id ?? ""), payload.patch as Partial<ExerciseDefinition>);
   if (item.type === "exercise.delete") return deleteExercise(String(payload.id ?? ""));
+  if (item.type === "bodyMetric.upsert") return upsertBodyMetric(payload as BodyMetric);
   if (item.type === "social.privacy.update") {
     serverState().socialPrivacy = { ...serverState().socialPrivacy, ...(payload as Partial<SocialPrivacySettings>) };
     return ok(serverState().socialPrivacy);
@@ -494,6 +500,14 @@ function upsertSupplementLog(log: SupplementLog): ApiResult<SupplementLog> {
   if (index < 0) serverState().supplementLogs.push(log);
   else if ((log.loggedAt ?? "") >= (serverState().supplementLogs[index].loggedAt ?? "")) serverState().supplementLogs[index] = log;
   return ok(serverState().supplementLogs.find((item) => item.id === log.id) ?? log);
+}
+
+function upsertBodyMetric(metric: BodyMetric): ApiResult<BodyMetric> {
+  if (!metric.id || !Number.isFinite(metric.weightKg) || !Number.isFinite(metric.heightCm)) return fail("body metric is invalid");
+  const index = serverState().bodyMetrics.findIndex((item) => item.id === metric.id);
+  if (index < 0) serverState().bodyMetrics.push(metric);
+  else if ((metric.measuredAt ?? "") >= (serverState().bodyMetrics[index].measuredAt ?? "")) serverState().bodyMetrics[index] = metric;
+  return ok(serverState().bodyMetrics.find((item) => item.id === metric.id) ?? metric);
 }
 
 function lastWriteWinsWorkoutSet(current: WorkoutSet, next: WorkoutSet): WorkoutSet {

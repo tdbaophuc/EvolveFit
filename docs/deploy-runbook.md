@@ -46,6 +46,42 @@ Default local ports are API `4000` and web `3000` unless `PORT` is overridden.
 
 Use `/api/health` for container liveness and `/api/ready` for load balancer readiness.
 
+## Auth and Account Lifecycle
+
+Auth endpoints:
+- `GET /api/auth/session`
+- `POST /api/auth/sign-in`
+- `POST /api/auth/sign-up`
+- `POST /api/auth/refresh`
+- `POST /api/auth/password/forgot`
+- `POST /api/auth/password/reset`
+- `POST /api/auth/sign-out`
+- `GET /api/auth/oauth/google`
+- `GET /api/auth/callback`
+- `GET /api/account/export`
+- `DELETE /api/auth/account`
+
+Supabase Auth settings to verify per environment:
+- Site URL points to the web origin.
+- Additional redirect URLs include the API callback origin, for example `https://api.example.com/api/auth/callback`, and the web origin used for password recovery.
+- Google OAuth redirect URL in Supabase/provider console matches `/api/auth/callback`.
+- Email confirmation can be enabled; sign-up returns `needsEmailVerification=true` when Supabase does not issue an access token immediately.
+
+Session behavior:
+- Backend stores Supabase access/refresh tokens in the httpOnly `evolvefit_session` cookie when sign-in, sign-up, refresh, or OAuth succeeds.
+- Data endpoints also accept `Authorization: Bearer <Supabase JWT>` for native/API clients.
+- `POST /api/auth/refresh` uses the refresh token from the request body or session cookie and rotates the httpOnly cookie.
+
+Local-to-cloud merge after login:
+- The web app shows merge choices after email login/sign-up: merge local data to cloud, replace local with cloud export, or keep local data.
+- Merge uses `/api/sync/batch` with stable idempotency keys such as `account-merge:<profile>:hydration.log:<id>`.
+- Replace uses `GET /api/account/export` and restores the returned schema-versioned app state locally.
+
+Account deletion:
+- `DELETE /api/auth/account` deletes repository-owned user data and clears the session cookie.
+- In Supabase mode, auth-user deletion also requires `SUPABASE_SERVICE_ROLE_KEY`; without it the route can delete app data but reports `authDeleted=false`.
+- Keep service-role credentials only on `apps/api`; never expose them through `NEXT_PUBLIC_*`.
+
 ## Cron Scheduler
 
 Backend exposes protected HTTP cron endpoints for external schedulers:

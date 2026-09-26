@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { createAppDataExport } from "@evolvefit/shared";
 import {
   coachRecommendationFeedback,
   coachRecommend,
@@ -52,6 +53,7 @@ import {
   createCodeVerifier,
   createOauthState,
   createSessionCookieValue,
+  deleteSupabaseUser,
   createSupabaseOAuthUrl,
   exchangeSupabaseOAuthCode,
   bearerTokenFromAuthorization,
@@ -59,6 +61,9 @@ import {
   oauthCodeVerifierCookieName,
   oauthStateCookieName,
   parseSessionCookieValue,
+  refreshSession,
+  requestPasswordReset,
+  resetPassword,
   sessionFromSupabaseTokens,
   signIn,
   signOut,
@@ -66,7 +71,7 @@ import {
   verifySupabaseJwt,
   type AuthMode
 } from "../lib/auth";
-import { runWithApiRuntime } from "../lib/api-runtime";
+import { currentApiState, runWithApiRuntime } from "../lib/api-runtime";
 import { getIntegrationStatus, verifySupabaseProduction } from "../lib/integrations";
 import { listClientErrors, listRequestLogs, recordClientError, requestIdResponseHeader } from "../lib/observability";
 import { jsonFail, jsonOk, withApiErrorHandling } from "../lib/server-response";
@@ -155,13 +160,14 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
   });
 
   app.post("/api/auth/sign-up", async (request, reply) => {
-    const body = bodyAs<{ email?: string; password?: string }>(request);
+    const body = bodyAs<{ email?: string; password?: string; redirectTo?: string }>(request);
     if (!body?.email || !body.password) {
       reply.header(requestIdResponseHeader(), request.requestId).code(400);
       return { ok: false, error: "email and password are required", requestId: request.requestId };
     }
     try {
-      const session = await signUp({ email: body.email, password: body.password, env });
+      const redirectTo = body.redirectTo ?? createAppUrl("/", fullUrl(request), env).toString();
+      const session = await signUp({ email: body.email, password: body.password, redirectTo, env });
       setSessionCookie(reply, session);
       reply.header(requestIdResponseHeader(), request.requestId);
       return { ok: true, data: session, requestId: request.requestId };
@@ -174,6 +180,58 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
   app.post("/api/auth/sign-out", (_request, reply) => {
     reply.clearCookie(authCookieName, { path: "/" });
     return { ok: true, data: signOut() };
+  });
+
+  app.post("/api/auth/refresh", async (request, reply) => {
+    const cookieSession = parseSessionCookieValue(request.cookies[authCookieName]);
+    const body = bodyAs<{ refreshToken?: string }>(request);
+    const refreshToken = body?.refreshToken ?? cookieSession?.refreshToken;
+    if (!refreshToken) {
+      reply.header(requestIdResponseHeader(), request.requestId).code(401);
+      return { ok: false, error: "refresh token is required", requestId: request.requestId };
+    }
+    try {
+      const session = await refreshSession({ refreshToken, env });
+      setSessionCookie(reply, session);
+      reply.header(requestIdResponseHeader(), request.requestId);
+      return { ok: true, data: session, requestId: request.requestId };
+    } catch (error) {
+      reply.header(requestIdResponseHeader(), request.requestId).code(401);
+      return { ok: false, error: error instanceof Error ? error.message : "Refresh failed", requestId: request.requestId };
+    }
+  });
+
+  app.post("/api/auth/password/forgot", async (request, reply) => {
+    const body = bodyAs<{ email?: string; redirectTo?: string }>(request);
+    if (!body?.email) {
+      reply.header(requestIdResponseHeader(), request.requestId).code(400);
+      return { ok: false, error: "email is required", requestId: request.requestId };
+    }
+    try {
+      const redirectTo = body.redirectTo ?? createAppUrl("/", fullUrl(request), env).toString();
+      const result = await requestPasswordReset({ email: body.email, redirectTo, env });
+      reply.header(requestIdResponseHeader(), request.requestId);
+      return { ok: true, data: result, requestId: request.requestId };
+    } catch (error) {
+      reply.header(requestIdResponseHeader(), request.requestId).code(400);
+      return { ok: false, error: error instanceof Error ? error.message : "Password reset request failed", requestId: request.requestId };
+    }
+  });
+
+  app.post("/api/auth/password/reset", async (request, reply) => {
+    const body = bodyAs<{ accessToken?: string; password?: string }>(request);
+    if (!body?.accessToken || !body.password) {
+      reply.header(requestIdResponseHeader(), request.requestId).code(400);
+      return { ok: false, error: "access token and password are required", requestId: request.requestId };
+    }
+    try {
+      const result = await resetPassword({ accessToken: body.accessToken, password: body.password, env });
+      reply.header(requestIdResponseHeader(), request.requestId);
+      return { ok: true, data: result, requestId: request.requestId };
+    } catch (error) {
+      reply.header(requestIdResponseHeader(), request.requestId).code(400);
+      return { ok: false, error: error instanceof Error ? error.message : "Password reset failed", requestId: request.requestId };
+    }
   });
 
   app.get("/api/auth/oauth/google", async (request, reply) => {
@@ -230,6 +288,37 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
     });
     setSessionCookie(reply, session);
     return reply.redirect(createAppUrl("/", fullUrl(request), env).toString());
+  });
+
+  app.get("/api/account/export", async (request, reply) =>
+    withDataContext(request, reply, () => {
+      return { ok: true, data: createAppDataExport(currentApiState()) };
+    })
+  );
+
+  app.delete("/api/auth/account", async (request, reply) => {
+    try {
+      const user = await resolveApiUser(request);
+      const dataDeletion = await request.apiRepository.deleteUserData(user);
+      const authDeletion = user.mode === "supabase" ? await deleteSupabaseUser({ userId: user.id, env }) : { deleted: true, mode: "missing-env" as const };
+      reply.clearCookie(authCookieName, { path: "/" });
+      reply.header(requestIdResponseHeader(), request.requestId);
+      return {
+        ok: true,
+        data: {
+          email: user.email,
+          dataDeleted: dataDeletion.deleted,
+          authDeleted: authDeletion.deleted,
+          authDeletionMode: authDeletion.mode,
+          tables: dataDeletion.tables ?? []
+        },
+        requestId: request.requestId
+      };
+    } catch (error) {
+      const status = error instanceof AuthRequiredError ? error.status : 500;
+      reply.header(requestIdResponseHeader(), request.requestId).code(status);
+      return { ok: false, error: error instanceof Error ? error.message : "Account deletion failed", requestId: request.requestId };
+    }
   });
 
   app.get("/api/hydration/today", (request, reply) => withDataContext(request, reply, () => getHydrationToday()));

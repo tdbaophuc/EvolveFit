@@ -27,7 +27,7 @@ describe("Fastify API contract", () => {
     expect((await app.inject("/api/observability/logs")).json()).toMatchObject({ ok: true, data: { status: expect.any(String) } });
   });
 
-  it("keeps auth session, local sign-in, sign-up validation, sign-out, and OAuth errors", async () => {
+  it("keeps auth session, local sign-in, sign-up validation, recovery, export, delete, and OAuth errors", async () => {
     expect((await app.inject("/api/auth/session")).json()).toMatchObject({ ok: true, data: { email: expect.any(String) } });
 
     const signIn = await app.inject({
@@ -41,6 +41,25 @@ describe("Fastify API contract", () => {
     const signUp = await app.inject({ method: "POST", url: "/api/auth/sign-up", payload: { email: "missing-password@example.com" } });
     expect(signUp.statusCode).toBe(400);
     expect(signUp.json()).toMatchObject({ ok: false, error: "email and password are required" });
+
+    expect((await app.inject({ method: "POST", url: "/api/auth/refresh", payload: {} })).statusCode).toBe(401);
+    expect((await app.inject({ method: "POST", url: "/api/auth/refresh", payload: { refreshToken: "local-refresh" } })).json()).toMatchObject({
+      ok: true,
+      data: { email: "api-contract@example.com" }
+    });
+    expect((await app.inject({ method: "POST", url: "/api/auth/password/forgot", payload: { email: "api-contract@example.com" } })).json()).toMatchObject({
+      ok: true,
+      data: { sent: true, mode: "local" }
+    });
+    expect((await app.inject({ method: "POST", url: "/api/auth/password/reset", payload: { accessToken: "reset-token", password: "secret123" } })).json()).toMatchObject({
+      ok: true,
+      data: { updated: true }
+    });
+    expect((await app.inject("/api/account/export")).json()).toMatchObject({ ok: true, data: { metadata: { schemaVersion: 2 }, data: { profile: expect.any(Object) } } });
+    expect((await app.inject({ method: "DELETE", url: "/api/auth/account" })).json()).toMatchObject({
+      ok: true,
+      data: { dataDeleted: true }
+    });
 
     expect((await app.inject({ method: "POST", url: "/api/auth/sign-out" })).json()).toEqual({
       ok: true,

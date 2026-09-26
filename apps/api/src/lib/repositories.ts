@@ -50,6 +50,7 @@ export type AppRepository = {
   saveUserState(user: ApiUser, state: AppState): Promise<void>;
   getSyncResult(user: ApiUser, key: string): Promise<PersistedSyncResult | undefined>;
   saveSyncResult(user: ApiUser, key: string, type: string, result: PersistedSyncResult): Promise<void>;
+  deleteUserData(user: ApiUser): Promise<{ deleted: boolean; tables?: string[] }>;
   listNotificationSubscriptions(user: ApiUser, filter?: { endpoint?: string; localProfileId?: string }): Promise<StoredNotificationSubscription[]>;
   upsertNotificationSubscription(user: ApiUser, subscription: StoredNotificationSubscription): Promise<StoredNotificationSubscription>;
   revokeNotificationSubscription(user: ApiUser, endpoint: string): Promise<{ endpoint: string }>;
@@ -82,6 +83,14 @@ export class MemoryAppRepository implements AppRepository {
 
   async saveSyncResult(user: ApiUser, key: string, _type: string, result: PersistedSyncResult): Promise<void> {
     this.syncResults.set(syncKey(user, key), structuredClone(result));
+  }
+
+  async deleteUserData(user: ApiUser): Promise<{ deleted: boolean; tables?: string[] }> {
+    this.states.delete(user.id);
+    [...this.syncResults.keys()].filter((key) => key.startsWith(`${user.id}:`)).forEach((key) => this.syncResults.delete(key));
+    [...this.subscriptions.keys()].filter((key) => key.startsWith(`${user.id}:`)).forEach((key) => this.subscriptions.delete(key));
+    [...this.cronLocks.keys()].filter((key) => key.startsWith(`${user.id}:`)).forEach((key) => this.cronLocks.delete(key));
+    return { deleted: true, tables: ["memory"] };
   }
 
   async listNotificationSubscriptions(user: ApiUser, filter: { endpoint?: string; localProfileId?: string } = {}): Promise<StoredNotificationSubscription[]> {
@@ -217,6 +226,33 @@ export class SupabaseAppRepository implements AppRepository {
         processed_at: new Date().toISOString()
       }
     ]);
+  }
+
+  async deleteUserData(user: ApiUser): Promise<{ deleted: boolean; tables: string[] }> {
+    const tables = [
+      "drink_modules",
+      "hydration_logs",
+      "supplements",
+      "supplement_logs",
+      "routine_exercises",
+      "workout_days",
+      "routines",
+      "exercise_library",
+      "workout_sessions",
+      "workout_sets",
+      "body_metrics",
+      "achievements",
+      "leaderboard_profiles",
+      "push_subscriptions",
+      "notification_events",
+      "sync_events",
+      "progression_recommendations",
+      "profiles"
+    ];
+    for (const table of tables) {
+      await this.deleteUserRows(user, table);
+    }
+    return { deleted: true, tables };
   }
 
   async listNotificationSubscriptions(user: ApiUser, filter: { endpoint?: string; localProfileId?: string } = {}): Promise<StoredNotificationSubscription[]> {

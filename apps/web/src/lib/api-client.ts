@@ -1,4 +1,5 @@
 import type {
+  AppDataExport,
   ExerciseDefinition,
   HydrationLog,
   RecommendationDecision,
@@ -20,6 +21,8 @@ export type AuthSession = {
   refreshToken?: string;
   expiresAt?: number;
   oauthUrl?: string;
+  emailVerified?: boolean;
+  needsEmailVerification?: boolean;
 };
 export type IntegrationStatus = {
   supabase: "configured" | "missing-env";
@@ -65,6 +68,26 @@ export class EvolveFitApiClient {
 
   async signOut(): Promise<ApiResult<AuthSession>> {
     return this.post("/api/auth/sign-out", {});
+  }
+
+  async refresh(input: { refreshToken?: string } = {}): Promise<ApiResult<AuthSession>> {
+    return this.post("/api/auth/refresh", input);
+  }
+
+  async requestPasswordReset(input: { email: string; redirectTo?: string }): Promise<ApiResult<{ email: string; sent: boolean; mode: "supabase" | "local" }>> {
+    return this.post("/api/auth/password/forgot", input);
+  }
+
+  async resetPassword(input: { accessToken: string; password: string }): Promise<ApiResult<{ updated: boolean }>> {
+    return this.post("/api/auth/password/reset", input);
+  }
+
+  async exportAccount(): Promise<ApiResult<AppDataExport>> {
+    return this.get("/api/account/export");
+  }
+
+  async deleteAccount(): Promise<ApiResult<{ email: string; dataDeleted: boolean; authDeleted: boolean; authDeletionMode: string; tables: string[] }>> {
+    return this.delete("/api/auth/account");
   }
 
   async hydrationToday(): Promise<ApiResult<{ logs: HydrationLog[]; totalMl: number; targetMl: number; expectedMl: number }>> {

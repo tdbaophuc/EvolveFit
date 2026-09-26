@@ -50,17 +50,27 @@ describe("EvolveFitApiClient", () => {
     vi.unstubAllGlobals();
   });
 
-  it("supports auth session, sign out, google OAuth URL, and error envelopes", async () => {
+  it("supports auth session, recovery, account data, google OAuth URL, and error envelopes", async () => {
     const fetchMock = vi.fn(async () => Response.json({ ok: false, error: "Unauthorized", requestId: "req_client" }, { status: 401 }));
     vi.stubGlobal("fetch", fetchMock);
     const client = new EvolveFitApiClient("https://api.test");
 
     const session = await client.session();
+    await client.refresh({ refreshToken: "refresh-token" });
+    await client.requestPasswordReset({ email: "a@b.com", redirectTo: "https://app.test/reset" });
+    await client.resetPassword({ accessToken: "reset-token", password: "secret123" });
+    await client.exportAccount();
+    await client.deleteAccount();
     await client.signOut();
 
     expect(session).toEqual({ ok: false, error: "Unauthorized", requestId: "req_client" });
     expect(client.googleOAuthUrl()).toBe("https://api.test/api/auth/oauth/google");
     expect(fetchMock).toHaveBeenCalledWith("https://api.test/api/auth/session", expect.objectContaining({ method: "GET", credentials: "include" }));
+    expect(fetchMock).toHaveBeenCalledWith("https://api.test/api/auth/refresh", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith("https://api.test/api/auth/password/forgot", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith("https://api.test/api/auth/password/reset", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith("https://api.test/api/account/export", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenCalledWith("https://api.test/api/auth/account", expect.objectContaining({ method: "DELETE" }));
     expect(fetchMock).toHaveBeenCalledWith("https://api.test/api/auth/sign-out", expect.objectContaining({ method: "POST", credentials: "include" }));
     vi.unstubAllGlobals();
   });

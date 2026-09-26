@@ -28,6 +28,9 @@ describe("backend repository boundary", () => {
     await expect(
       repository.runCronOnce(userB, "hydration-reminders:2026-09-04T08", "hydration-reminders", async () => ({ sent: 2 }))
     ).resolves.toMatchObject({ status: "ran" });
+
+    await expect(repository.deleteUserData(userA)).resolves.toMatchObject({ deleted: true });
+    expect((await repository.loadUserState(userA)).hydrationLogs.some((log) => log.id === "ha")).toBe(false);
   });
 
   it("scopes Supabase REST reads/writes by authenticated user id", async () => {
@@ -53,6 +56,7 @@ describe("backend repository boundary", () => {
     await repository.loadUserState(user);
     await repository.saveSyncResult(user, "idem-1", "hydration.log", { id: "item-1", type: "hydration.log", status: "synced" });
     await repository.runCronOnce(user, "monthly-achievements:2026-09", "monthly-achievements", async () => ({ sent: 0 }));
+    await repository.deleteUserData(user);
 
     const getUrls = calls.filter((call) => call.init.method === "GET").map((call) => call.url);
     expect(getUrls.length).toBeGreaterThan(5);
@@ -63,6 +67,7 @@ describe("backend repository boundary", () => {
     expect(calls.some((call) => call.url.includes("rpc/evolvefit_acquire_notification_event_lock"))).toBe(true);
     expect(calls.some((call) => call.url.includes("notification_events?on_conflict=user_id,lock_key"))).toBe(true);
     expect(calls.some((call) => Array.isArray(call.body) && call.body[0]?.user_id === "user-a" && call.body[0]?.lock_key === "monthly-achievements:2026-09")).toBe(true);
+    expect(calls.filter((call) => call.init.method === "DELETE").every((call) => call.url.includes("user_id=eq.user-a"))).toBe(true);
   });
 
   it("requires auth for data endpoints in Supabase mode but keeps health public", async () => {

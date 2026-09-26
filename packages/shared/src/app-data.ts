@@ -18,6 +18,25 @@ export const fallbackAppVersion = "0.1.0";
 
 export type RestoreSection = "profile" | "hydration" | "workouts" | "bodyMetrics" | "settings";
 
+export type CloudMergePreview = {
+  hasLocalData: boolean;
+  hydrationLogs: number;
+  supplementLogs: number;
+  workoutSets: number;
+  workoutSessions: number;
+  routines: number;
+  exercises: number;
+  bodyMetrics: number;
+  conflicts: string[];
+};
+
+export type CloudMergeSyncItem = {
+  id: string;
+  type: string;
+  payload: unknown;
+  idempotencyKey: string;
+};
+
 export type AppDataExport = {
   metadata: {
     appVersion: string;
@@ -153,6 +172,106 @@ export function deletePersonalData(state: AppState): AppState {
 
 export function allRestoreSections(): RestoreSection[] {
   return [...restoreSections];
+}
+
+export function buildCloudMergePreview(local: AppState, cloud?: AppState): CloudMergePreview {
+  const conflicts: string[] = [];
+  const cloudRoutineIds = new Set((cloud?.routines ?? []).map((routine) => routine.id));
+  const routineConflicts = local.routines.filter((routine) => cloudRoutineIds.has(routine.id)).length;
+  if (routineConflicts) conflicts.push(`${routineConflicts} lịch tập có cùng mã trên máy chủ.`);
+
+  const preview = {
+    hasLocalData: false,
+    hydrationLogs: local.hydrationLogs.length,
+    supplementLogs: local.supplementLogs.length,
+    workoutSets: local.workoutSets.length,
+    workoutSessions: local.workoutSessions.length,
+    routines: local.routines.length,
+    exercises: local.exerciseLibrary.filter((exercise) => !exercise.builtIn).length,
+    bodyMetrics: local.bodyMetrics.length,
+    conflicts
+  };
+  preview.hasLocalData = [
+    preview.hydrationLogs,
+    preview.supplementLogs,
+    preview.workoutSets,
+    preview.workoutSessions,
+    preview.routines,
+    preview.exercises,
+    preview.bodyMetrics
+  ].some((count) => count > 0);
+  return preview;
+}
+
+export function mergeLocalDataIntoCloud(local: AppState, cloud: AppState): AppState {
+  return {
+    ...cloud,
+    profile: {
+      ...cloud.profile,
+      name: local.profile.name || cloud.profile.name,
+      timezone: local.profile.timezone || cloud.profile.timezone,
+      unitWeight: local.profile.unitWeight,
+      unitVolume: local.profile.unitVolume,
+      bodyWeightKg: local.profile.bodyWeightKg || cloud.profile.bodyWeightKg,
+      heightCm: local.profile.heightCm || cloud.profile.heightCm,
+      goalWeightKg: local.profile.goalWeightKg ?? cloud.profile.goalWeightKg,
+      goalBodyFatPercent: local.profile.goalBodyFatPercent ?? cloud.profile.goalBodyFatPercent,
+      waterTargetMl: local.profile.waterTargetMl || cloud.profile.waterTargetMl,
+      workoutDays: local.profile.workoutDays.length ? local.profile.workoutDays : cloud.profile.workoutDays
+    },
+    hydrationLogs: mergeById(cloud.hydrationLogs, local.hydrationLogs, "loggedAt"),
+    supplementLogs: mergeById(cloud.supplementLogs, local.supplementLogs, "loggedAt"),
+    workoutSets: mergeById(cloud.workoutSets, local.workoutSets, "completedAt"),
+    workoutSessions: mergeById(cloud.workoutSessions, local.workoutSessions, "startedAt"),
+    routines: mergeById(cloud.routines, local.routines, "updatedAt"),
+    exerciseLibrary: [
+      ...builtInExerciseDefinitions,
+      ...mergeById(
+        cloud.exerciseLibrary.filter((exercise) => !exercise.builtIn),
+        local.exerciseLibrary.filter((exercise) => !exercise.builtIn),
+        "id"
+      )
+    ],
+    bodyMetrics: mergeById(cloud.bodyMetrics, local.bodyMetrics, "measuredAt"),
+    recommendationHistory: mergeById(cloud.recommendationHistory, local.recommendationHistory, "generatedAt").slice(0, 100),
+    recommendationDecisions: mergeById(cloud.recommendationDecisions, local.recommendationDecisions, "decidedAt").slice(0, 100),
+    syncQueue: cloud.syncQueue,
+    undo: undefined
+  };
+}
+
+export function buildLocalToCloudSyncItems(state: AppState, idempotencyPrefix = "local-merge"): CloudMergeSyncItem[] {
+  const item = (type: string, id: string, payload: unknown): CloudMergeSyncItem => ({
+    id,
+    type,
+    payload,
+    idempotencyKey: `${idempotencyPrefix}:${type}:${id}`
+  });
+  return [
+    item("profile.update", state.profile.email || "local-profile", state.profile),
+    ...state.hydrationLogs.map((log) => item("hydration.log", log.id, log)),
+    ...state.supplementLogs.map((log) => item("supplement.log", log.id, log)),
+    ...state.workoutSessions.map((session) => item("workout.session.start", session.id, session)),
+    ...state.workoutSets.map((set) => item("workout.set.create", set.id, set)),
+    ...state.routines.map((routine) => item("routine.create", routine.id, routine)),
+    ...state.exerciseLibrary.filter((exercise) => !exercise.builtIn).map((exercise) => item("exercise.create", exercise.id, exercise)),
+    ...state.bodyMetrics.map((metric) => item("bodyMetric.upsert", metric.id, metric))
+  ];
+}
+
+function mergeById<T extends { id: string }>(current: T[], incoming: T[], freshnessKey: keyof T): T[] {
+  const merged = new Map(current.map((item) => [item.id, item]));
+  incoming.forEach((item) => {
+    const existing = merged.get(item.id);
+    if (!existing) {
+      merged.set(item.id, item);
+      return;
+    }
+    const nextFreshness = String(item[freshnessKey] ?? "");
+    const existingFreshness = String(existing[freshnessKey] ?? "");
+    merged.set(item.id, nextFreshness >= existingFreshness ? item : existing);
+  });
+  return [...merged.values()];
 }
 
 function normalizeImportedState(parsed: Partial<AppState>): AppState {
