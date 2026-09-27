@@ -20,10 +20,14 @@ Quy tac chung:
 4. Goal 4 - API hardening, validation, security va error contract.
 5. Goal 5 - Frontend modularization va UX production cho onboarding/workout.
 6. Goal 6 - Workout intelligence: planner, exercise library nang cao, coach V2.
-7. Goal 7 - Progress photos va privacy/data controls.
-8. Goal 8 - Nutrition tracking nhe.
-9. Goal 9 - Observability, CI/CD, staging smoke va deploy runbook.
-10. Goal 10 - Native/health platform decision va bridge plan.
+7. Goal 7 - Marketplace bai tap production va catalog governance.
+8. Goal 8 - Marketplace lich tap/template va routine builder.
+9. Goal 9 - Admin role, admin API va governance backend.
+10. Goal 10 - Admin dashboard rieng cho quan tri marketplace.
+11. Goal 11 - Progress photos va privacy/data controls.
+12. Goal 12 - Nutrition tracking nhe.
+13. Goal 13 - Observability, CI/CD, staging smoke va deploy runbook.
+14. Goal 14 - Native/health platform decision va bridge plan.
 
 ## Goal 1 - Production audit va staging readiness
 
@@ -140,7 +144,91 @@ Them workout planner: tao routine theo goal, days/week, equipment, experience, t
 Nang Coach V2 theo huong rule-first: detect plateau, goi y tang/giam/giu/deload, canh bao volume tang qua nhanh, goi y bai thay the khi thieu equipment, goi y tuan deload, va giai thich dua tren data nao. Neu AI env co san, chi dung AI de dien giai/ca nhan hoa trong guardrail, con quyet dinh cot loi van do rules. Them feedback loop accepted/rejected va tests cho cases quan trong. Cap nhat OpenAPI, docs va UI copy.
 ```
 
-## Goal 7 - Progress photos va privacy/data controls
+## Goal 7 - Marketplace bai tap production va catalog governance
+
+Can thao tac thu cong:
+
+- Chot taxonomy bai tap chuan: nhom co, pattern chuyen dong, equipment, difficulty, contraindication/disclaimer va ngon ngu hien thi.
+- Neu dung anh/video minh hoa bai tap, chi su dung asset tu tao, public-domain, license ro rang hoac URL ma doanh nghiep co quyen dung.
+
+```text
+/goal Xay dung marketplace bai tap production cho EvolveFit de user co the tim, loc, xem chi tiet va them bai tap vao lich tap ca nhan.
+
+Audit exercise library sau Goal 6 trong `packages/shared/src/core.ts`, Supabase migrations, repository, API routes, OpenAPI, UI workout/routine editor va sync/import/export. Xac dinh ranh gioi giua built-in exercise, marketplace exercise public, custom exercise rieng cua user, exercise bi an/archived va exercise dang pending review.
+
+Thiet ke data model marketplace exercise: ten bai tap, slug, primary/secondary muscles, muscle group display, movement pattern, equipment, equipment alternatives, difficulty, unilateral flag, force type neu can, cues, common mistakes, substitutions, contraindications/caution, tags, media URL optional, source/license, status draft/published/archived, created_by, reviewed_by, published_at, updated_at va version. Them migration, indexes search/filter, unique constraints, soft archive va RLS phu hop.
+
+Implement repository/API cho marketplace exercise: list/search/filter/sort/pagination, detail, suggest substitutions, clone vao custom library, add vao routine day, admin-only create/update/publish/archive se lam ro contract nhung co the de enforcement day du sang Goal 9. Dam bao user thuong khong sua du lieu public, custom exercise khong lam ban marketplace, va sync/import/export phan biet resource public voi user-owned.
+
+Cap nhat frontend workout/routine editor: man hinh marketplace bai tap co search, filters theo nhom co/equipment/difficulty/tags, detail sheet, CTA them vao ngay tap, tao custom variation, empty/loading/error states va offline fallback voi cache local. UI phai ro dau la bai tap marketplace, dau la bai tap custom cua toi.
+
+Bo sung tests shared/API/repository/frontend cho search/filter, multi-user isolation, add exercise vao routine, clone custom, archived exercise, unauthorized mutation va import/export. Cap nhat OpenAPI, seed data mau, docs marketplace taxonomy va runbook seed/publish. Chay `npm run lint`, `npm test`, `npm run build`, `npm run openapi`; commit/push rieng sau khi pass.
+```
+
+## Goal 8 - Marketplace lich tap/template va routine builder
+
+Can thao tac thu cong:
+
+- Khong dung ten/chuong trinh cua nguoi noi tieng nhu endorsement neu chua co quyen. Neu chua co license, dung nhom "inspired templates" voi copy khong gay hieu nham.
+- Chot danh sach template MVP: beginner full-body, upper/lower, PPL, home/bodyweight, fat-loss conditioning, strength base va optional celebrity-inspired khi co quyen noi dung.
+
+```text
+/goal Xay dung marketplace lich tap va routine builder de user co the chon template co san, xem truoc, tuy bien va ap dung vao lich ca nhan.
+
+Audit routine model, planner Goal 6, routine editor UI, sync queue, recommendation history, exercise marketplace Goal 7 va data import/export. Xac dinh can bo sung gi de template hoat dong production: creator/source, target goal, days/week, duration/session, experience, equipment, weekly schedule, warmup/cooldown, progression notes, deload notes, exercise slots, substitutions va versioning.
+
+Thiet ke data model cho `routine_templates` va cac bang con: template days, exercise slots, set/rep/rest prescription, tempo/RPE optional, estimated minutes, muscle distribution, tags, status draft/published/archived, visibility public/private/admin-curated, source/license va version. Them migrations, repository, seed templates va RLS de user chi doc template published, admin quan ly template.
+
+Implement API marketplace lich tap: list/search/filter templates, detail/preview, compatibility score theo profile user, missing equipment warning, apply template vao routine ca nhan, duplicate/customize, favorite/bookmark va feedback accepted/rejected. Apply phai tao routine user-owned idempotent, khong sua template goc va khong tao trung khi retry.
+
+Nang frontend routine builder: tab/template marketplace, cards scan duoc theo muc tieu/thoi luong/thiet bi, template detail voi weekly layout, danh sach bai tap, canh bao thiet bi thieu, nut "Ap dung", luong customize truoc khi luu, replace/substitute exercise tu marketplace va undo khi apply nham. Dam bao mobile workout flow khong bi phinh UI va local-first van dung khi offline.
+
+Bo sung tests cho template compatibility, apply idempotent, clone/customize, versioned template update, missing equipment substitution, multi-user isolation, OpenAPI/client va UI flows chinh. Cap nhat docs ve template licensing, seed process va product copy. Chay lint/test/build/openapi va staging smoke neu co env; commit/push rieng sau khi pass.
+```
+
+## Goal 9 - Admin role, admin API va governance backend
+
+Can thao tac thu cong:
+
+- Tao account admin dau tien bang SQL/Supabase dashboard hoac env bootstrap tam thoi; khong hardcode email admin trong code.
+- Chot chinh sach quyen: owner/super-admin/content-admin/support-admin, audit log retention va quy trinh revoke admin.
+
+```text
+/goal Them role admin va admin API production-safe cho EvolveFit de quan ly marketplace, template, user support va governance.
+
+Audit auth/session/RLS hien co, Supabase schema, API auth guard, route grouping, OpenAPI, observability/log redaction va cac resource can quan tri: marketplace exercises, routine templates, users, reports, feedback, sync events, push subscriptions, app config va audit logs. Xac dinh ro quyen nao can admin, quyen nao tuyet doi khong mo qua frontend.
+
+Thiet ke role/permission model: user_roles hoac profile role claims, admin permission scopes, bootstrap first admin, server-side authorization middleware, optional MFA/reauth requirement cho thao tac nhay cam, audit_logs gom actor/action/resource/before/after/requestId/ip/userAgent. Them migrations, indexes, RLS policy va tests cho user thuong/admin/support/content-admin.
+
+Implement admin API rieng duoi `/api/admin/*`: dashboard summary, exercise marketplace CRUD/publish/archive, routine template CRUD/publish/archive, feedback/reports moderation, user lookup ho tro support voi redaction, app config flags neu can, audit log list/detail va health/governance endpoints. Moi mutation admin phai validate input, log audit, tra envelope nhat quan va khong leak secrets/token.
+
+Hardening security admin: deny-by-default, rate limit rieng, CORS/cookie/session check chat, CSRF strategy neu cookie credentialed, request body limit, pagination bat buoc, search query sanitize, email/token redaction, forbidden/unauthorized phan biet dung status code va OpenAPI contract ro. Khong dua service-role key ra frontend; moi admin action di qua API.
+
+Bo sung tests API/repository cho authorization matrix, audit log created, forbidden user thuong, content-admin chi sua content, super-admin revoke role, archived/published resources va OpenAPI admin specs. Cap nhat docs admin runbook: tao admin dau tien, revoke, incident response, audit review va staging smoke. Chay lint/test/build/openapi; commit/push rieng sau khi pass.
+```
+
+## Goal 10 - Admin dashboard rieng cho quan tri marketplace
+
+Can thao tac thu cong:
+
+- Chot admin URL/path production va nguoi nao duoc cap quyen truy cap.
+- Neu muon rich media upload cho bai tap/template, cau hinh storage provider va policy truoc khi bat upload that.
+
+```text
+/goal Xay dung frontend admin dashboard rieng cho EvolveFit de quan tri marketplace bai tap, lich tap, feedback va audit mot cach an toan.
+
+Audit frontend architecture sau Goal 5, auth state, route protection, API client, component patterns, CSS, test setup va admin API Goal 9. Quyet dinh cau truc `/admin` trong Next app: layout rieng, guard server/client, navigation, empty/loading/error states, forbidden state va logout/re-auth khi session het han.
+
+Implement admin shell va role-aware navigation: overview metrics, marketplace exercise management, routine template management, feedback/report queue, user support lookup redacted, audit log viewer va app config neu API ho tro. Dashboard phai uu tien UI tac nghiep: bang co search/filter/sort/pagination, bulk archive/publish khi an toan, form create/edit co validation, preview truoc publish, diff/audit summary truoc thao tac nhay cam.
+
+Xay dung man hinh quan ly marketplace exercises: list/filter theo status/nhom co/equipment/difficulty/tags, create/edit exercise metadata, media URL/license fields, cues/common mistakes/substitutions, publish/archive, duplicate, preview nhu user thay va validation tieng Viet. Them optimistic UI co rollback hoac refetch ro rang, toast khong che controls quan trong.
+
+Xay dung man hinh quan ly routine templates: weekly builder, keo/chon exercise tu marketplace, set/rep/rest/duration editor, compatibility tags, source/license, status draft/published, preview mobile-friendly va publish checklist. Dam bao admin co the tao template full-body, upper/lower, PPL, home/bodyweight va celebrity-inspired neu co license.
+
+Bo sung frontend tests cho route guard, forbidden user, admin list/edit/publish/archive, validation errors, audit viewer va template builder happy path. Cap nhat docs UI/admin ops, chay lint/test/build va smoke admin voi account staging neu co. Commit/push rieng sau khi pass.
+```
+
+## Goal 11 - Progress photos va privacy/data controls
 
 Can thao tac thu cong:
 
@@ -159,7 +247,7 @@ Them UI progress photos: upload tu file/camera, xem timeline, compare before/aft
 Viet tests cho storage service mock, auth boundary, delete behavior, signed URL expiry va UI flows co the test. Chay lint/test/build va cap nhat runbook ve storage secrets, backup va privacy.
 ```
 
-## Goal 8 - Nutrition tracking nhe
+## Goal 12 - Nutrition tracking nhe
 
 Can thao tac thu cong:
 
@@ -178,7 +266,7 @@ Them UI nutrition vao Today/Progress/Settings theo cach gon: muc tieu ngay, log 
 Neu co food provider, tao abstraction rieng va fallback custom food local. Them validation, tests API/client/shared va cap nhat docs. Chay lint/test/build. Ket thuc goal khi nutrition MVP dung duoc offline/local-first va sync duoc khi dang nhap.
 ```
 
-## Goal 9 - Observability, CI/CD, staging smoke va deploy runbook
+## Goal 13 - Observability, CI/CD, staging smoke va deploy runbook
 
 Can thao tac thu cong:
 
@@ -198,7 +286,7 @@ Nang observability: structured request logs, requestId propagation tu API den fr
 Cap nhat deploy runbook: env matrix web/API, secrets checklist, migration order, deploy/rollback rieng web va API, cron scheduler setup, storage setup neu co, health checks, smoke commands, incident checklist va backup/restore. Chay full verification local va staging neu env san sang. Commit docs/config/test thay doi thanh commit rieng.
 ```
 
-## Goal 10 - Native/health platform decision va bridge plan
+## Goal 14 - Native/health platform decision va bridge plan
 
 Can thao tac thu cong:
 
