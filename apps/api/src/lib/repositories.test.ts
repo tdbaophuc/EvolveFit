@@ -70,6 +70,45 @@ describe("backend repository boundary", () => {
     expect(calls.filter((call) => call.init.method === "DELETE").every((call) => call.url.includes("user_id=eq.user-a"))).toBe(true);
   });
 
+  it("applies production mutations with granular Supabase writes", async () => {
+    const calls: { url: string; method: string; body?: unknown }[] = [];
+    const fetchMock = vi.fn(async (input: URL | RequestInfo) => {
+      const request = input instanceof Request ? input : new Request(input);
+      calls.push({
+        url: request.url,
+        method: request.method,
+        body: request.method === "POST" || request.method === "PATCH" ? await request.clone().json().catch(() => undefined) : undefined
+      });
+      return request.method === "GET" ? Response.json([]) : new Response(null, { status: 204 });
+    });
+    const repository = new SupabaseAppRepository(
+      { NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co", NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon" },
+      fetchMock
+    );
+    const user: ApiUser = { id: "user-a", email: "a@example.com", accessToken: "jwt-a", mode: "supabase" };
+
+    await repository.applyResourceMutations(user, [
+      { type: "hydration.upsert", log: { id: "h1", amountMl: 250, drinkType: "water", loggedAt: "2026-09-04T00:00:00.000Z" } },
+      {
+        type: "routine.upsert",
+        routine: {
+          id: "r1",
+          name: "Push",
+          daysPerWeek: 1,
+          createdAt: "2026-09-04T00:00:00.000Z",
+          updatedAt: "2026-09-04T00:01:00.000Z",
+          days: [{ id: "d1", name: "Push Day", day: "Mon", order: 0, exercises: [] }]
+        }
+      }
+    ]);
+
+    expect(calls.some((call) => call.method === "POST" && call.url.includes("hydration_logs"))).toBe(true);
+    expect(calls.some((call) => call.method === "POST" && call.url.includes("routines"))).toBe(true);
+    expect(calls.some((call) => call.method === "DELETE" && call.url.includes("workout_days") && call.url.includes("routine_id=eq.r1"))).toBe(true);
+    expect(calls.some((call) => call.method === "DELETE" && call.url.includes("hydration_logs?user_id=eq.user-a") && !call.url.includes("id=eq."))).toBe(false);
+    expect(calls.every((call) => !call.url.includes("routine_exercises?user_id=eq.user-a") || call.url.includes("id=eq.") || call.method !== "DELETE")).toBe(true);
+  });
+
   it("requires auth for data endpoints in Supabase mode but keeps health public", async () => {
     const app = await buildApp({
       API_DATA_MODE: "supabase",

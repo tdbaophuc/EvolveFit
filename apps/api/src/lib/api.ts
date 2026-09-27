@@ -28,7 +28,7 @@ import {
 } from "@evolvefit/shared";
 import { aiCoachRecommendation } from "./integrations";
 import { getVapidPublicKey, isWebPushConfigured, sendWebPush, type PushPayload } from "./push";
-import { currentApiRuntime, currentApiState } from "./api-runtime";
+import { currentApiRuntime, currentApiState, drainResourceMutations, recordResourceMutation, resourceMutationCheckpoint } from "./api-runtime";
 
 type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -79,6 +79,7 @@ export function logHydration(amountMl: number): ApiResult<HydrationLog> {
     loggedAt: new Date().toISOString()
   };
   serverState().hydrationLogs.push(log);
+  recordResourceMutation({ type: "hydration.upsert", log });
   return ok(log);
 }
 
@@ -87,6 +88,7 @@ export function patchHydrationLog(id: string, amountMl: number): ApiResult<Hydra
   if (!log) return fail("hydration log not found");
   if (!Number.isFinite(amountMl) || amountMl <= 0) return fail("amountMl must be a positive number");
   log.amountMl = amountMl;
+  recordResourceMutation({ type: "hydration.upsert", log });
   return ok(log);
 }
 
@@ -94,6 +96,7 @@ export function deleteHydrationLog(id: string): ApiResult<{ id: string }> {
   const index = serverState().hydrationLogs.findIndex((item) => item.id === id);
   if (index < 0) return fail("hydration log not found");
   serverState().hydrationLogs.splice(index, 1);
+  recordResourceMutation({ type: "hydration.delete", id });
   return ok({ id });
 }
 
@@ -114,6 +117,7 @@ export function createSupplement(input: { name: string; defaultAmount: number; u
     active: true
   };
   serverState().supplements.push(supplement);
+  recordResourceMutation({ type: "supplement.upsert", supplement });
   return ok(supplement);
 }
 
@@ -132,6 +136,7 @@ export function logSupplement(input: { name: string; amount: number; unit?: "g" 
     skippedReason: input.skippedReason
   };
   serverState().supplementLogs.push(log);
+  recordResourceMutation({ type: "supplementLog.upsert", log });
   return ok(log);
 }
 
@@ -140,6 +145,7 @@ export function updateSupplementReminder(id: string, reminderHour: number) {
   if (!supplement) return fail("supplement not found");
   if (!Number.isInteger(reminderHour) || reminderHour < 0 || reminderHour > 23) return fail("reminderHour must be 0-23");
   supplement.reminderHour = reminderHour;
+  recordResourceMutation({ type: "supplement.upsert", supplement });
   return ok(supplement);
 }
 
@@ -164,6 +170,7 @@ export function updateSupplement(id: string, input: { name?: string; defaultAmou
     ...(input.scheduleHours !== undefined ? { scheduleHours: [...new Set(input.scheduleHours)].sort((a, b) => a - b) } : {}),
     ...(input.active !== undefined ? { active: input.active } : {})
   });
+  recordResourceMutation({ type: "supplement.upsert", supplement });
   return ok(supplement);
 }
 
@@ -191,6 +198,7 @@ export function createRoutine(input: Partial<Routine>): ApiResult<Routine> {
     updatedAt: now
   };
   serverState().routines.push(routine);
+  recordResourceMutation({ type: "routine.upsert", routine });
   return ok(routine);
 }
 
@@ -210,6 +218,7 @@ export function updateRoutine(
     ...(input.days !== undefined ? { days: input.days } : {}),
     updatedAt: nextUpdatedAt(routine.updatedAt)
   });
+  recordResourceMutation({ type: "routine.upsert", routine });
   return ok(routine);
 }
 
@@ -224,6 +233,7 @@ export function deleteRoutine(id: string): ApiResult<{ id: string }> {
   if (index < 0) return fail("routine not found");
   serverState().routines.splice(index, 1);
   if (serverState().activeRoutineId === id) serverState().activeRoutineId = serverState().routines[0]?.id ?? "";
+  recordResourceMutation({ type: "routine.delete", id });
   return ok({ id });
 }
 
@@ -243,6 +253,7 @@ export function createExercise(input: Partial<ExerciseDefinition>): ApiResult<Ex
     notes: input.notes
   };
   serverState().exerciseLibrary.push(exercise);
+  recordResourceMutation({ type: "exercise.upsert", exercise });
   return ok(exercise);
 }
 
@@ -258,6 +269,7 @@ export function updateExercise(id: string, input: Partial<ExerciseDefinition>): 
     ...(input.builtIn !== undefined ? { builtIn: input.builtIn } : {}),
     ...(input.notes !== undefined ? { notes: input.notes } : {})
   });
+  recordResourceMutation({ type: "exercise.upsert", exercise });
   return ok(exercise);
 }
 
@@ -265,6 +277,7 @@ export function deleteExercise(id: string): ApiResult<{ id: string }> {
   const index = serverState().exerciseLibrary.findIndex((item) => item.id === id);
   if (index < 0) return fail("exercise not found");
   serverState().exerciseLibrary.splice(index, 1);
+  recordResourceMutation({ type: "exercise.delete", id });
   return ok({ id });
 }
 
@@ -287,6 +300,7 @@ export function startWorkoutSession(input: {
   });
   serverState().workoutSessions.push(session);
   serverState().activeWorkoutSessionId = session.id;
+  recordResourceMutation({ type: "workoutSession.upsert", session });
   return ok(session);
 }
 
@@ -315,6 +329,7 @@ function updateWorkoutSessionStatus(id: string, action: "finish" | "pause" | "re
   serverState().workoutSessions[index] = next;
   if (action === "finish") serverState().activeWorkoutSessionId = undefined;
   if (action === "resume") serverState().activeWorkoutSessionId = id;
+  recordResourceMutation({ type: "workoutSession.upsert", session: next });
   return ok(next);
 }
 
@@ -322,6 +337,7 @@ export function logWorkoutSet(input: Omit<WorkoutSet, "id" | "completedAt">): Ap
   if (!input.exerciseId || !input.exerciseName) return fail("exercise is required");
   const set: WorkoutSet = { ...input, id: cryptoSafeId(), completedAt: new Date().toISOString() };
   serverState().workoutSets.push(set);
+  recordResourceMutation({ type: "workoutSet.upsert", set });
   return ok(set);
 }
 
@@ -335,7 +351,9 @@ export function createWorkoutSet(input: WorkoutSet | Omit<WorkoutSet, "id" | "co
   const existingIndex = serverState().workoutSets.findIndex((item) => item.id === set.id);
   if (existingIndex >= 0) serverState().workoutSets[existingIndex] = lastWriteWinsWorkoutSet(serverState().workoutSets[existingIndex], set);
   else serverState().workoutSets.push(set);
-  return ok(serverState().workoutSets.find((item) => item.id === set.id) ?? set);
+  const saved = serverState().workoutSets.find((item) => item.id === set.id) ?? set;
+  recordResourceMutation({ type: "workoutSet.upsert", set: saved });
+  return ok(saved);
 }
 
 export function updateWorkoutSet(id: string, patch: Partial<WorkoutSet>): ApiResult<WorkoutSet> {
@@ -343,6 +361,7 @@ export function updateWorkoutSet(id: string, patch: Partial<WorkoutSet>): ApiRes
   if (index < 0) return fail("workout set not found");
   const next = { ...serverState().workoutSets[index], ...patch, id };
   serverState().workoutSets[index] = lastWriteWinsWorkoutSet(serverState().workoutSets[index], next);
+  recordResourceMutation({ type: "workoutSet.upsert", set: serverState().workoutSets[index] });
   return ok(serverState().workoutSets[index]);
 }
 
@@ -350,6 +369,7 @@ export function deleteWorkoutSet(id: string): ApiResult<{ id: string }> {
   const index = serverState().workoutSets.findIndex((item) => item.id === id);
   if (index < 0) return fail("workout set not found");
   serverState().workoutSets.splice(index, 1);
+  recordResourceMutation({ type: "workoutSet.delete", id });
   return ok({ id });
 }
 
@@ -361,6 +381,7 @@ export function reorderWorkoutSession(id: string, queue: SessionExerciseQueueIte
   }
   const next = { ...serverState().workoutSessions[index], exerciseQueue: queue, sessionExerciseOrder: queue.map((item) => item.exerciseId) };
   serverState().workoutSessions[index] = next;
+  recordResourceMutation({ type: "workoutSession.upsert", session: next });
   return ok(next);
 }
 
@@ -391,8 +412,13 @@ export async function syncBatch(input: { items?: SyncBatchItem[]; idempotencyKey
       results.push(cached);
       continue;
     }
+    const checkpoint = resourceMutationCheckpoint();
     const result = applySyncItem(item);
     const syncResult = syncResultFromApiResult(item, result);
+    const mutations = drainResourceMutations(checkpoint);
+    if (syncResult.status === "synced" && mutations.length) {
+      await runtime.repository.applyResourceMutations(runtime.user, mutations, runtime.state);
+    }
     await runtime.repository.saveSyncResult(runtime.user, key, item.type, syncResult);
     results.push(syncResult);
   }
@@ -433,6 +459,7 @@ function applySyncItem(item: SyncBatchItem): ApiResult<unknown> {
   if (item.type === "hydration.delete") return deleteHydrationLog(String(payload.id ?? ""));
   if (item.type === "profile.update") {
     serverState().profile = { ...serverState().profile, ...(payload as Partial<ReturnType<typeof serverState>["profile"]>) };
+    recordResourceMutation({ type: "profile.upsert" });
     return ok(serverState().profile);
   }
   if (item.type === "supplement.log" || item.type === "supplement.skip") return upsertSupplementLog(payload as SupplementLog);
@@ -443,6 +470,7 @@ function applySyncItem(item: SyncBatchItem): ApiResult<unknown> {
     const session = payload as WorkoutSession;
     if (serverState().workoutSessions.some((existing) => existing.id === session.id)) return ok(session);
     serverState().workoutSessions.push(session);
+    recordResourceMutation({ type: "workoutSession.upsert", session });
     return ok(session);
   }
   if (item.type === "workout.session.finish") return finishWorkoutSessionById(String(payload.id ?? ""));
@@ -491,7 +519,9 @@ function upsertHydrationLog(log: HydrationLog): ApiResult<HydrationLog> {
   const index = serverState().hydrationLogs.findIndex((item) => item.id === log.id);
   if (index < 0) serverState().hydrationLogs.push(log);
   else if ((log.loggedAt ?? "") >= (serverState().hydrationLogs[index].loggedAt ?? "")) serverState().hydrationLogs[index] = log;
-  return ok(serverState().hydrationLogs.find((item) => item.id === log.id) ?? log);
+  const saved = serverState().hydrationLogs.find((item) => item.id === log.id) ?? log;
+  recordResourceMutation({ type: "hydration.upsert", log: saved });
+  return ok(saved);
 }
 
 function upsertSupplementLog(log: SupplementLog): ApiResult<SupplementLog> {
@@ -499,7 +529,9 @@ function upsertSupplementLog(log: SupplementLog): ApiResult<SupplementLog> {
   const index = serverState().supplementLogs.findIndex((item) => item.id === log.id);
   if (index < 0) serverState().supplementLogs.push(log);
   else if ((log.loggedAt ?? "") >= (serverState().supplementLogs[index].loggedAt ?? "")) serverState().supplementLogs[index] = log;
-  return ok(serverState().supplementLogs.find((item) => item.id === log.id) ?? log);
+  const saved = serverState().supplementLogs.find((item) => item.id === log.id) ?? log;
+  recordResourceMutation({ type: "supplementLog.upsert", log: saved });
+  return ok(saved);
 }
 
 function upsertBodyMetric(metric: BodyMetric): ApiResult<BodyMetric> {
@@ -507,7 +539,9 @@ function upsertBodyMetric(metric: BodyMetric): ApiResult<BodyMetric> {
   const index = serverState().bodyMetrics.findIndex((item) => item.id === metric.id);
   if (index < 0) serverState().bodyMetrics.push(metric);
   else if ((metric.measuredAt ?? "") >= (serverState().bodyMetrics[index].measuredAt ?? "")) serverState().bodyMetrics[index] = metric;
-  return ok(serverState().bodyMetrics.find((item) => item.id === metric.id) ?? metric);
+  const saved = serverState().bodyMetrics.find((item) => item.id === metric.id) ?? metric;
+  recordResourceMutation({ type: "bodyMetric.upsert", metric: saved });
+  return ok(saved);
 }
 
 function lastWriteWinsWorkoutSet(current: WorkoutSet, next: WorkoutSet): WorkoutSet {
@@ -550,6 +584,7 @@ export async function coachRecommend() {
     status: "pending"
   };
   serverState().recommendationHistory = [historyItem, ...serverState().recommendationHistory].slice(0, 50);
+  recordResourceMutation({ type: "recommendation.upsert", recommendation: historyItem });
   return ok({ recommendation: historyItem, history: serverState().recommendationHistory });
 }
 
@@ -575,6 +610,7 @@ export function coachRecommendationFeedback(input: {
     decidedAt: new Date().toISOString()
   };
   serverState().recommendationDecisions = [decision, ...serverState().recommendationDecisions].slice(0, 100);
+  recordResourceMutation({ type: "recommendation.upsert", recommendation: item });
   return ok({ recommendation: item, decision, history: serverState().recommendationHistory });
 }
 
@@ -821,6 +857,8 @@ export async function runScheduledCronJob(
 
 export function updateLeaderboardVisibility(isPublic: boolean) {
   serverState().profile.leaderboardPublic = isPublic;
+  recordResourceMutation({ type: "profile.upsert" });
+  recordResourceMutation({ type: "leaderboardProfile.upsert" });
   return ok({ isPublic });
 }
 

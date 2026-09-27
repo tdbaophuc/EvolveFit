@@ -30,6 +30,23 @@ export type PersistedSyncResult = {
   conflict?: { kind: "routine"; local: unknown; remote: unknown; message: string };
 };
 
+export type ResourceMutation =
+  | { type: "profile.upsert" }
+  | { type: "leaderboardProfile.upsert" }
+  | { type: "hydration.upsert"; log: HydrationLog }
+  | { type: "hydration.delete"; id: string }
+  | { type: "supplement.upsert"; supplement: Supplement }
+  | { type: "supplementLog.upsert"; log: SupplementLog }
+  | { type: "exercise.upsert"; exercise: ExerciseDefinition }
+  | { type: "exercise.delete"; id: string }
+  | { type: "routine.upsert"; routine: Routine }
+  | { type: "routine.delete"; id: string }
+  | { type: "workoutSession.upsert"; session: WorkoutSession }
+  | { type: "workoutSet.upsert"; set: WorkoutSet }
+  | { type: "workoutSet.delete"; id: string }
+  | { type: "bodyMetric.upsert"; metric: BodyMetric }
+  | { type: "recommendation.upsert"; recommendation: RecommendationHistoryItem };
+
 export type StoredNotificationSubscription = {
   endpoint: string;
   p256dh: string;
@@ -48,6 +65,7 @@ export type AppRepository = {
   readonly mode: "memory" | "supabase";
   loadUserState(user: ApiUser): Promise<AppState>;
   saveUserState(user: ApiUser, state: AppState): Promise<void>;
+  applyResourceMutations(user: ApiUser, mutations: ResourceMutation[], snapshot?: AppState): Promise<void>;
   getSyncResult(user: ApiUser, key: string): Promise<PersistedSyncResult | undefined>;
   saveSyncResult(user: ApiUser, key: string, type: string, result: PersistedSyncResult): Promise<void>;
   deleteUserData(user: ApiUser): Promise<{ deleted: boolean; tables?: string[] }>;
@@ -74,6 +92,18 @@ export class MemoryAppRepository implements AppRepository {
 
   async saveUserState(user: ApiUser, state: AppState): Promise<void> {
     this.states.set(user.id, structuredClone(state));
+  }
+
+  async applyResourceMutations(user: ApiUser, _mutations: ResourceMutation[], snapshot?: AppState): Promise<void> {
+    if (snapshot) {
+      await this.saveUserState(user, snapshot);
+      return;
+    }
+    const state = await this.loadUserState(user);
+    for (const mutation of _mutations) {
+      applyMutationToState(state, mutation);
+    }
+    await this.saveUserState(user, state);
   }
 
   async getSyncResult(user: ApiUser, key: string): Promise<PersistedSyncResult | undefined> {
@@ -190,18 +220,81 @@ export class SupabaseAppRepository implements AppRepository {
   }
 
   async saveUserState(user: ApiUser, state: AppState): Promise<void> {
+    await this.saveSnapshotRows(user, state);
+  }
+
+  async applyResourceMutations(user: ApiUser, mutations: ResourceMutation[], snapshot?: AppState): Promise<void> {
+    const state = snapshot;
+    for (const mutation of mutations) {
+      await this.applyResourceMutation(user, mutation, state);
+    }
+  }
+
+  private async applyResourceMutation(user: ApiUser, mutation: ResourceMutation, snapshot?: AppState): Promise<void> {
+    switch (mutation.type) {
+      case "profile.upsert":
+        if (!snapshot) return;
+        await this.upsert(user, "profiles?on_conflict=user_id", [profileToRow(user.id, snapshot)]);
+        return;
+      case "leaderboardProfile.upsert":
+        if (!snapshot) return;
+        await this.upsert(user, "leaderboard_profiles?on_conflict=user_id", [leaderboardProfileToRow(user.id, snapshot)]);
+        return;
+      case "hydration.upsert":
+        await this.upsert(user, "hydration_logs", [hydrationLogToRow(user.id, mutation.log)]);
+        return;
+      case "hydration.delete":
+        await this.deleteRowById(user, "hydration_logs", mutation.id);
+        return;
+      case "supplement.upsert":
+        await this.upsert(user, "supplements", [supplementToRow(user.id, mutation.supplement)]);
+        return;
+      case "supplementLog.upsert":
+        await this.upsert(user, "supplement_logs", [supplementLogToRow(user.id, mutation.log)]);
+        return;
+      case "exercise.upsert":
+        await this.upsert(user, "exercise_library", [exerciseToRow(user.id, mutation.exercise)]);
+        return;
+      case "exercise.delete":
+        await this.deleteRowById(user, "exercise_library", mutation.id);
+        return;
+      case "routine.upsert":
+        await this.saveRoutine(user, mutation.routine);
+        return;
+      case "routine.delete":
+        await this.deleteRoutine(user, mutation.id);
+        return;
+      case "workoutSession.upsert":
+        await this.upsert(user, "workout_sessions", [workoutSessionToRow(user.id, mutation.session)]);
+        return;
+      case "workoutSet.upsert":
+        await this.upsert(user, "workout_sets", [workoutSetToRow(user.id, mutation.set)]);
+        return;
+      case "workoutSet.delete":
+        await this.deleteRowById(user, "workout_sets", mutation.id);
+        return;
+      case "bodyMetric.upsert":
+        await this.upsert(user, "body_metrics", [bodyMetricToRow(user.id, mutation.metric)]);
+        return;
+      case "recommendation.upsert":
+        await this.upsert(user, "progression_recommendations", [recommendationToRow(user.id, mutation.recommendation)]);
+        return;
+    }
+  }
+
+  private async saveSnapshotRows(user: ApiUser, state: AppState): Promise<void> {
     await Promise.all([
       this.upsert(user, "profiles?on_conflict=user_id", [profileToRow(user.id, state)]),
-      this.replaceUserRows(user, "drink_modules?on_conflict=user_id,drink_type", state.drinkModules.map((item) => drinkModuleToRow(user.id, item))),
-      this.replaceUserRows(user, "hydration_logs", state.hydrationLogs.map((item) => hydrationLogToRow(user.id, item))),
-      this.replaceUserRows(user, "supplements", state.supplements.map((item) => supplementToRow(user.id, item))),
-      this.replaceUserRows(user, "supplement_logs", state.supplementLogs.map((item) => supplementLogToRow(user.id, item))),
-      this.replaceUserRows(user, "exercise_library", state.exerciseLibrary.map((item) => exerciseToRow(user.id, item))),
-      this.saveRoutines(user, state.routines),
-      this.replaceUserRows(user, "workout_sessions", state.workoutSessions.map((item) => workoutSessionToRow(user.id, item))),
-      this.replaceUserRows(user, "workout_sets", state.workoutSets.map((item) => workoutSetToRow(user.id, item))),
-      this.replaceUserRows(user, "body_metrics", state.bodyMetrics.map((item) => bodyMetricToRow(user.id, item))),
-      this.replaceUserRows(user, "progression_recommendations", state.recommendationHistory.map((item) => recommendationToRow(user.id, item))),
+      this.upsert(user, "drink_modules?on_conflict=user_id,drink_type", state.drinkModules.map((item) => drinkModuleToRow(user.id, item))),
+      this.upsert(user, "hydration_logs", state.hydrationLogs.map((item) => hydrationLogToRow(user.id, item))),
+      this.upsert(user, "supplements", state.supplements.map((item) => supplementToRow(user.id, item))),
+      this.upsert(user, "supplement_logs", state.supplementLogs.map((item) => supplementLogToRow(user.id, item))),
+      this.upsert(user, "exercise_library", state.exerciseLibrary.map((item) => exerciseToRow(user.id, item))),
+      Promise.all(state.routines.map((routine) => this.saveRoutine(user, routine))),
+      this.upsert(user, "workout_sessions", state.workoutSessions.map((item) => workoutSessionToRow(user.id, item))),
+      this.upsert(user, "workout_sets", state.workoutSets.map((item) => workoutSetToRow(user.id, item))),
+      this.upsert(user, "body_metrics", state.bodyMetrics.map((item) => bodyMetricToRow(user.id, item))),
+      this.upsert(user, "progression_recommendations", state.recommendationHistory.map((item) => recommendationToRow(user.id, item))),
       this.upsert(user, "leaderboard_profiles?on_conflict=user_id", [leaderboardProfileToRow(user.id, state)])
     ]);
   }
@@ -223,6 +316,7 @@ export class SupabaseAppRepository implements AppRepository {
         payload: result,
         status: result.status,
         error: result.error ?? null,
+        conflict_metadata: result.conflict ?? null,
         processed_at: new Date().toISOString()
       }
     ]);
@@ -326,20 +420,28 @@ export class SupabaseAppRepository implements AppRepository {
     }
   }
 
-  private async saveRoutines(user: ApiUser, routines: Routine[]): Promise<void> {
-    await this.replaceUserRows(user, "routine_exercises", []);
-    await this.replaceUserRows(user, "routines", routines.map((item) => routineToRow(user.id, item)));
-    await this.replaceUserRows(user, "workout_days", routines.flatMap((routine) => routine.days.map((day) => workoutDayToRow(user.id, routine.id, day))));
-    await this.upsert(user, "routine_exercises", routines.flatMap((routine) => routine.days.flatMap((day) => day.exercises.map((exercise) => routineExerciseToRow(user.id, day.id, exercise)))));
+  private async saveRoutine(user: ApiUser, routine: Routine): Promise<void> {
+    await this.upsert(user, "routines", [routineToRow(user.id, routine)]);
+    await this.deleteRows(user, "workout_days", `routine_id=eq.${encodeURIComponent(routine.id)}`);
+    await this.upsert(user, "workout_days", routine.days.map((day) => workoutDayToRow(user.id, routine.id, day)));
+    await this.upsert(user, "routine_exercises", routine.days.flatMap((day) => day.exercises.map((exercise) => routineExerciseToRow(user.id, day.id, exercise))));
   }
 
-  private async replaceUserRows(user: ApiUser, table: string, rows: Record<string, unknown>[]): Promise<void> {
-    await this.deleteUserRows(user, table.split("?")[0]);
-    if (rows.length) await this.upsert(user, table, rows);
+  private async deleteRoutine(user: ApiUser, id: string): Promise<void> {
+    await this.deleteRows(user, "routines", `id=eq.${encodeURIComponent(id)}`);
+  }
+
+  private async deleteRowById(user: ApiUser, table: string, id: string): Promise<void> {
+    await this.deleteRows(user, table, `id=eq.${encodeURIComponent(id)}`);
   }
 
   private async deleteUserRows(user: ApiUser, table: string): Promise<void> {
-    const response = await this.fetchImpl(createSupabaseRestRequest(`${table}?user_id=eq.${user.id}`, { method: "DELETE" }, this.env, user.accessToken));
+    await this.deleteRows(user, table, "");
+  }
+
+  private async deleteRows(user: ApiUser, table: string, filter: string): Promise<void> {
+    const query = [`user_id=eq.${encodeURIComponent(user.id)}`, filter].filter(Boolean).join("&");
+    const response = await this.fetchImpl(createSupabaseRestRequest(`${table}?${query}`, { method: "DELETE" }, this.env, user.accessToken));
     if (!response.ok) throw new Error(`Supabase delete ${table} failed: ${response.status}`);
   }
 
@@ -419,6 +521,64 @@ function seededStateForUser(user: ApiUser): AppState {
     state.syncQueue = [];
   }
   return state;
+}
+
+function applyMutationToState(state: AppState, mutation: ResourceMutation): void {
+  switch (mutation.type) {
+    case "profile.upsert":
+    case "leaderboardProfile.upsert":
+      return;
+    case "hydration.upsert":
+      upsertById(state.hydrationLogs, mutation.log);
+      return;
+    case "hydration.delete":
+      removeById(state.hydrationLogs, mutation.id);
+      return;
+    case "supplement.upsert":
+      upsertById(state.supplements, mutation.supplement);
+      return;
+    case "supplementLog.upsert":
+      upsertById(state.supplementLogs, mutation.log);
+      return;
+    case "exercise.upsert":
+      upsertById(state.exerciseLibrary, mutation.exercise);
+      return;
+    case "exercise.delete":
+      removeById(state.exerciseLibrary, mutation.id);
+      return;
+    case "routine.upsert":
+      upsertById(state.routines, mutation.routine);
+      return;
+    case "routine.delete":
+      removeById(state.routines, mutation.id);
+      return;
+    case "workoutSession.upsert":
+      upsertById(state.workoutSessions, mutation.session);
+      return;
+    case "workoutSet.upsert":
+      upsertById(state.workoutSets, mutation.set);
+      return;
+    case "workoutSet.delete":
+      removeById(state.workoutSets, mutation.id);
+      return;
+    case "bodyMetric.upsert":
+      upsertById(state.bodyMetrics, mutation.metric);
+      return;
+    case "recommendation.upsert":
+      upsertById(state.recommendationHistory, mutation.recommendation);
+      return;
+  }
+}
+
+function upsertById<T extends { id: string }>(items: T[], next: T): void {
+  const index = items.findIndex((item) => item.id === next.id);
+  if (index < 0) items.push(structuredClone(next));
+  else items[index] = structuredClone(next);
+}
+
+function removeById<T extends { id: string }>(items: T[], id: string): void {
+  const index = items.findIndex((item) => item.id === id);
+  if (index >= 0) items.splice(index, 1);
 }
 
 function hydrateStateFromRows(

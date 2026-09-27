@@ -163,6 +163,57 @@ describe("Fastify API contract", () => {
       }
     })).json();
     expect(syncDuplicate.data.results[0]).toEqual(syncOnce.data.results[0]);
+
+    const partialSync = (await app.inject({
+      method: "POST",
+      url: "/api/sync/batch",
+      payload: {
+        items: [
+          { id: "bad-item", idempotencyKey: "idem-bad", type: "unknown.type", payload: {} },
+          {
+            id: "offline-hydration-2",
+            idempotencyKey: "idem-hydration-2",
+            type: "hydration.log",
+            payload: { id: "offline-hydration-2", amountMl: 350, drinkType: "water", loggedAt: "2026-09-04T00:02:00.000Z" }
+          }
+        ]
+      }
+    })).json();
+    expect(partialSync.data.results).toMatchObject([{ status: "failed" }, { status: "synced" }]);
+
+    const routineForConflict = (await app.inject({ method: "POST", url: "/api/routines", payload: { name: "Conflict Routine", days: [] } })).json();
+    const staleBase = routineForConflict.data.updatedAt;
+    await app.inject({ method: "PATCH", url: `/api/routines/${routineForConflict.data.id}`, payload: { name: "Server Routine" } });
+    const routineConflict = (await app.inject({
+      method: "POST",
+      url: "/api/sync/batch",
+      payload: {
+        items: [
+          {
+            id: "routine-conflict",
+            idempotencyKey: "idem-routine-conflict",
+            type: "routine.update",
+            payload: { routineId: routineForConflict.data.id, patch: { name: "Offline Routine" }, baseUpdatedAt: staleBase }
+          }
+        ]
+      }
+    })).json();
+    expect(routineConflict.data.results[0]).toMatchObject({ status: "conflict" });
+    const routineConfirm = (await app.inject({
+      method: "POST",
+      url: "/api/sync/batch",
+      payload: {
+        items: [
+          {
+            id: "routine-conflict",
+            idempotencyKey: "idem-routine-conflict",
+            type: "routine.update",
+            payload: { routineId: routineForConflict.data.id, patch: { name: "Offline Routine" }, baseUpdatedAt: staleBase, conflictResolution: "confirm" }
+          }
+        ]
+      }
+    })).json();
+    expect(routineConfirm.data.results[0]).toMatchObject({ status: "synced", data: { name: "Offline Routine" } });
     expect((await app.inject("/api/achievements/me")).json()).toMatchObject({ ok: true });
     expect((await app.inject({ method: "POST", url: "/api/achievements/recalculate" })).json()).toMatchObject({ ok: true });
     expect((await app.inject("/api/leaderboards")).json()).toMatchObject({ ok: true });

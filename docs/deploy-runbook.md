@@ -82,6 +82,12 @@ Account deletion:
 - In Supabase mode, auth-user deletion also requires `SUPABASE_SERVICE_ROLE_KEY`; without it the route can delete app data but reports `authDeleted=false`.
 - Keep service-role credentials only on `apps/api`; never expose them through `NEXT_PUBLIC_*`.
 
+## Repository and Sync Safety
+
+Apply all Supabase migrations through `supabase db push` or the hosted migration runner before enabling `API_DATA_MODE=supabase`. Migration `0005_sync_resource_safety.sql` adds sync/resource indexes and metadata used by production-safe replay checks.
+
+Mutation routes persist through resource-scoped repository writes instead of replacing the full `AppState`. `/api/sync/batch` writes each resource mutation before storing its idempotent sync result. See `docs/sync-repository-boundary.md` for the current domain boundary, retry semantics, conflict confirmation flow, and staging checklist.
+
 ## Cron Scheduler
 
 Backend exposes protected HTTP cron endpoints for external schedulers:

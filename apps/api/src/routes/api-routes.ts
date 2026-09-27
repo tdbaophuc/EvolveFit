@@ -71,7 +71,7 @@ import {
   verifySupabaseJwt,
   type AuthMode
 } from "../lib/auth";
-import { currentApiState, runWithApiRuntime } from "../lib/api-runtime";
+import { currentApiState, runWithApiRuntime, type ApiRuntime } from "../lib/api-runtime";
 import { getIntegrationStatus, verifySupabaseProduction } from "../lib/integrations";
 import { listClientErrors, listRequestLogs, recordClientError, requestIdResponseHeader } from "../lib/observability";
 import { jsonFail, jsonOk, withApiErrorHandling } from "../lib/server-response";
@@ -448,9 +448,11 @@ async function withDataContext(
   try {
     const user = await resolveApiUser(request, options.allowDemoFallback);
     const state = await request.apiRepository.loadUserState(user);
-    const result = await runWithApiRuntime({ user, repository: request.apiRepository, state }, handler);
+    const runtime: ApiRuntime = { user, repository: request.apiRepository, state, mutations: [] };
+    const result = await runWithApiRuntime(runtime, handler);
     if (options.persist && result.ok) {
-      await request.apiRepository.saveUserState(user, state);
+      const mutations = runtime.mutations.splice(0);
+      if (mutations.length) await request.apiRepository.applyResourceMutations(user, mutations, state);
     }
     return sendResult(reply, result, options.errorStatus ?? 200);
   } catch (error) {
