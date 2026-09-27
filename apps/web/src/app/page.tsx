@@ -129,9 +129,11 @@ import {
   type CloudMergePreview,
   type RestoreSection
 } from "@evolvefit/shared";
-import { initialState, routineTemplates, type AppState } from "@evolvefit/shared";
+import { routineTemplates, type AppState } from "@evolvefit/shared";
 import { evolveFitApiClient } from "@/lib/api-client";
-import { loadState, resetState, saveState } from "@/lib/storage";
+import { resetState } from "@/lib/storage";
+import { usePersistentAppState } from "./_hooks/use-persistent-app-state";
+import { WorkoutSafetyPanel } from "./_components/workout-safety-panel";
 
 type Tab = "today" | "hydration" | "workout" | "progress" | "settings";
 type SyncStatus = "offline" | "pending" | "failed" | "synced";
@@ -336,7 +338,7 @@ function badgeStatusLabel(status: string) {
 }
 
 export default function AppPage() {
-  const [state, setState] = useState<AppState>(initialState);
+  const { state, setState, mounted } = usePersistentAppState();
   const [tab, setTab] = useState<Tab>("today");
   const [workoutMode, setWorkoutMode] = useState<"plan" | "live" | "finished">("plan");
   const [waterAmount, setWaterAmount] = useState(650);
@@ -374,7 +376,6 @@ export default function AppPage() {
   const [pushConfigured, setPushConfigured] = useState(false);
   const [vapidPublicKey, setVapidPublicKey] = useState<string | null>(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null);
   const [restoreSections, setRestoreSections] = useState<RestoreSection[]>(allRestoreSections());
-  const [mounted, setMounted] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [drinkType, setDrinkType] = useState<HydrationLog["drinkType"]>("water");
   const [isOnline, setIsOnline] = useState(true);
@@ -383,10 +384,9 @@ export default function AppPage() {
   const [restNotifiedFor, setRestNotifiedFor] = useState<string | null>(null);
   const [healthDashboard, setHealthDashboard] = useState<HealthDashboard | null>(null);
   const [coachFeedback, setCoachFeedback] = useState("");
+  const [wakeLockStatus, setWakeLockStatus] = useState<"unknown" | "unsupported" | "active" | "failed">("unknown");
 
   useEffect(() => {
-    setState(loadState());
-    setMounted(true);
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => undefined);
     }
@@ -426,10 +426,6 @@ export default function AppPage() {
     window.history.replaceState({}, "", `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted]);
-
-  useEffect(() => {
-    if (mounted) saveState(state);
-  }, [mounted, state]);
 
   useEffect(() => {
     setNewMetricWeight(displayWeight(state.profile.bodyWeightKg, state.profile.unitWeight));
@@ -487,7 +483,7 @@ export default function AppPage() {
     return () => {
       cancelled = true;
     };
-  }, [mounted, isOnline, state.syncQueue]);
+  }, [mounted, isOnline, setState, state.syncQueue]);
 
   useEffect(() => {
     if (!mounted || !isOnline || !state.syncQueue.some((item) => item.status === "pending" && item.type === "__legacy_disabled__")) return;
@@ -496,7 +492,7 @@ export default function AppPage() {
       setToast("Hàng đợi ngoại tuyến đã thử lại trên máy và đánh dấu đã đồng bộ");
     }, 1200);
     return () => window.clearTimeout(id);
-  }, [mounted, isOnline, state.syncQueue]);
+  }, [mounted, isOnline, setState, state.syncQueue]);
 
   useEffect(() => {
     if (tab !== "workout" || workoutMode !== "live" || !state.restEndsAt || restPausedSeconds !== null) return;
@@ -518,14 +514,22 @@ export default function AppPage() {
   useEffect(() => {
     let wakeLock: WakeLockSentinelLike | undefined;
     const wakeLockNavigator = navigator as NavigatorWithWakeLock;
-    if (tab !== "workout" || !wakeLockNavigator.wakeLock) return;
+    if (tab !== "workout") {
+      setWakeLockStatus("unknown");
+      return;
+    }
+    if (!wakeLockNavigator.wakeLock) {
+      setWakeLockStatus("unsupported");
+      return;
+    }
 
     wakeLockNavigator.wakeLock
       .request("screen")
       .then((lock) => {
         wakeLock = lock;
+        setWakeLockStatus("active");
       })
-      .catch(() => undefined);
+      .catch(() => setWakeLockStatus("failed"));
 
     return () => {
       wakeLock?.release().catch(() => undefined);
@@ -613,7 +617,7 @@ export default function AppPage() {
       ...current,
       notificationSettings: { ...current.notificationSettings, lastCreatineReminderAt: remindedAt }
     }));
-  }, [creatineReminder, hydrationReminder, mounted, notificationPermission, state.notificationSettings.inAppFallbackEnabled]);
+  }, [creatineReminder, hydrationReminder, mounted, notificationPermission, setState, state.notificationSettings.inAppFallbackEnabled]);
 
   const emptyExercise: WorkoutExercise = {
     id: "empty-exercise",
@@ -1339,7 +1343,8 @@ export default function AppPage() {
   function completeOnboarding() {
     const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(state.profile.email);
     const hoursOk = state.profile.wakeHour >= 0 && state.profile.wakeHour <= 23 && state.profile.sleepHour >= 0 && state.profile.sleepHour <= 23 && state.profile.wakeHour !== state.profile.sleepHour;
-    if (!state.profile.name.trim() || !emailOk || state.profile.waterTargetMl < 1000 || state.profile.waterTargetMl > 6000 || !hoursOk || state.profile.workoutDays.length < 1) {
+    const onboardingEquipmentOk = Boolean(state.profile.availableEquipment?.length);
+    if (!state.profile.name.trim() || !emailOk || state.profile.waterTargetMl < 1000 || state.profile.waterTargetMl > 6000 || !hoursOk || state.profile.workoutDays.length < 1 || !onboardingEquipmentOk) {
       setToast("Onboarding chưa hợp lệ: kiểm tra email, mục tiêu nước, gi�? ngủ/dậy và ngày tập");
       return;
     }
@@ -2223,6 +2228,10 @@ export default function AppPage() {
             applyTemplate={applyTemplate}
             step={onboardingStep}
             setStep={setOnboardingStep}
+            notificationSettings={state.notificationSettings}
+            notificationPermission={notificationPermission}
+            updateNotificationSettings={updateNotificationSettings}
+            requestNotifications={requestNotifications}
             completeOnboarding={completeOnboarding}
           />
         ) : (
@@ -2360,6 +2369,7 @@ export default function AppPage() {
             addCustomExerciseDefinition={addCustomExerciseDefinition}
             updateExerciseDefinition={updateExerciseDefinition}
             deleteExerciseDefinition={deleteExerciseDefinition}
+            wakeLockStatus={wakeLockStatus}
           />
         )}
 
@@ -2508,6 +2518,10 @@ function OnboardingPanel(props: {
   applyTemplate: (template: AppState["activeTemplate"]) => void;
   step: number;
   setStep: (step: number) => void;
+  notificationSettings: AppState["notificationSettings"];
+  notificationPermission: NotificationPermission;
+  updateNotificationSettings: (next: Partial<AppState["notificationSettings"]>) => void;
+  requestNotifications: () => Promise<void>;
   completeOnboarding: () => void;
 }) {
   const steps = ["Account", "Body", "Schedule", "Reminders"];
@@ -2526,6 +2540,11 @@ function OnboardingPanel(props: {
       : [...props.profile.workoutDays, day];
     props.updateProfile({ workoutDays: nextDays });
   };
+  const toggleEquipment = (equipment: EquipmentType) => {
+    const current = props.profile.availableEquipment ?? [];
+    const nextEquipment = current.includes(equipment) ? current.filter((item) => item !== equipment) : [...current, equipment];
+    props.updateProfile({ availableEquipment: nextEquipment });
+  };
   const canGoBack = props.step > 0;
   const canGoNext = props.step < steps.length - 1;
   const suggestedWater = suggestedWaterTargetMl(props.profile.bodyWeightKg, props.profile.workoutDays.length);
@@ -2537,8 +2556,8 @@ function OnboardingPanel(props: {
       ? "Nhập tên và email hợp lệ, hoặc dùng trên máy này rồi cập nhật email sau."
       : props.step === 1 && (props.profile.bodyWeightKg <= 0 || props.profile.heightCm <= 0 || props.profile.waterTargetMl < 1000 || props.profile.waterTargetMl > 6000)
         ? "Cân nặng, chi�?u cao và mục tiêu nước cần nằm trong ngưỡng hợp lý."
-        : props.step === 2 && props.profile.workoutDays.length < 1
-          ? "Ch�?n ít nhất một ngày tập trong tuần."
+        : props.step === 2 && (props.profile.workoutDays.length < 1 || !(props.profile.availableEquipment?.length))
+          ? "Chon it nhat mot ngay tap va mot loai dung cu co san."
           : props.step === 3 && !hoursOk
             ? "Gi�? dậy và gi�? ngủ phải từ 0-23 và không được trùng nhau."
             : "";
@@ -2586,6 +2605,16 @@ function OnboardingPanel(props: {
               <option value="oz">oz</option>
             </select>
           </label>
+          <label className="wide-field">
+            <span>Che do du lieu</span>
+            <select
+              value={props.profile.syncPreference ?? "local-first"}
+              onChange={(event) => props.updateProfile({ syncPreference: event.target.value as AppState["profile"]["syncPreference"] })}
+            >
+              <option value="local-first">Local-first, dong bo sau khi dang nhap</option>
+              <option value="account-sync">Uu tien tai khoan cloud</option>
+            </select>
+          </label>
         </div>
       )}
 
@@ -2606,6 +2635,31 @@ function OnboardingPanel(props: {
           <label>
             <span>Timezone</span>
             <input value={props.profile.timezone} onChange={(event) => props.updateProfile({ timezone: event.target.value })} />
+          </label>
+          <label>
+            <span>Muc tieu tap</span>
+            <select value={props.profile.trainingGoal ?? "muscle"} onChange={(event) => props.updateProfile({ trainingGoal: event.target.value as AppState["profile"]["trainingGoal"] })}>
+              <option value="muscle">Tang co</option>
+              <option value="strength">Tang suc manh</option>
+              <option value="fat-loss">Giam mo</option>
+              <option value="health">Suc khoe ben vung</option>
+            </select>
+          </label>
+          <label>
+            <span>Kinh nghiem</span>
+            <select value={props.profile.experienceLevel ?? "intermediate"} onChange={(event) => props.updateProfile({ experienceLevel: event.target.value as AppState["profile"]["experienceLevel"] })}>
+              <option value="beginner">Moi tap</option>
+              <option value="intermediate">Trung cap</option>
+              <option value="advanced">Nang cao</option>
+            </select>
+          </label>
+          <label>
+            <span>Can nang muc tieu</span>
+            <input type="number" value={props.profile.goalWeightKg ?? props.profile.bodyWeightKg} onChange={(event) => props.updateProfile({ goalWeightKg: Number(event.target.value) })} />
+          </label>
+          <label>
+            <span>% mo muc tieu</span>
+            <input type="number" value={props.profile.goalBodyFatPercent ?? 15} onChange={(event) => props.updateProfile({ goalBodyFatPercent: Number(event.target.value) })} />
           </label>
           <button className="secondary-button inline-suggestion" onClick={() => props.updateProfile({ waterTargetMl: suggestedWater })}>
             Gợi ý {suggestedWater}ml
@@ -2632,6 +2686,17 @@ function OnboardingPanel(props: {
           <button className="secondary-button" onClick={() => props.applyTemplate(suggestedTemplate)}>
             Gợi ý mẫu {templateLabels[suggestedTemplate]}
           </button>
+          <div className="template-row" aria-label="Dung cu co san">
+            {(["barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell"] as EquipmentType[]).map((equipment) => (
+              <button
+                key={equipment}
+                className={(props.profile.availableEquipment ?? []).includes(equipment) ? "active" : ""}
+                onClick={() => toggleEquipment(equipment)}
+              >
+                {equipmentLabels[equipment] ?? equipment}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -2653,6 +2718,17 @@ function OnboardingPanel(props: {
             <span>Gi�? uống</span>
             <input type="number" min="0" max="23" value={props.profile.creatineHour} onChange={(event) => props.updateProfile({ creatineHour: Number(event.target.value) })} />
           </label>
+          <label>
+            <span>Nhac uong nuoc</span>
+            <input type="checkbox" checked={props.notificationSettings.hydrationEnabled} onChange={(event) => props.updateNotificationSettings({ hydrationEnabled: event.target.checked })} />
+          </label>
+          <label>
+            <span>Nhac creatine</span>
+            <input type="checkbox" checked={props.notificationSettings.creatineEnabled} onChange={(event) => props.updateNotificationSettings({ creatineEnabled: event.target.checked })} />
+          </label>
+          <button className="secondary-button inline-suggestion" onClick={props.requestNotifications}>
+            Quyen thong bao: {notificationPermissionLabel(props.notificationPermission)}
+          </button>
         </div>
       )}
 
@@ -3131,6 +3207,7 @@ function WorkoutView(props: {
   addCustomExerciseDefinition: () => void;
   updateExerciseDefinition: (id: string, patch: Partial<ExerciseDefinition>) => void;
   deleteExerciseDefinition: (id: string) => void;
+  wakeLockStatus: "unknown" | "unsupported" | "active" | "failed";
 }) {
   const totalVolume = workingSetVolumeKg(props.currentSessionSets);
   const completedExerciseCount = new Set(props.currentSessionSets.map((set) => set.exerciseId)).size;
@@ -3627,13 +3704,14 @@ function WorkoutView(props: {
         </div>
       </section>
 
-      <section className="card">
-        <div className="split-actions">
-          <button className="secondary-button" onClick={props.skipCurrentSet}>Bỏ qua set</button>
-          <button className="secondary-button" onClick={props.skipExercise}>Bỏ qua bài</button>
-          <button className="secondary-button" onClick={props.finishWorkout}>Kết thúc</button>
-        </div>
-      </section>
+      <WorkoutSafetyPanel
+        skipCurrentSet={props.skipCurrentSet}
+        skipExercise={props.skipExercise}
+        finishWorkout={props.finishWorkout}
+        hasActiveSession={Boolean(props.activeWorkoutSession)}
+        undoAvailable={Boolean(props.state.undo)}
+        wakeLockStatus={props.wakeLockStatus}
+      />
 
       <section className="card">
         <div className="section-heading">

@@ -7,6 +7,7 @@ import {
   migrateWorkoutExercisesToRoutine,
   type BodyMetric,
   type DrinkModule,
+  type EquipmentType,
   type ExerciseDefinition,
   type Friend,
   type HealthIntegrationSettings,
@@ -44,6 +45,10 @@ export type AppState = {
     wakeHour: number;
     sleepHour: number;
     workoutDays: string[];
+    trainingGoal?: "strength" | "muscle" | "fat-loss" | "health";
+    experienceLevel?: "beginner" | "intermediate" | "advanced";
+    availableEquipment?: EquipmentType[];
+    syncPreference?: "local-first" | "account-sync";
     creatineAmountG: number;
     creatineHour: number;
     remindBeforeMinutes: number;
@@ -241,6 +246,10 @@ export const initialState: AppState = {
     wakeHour: 6,
     sleepHour: 23,
     workoutDays: ["Mon", "Wed", "Fri"],
+    trainingGoal: "muscle",
+    experienceLevel: "intermediate",
+    availableEquipment: ["barbell", "dumbbell", "cable", "machine"],
+    syncPreference: "local-first",
     creatineAmountG: 5,
     creatineHour: 17,
     remindBeforeMinutes: 15,
