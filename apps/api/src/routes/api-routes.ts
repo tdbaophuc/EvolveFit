@@ -73,18 +73,25 @@ import {
 } from "../lib/auth";
 import { currentApiState, runWithApiRuntime, type ApiRuntime } from "../lib/api-runtime";
 import { getIntegrationStatus, verifySupabaseProduction } from "../lib/integrations";
-import { listClientErrors, listRequestLogs, recordClientError, requestIdResponseHeader } from "../lib/observability";
+import { listClientErrors, listRequestLogs, normalizeErrorCode, recordClientError, requestIdResponseHeader } from "../lib/observability";
 import { jsonFail, jsonOk, withApiErrorHandling } from "../lib/server-response";
 import { observabilitySnapshot } from "../lib/observability";
 import type { ApiResult } from "../types";
 import { demoUser, type ApiUser } from "../lib/repositories";
 
 type IdParams = { id: string };
+type ValidationIssue = { field: string; message: string };
 const openApiSpecPath = existsSync(join(process.cwd(), "docs/api-v1.openapi.json"))
   ? join(process.cwd(), "docs/api-v1.openapi.json")
   : join(process.cwd(), "../../docs/api-v1.openapi.json");
 
 export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv = process.env) {
+  app.addHook("preHandler", async (request, reply) => {
+    const issues = validateRouteRequest(request);
+    if (!issues.length) return;
+    return sendErrorEnvelope(reply, request, "Validation failed", 400, issues);
+  });
+
   app.get("/api/health", (request, reply) =>
     withApiErrorHandling({ method: "GET", path: "/api/health", request, reply }, () =>
       jsonOk({ method: "GET", path: "/api/health", request, reply }, {
@@ -133,8 +140,7 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
         reply.header(requestIdResponseHeader(), request.requestId);
         return { ok: true, data: { mode: "email", email: user.email, accessToken: token }, requestId: request.requestId };
       } catch {
-        reply.header(requestIdResponseHeader(), request.requestId).code(401);
-        return { ok: false, error: "Unauthorized", requestId: request.requestId };
+        return sendErrorEnvelope(reply, request, "Unauthorized", 401);
       }
     }
     reply.header(requestIdResponseHeader(), request.requestId);
@@ -154,16 +160,14 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
       reply.header(requestIdResponseHeader(), request.requestId);
       return { ok: true, data: session, requestId: request.requestId };
     } catch (error) {
-      reply.header(requestIdResponseHeader(), request.requestId).code(401);
-      return { ok: false, error: error instanceof Error ? error.message : "Sign-in failed", requestId: request.requestId };
+      return sendErrorEnvelope(reply, request, error instanceof Error ? error.message : "Sign-in failed", 401);
     }
   });
 
   app.post("/api/auth/sign-up", async (request, reply) => {
     const body = bodyAs<{ email?: string; password?: string; redirectTo?: string }>(request);
     if (!body?.email || !body.password) {
-      reply.header(requestIdResponseHeader(), request.requestId).code(400);
-      return { ok: false, error: "email and password are required", requestId: request.requestId };
+      return sendErrorEnvelope(reply, request, "email and password are required", 400);
     }
     try {
       const redirectTo = body.redirectTo ?? createAppUrl("/", fullUrl(request), env).toString();
@@ -172,8 +176,7 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
       reply.header(requestIdResponseHeader(), request.requestId);
       return { ok: true, data: session, requestId: request.requestId };
     } catch (error) {
-      reply.header(requestIdResponseHeader(), request.requestId).code(400);
-      return { ok: false, error: error instanceof Error ? error.message : "Sign-up failed", requestId: request.requestId };
+      return sendErrorEnvelope(reply, request, error instanceof Error ? error.message : "Sign-up failed", 400);
     }
   });
 
@@ -187,8 +190,7 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
     const body = bodyAs<{ refreshToken?: string }>(request);
     const refreshToken = body?.refreshToken ?? cookieSession?.refreshToken;
     if (!refreshToken) {
-      reply.header(requestIdResponseHeader(), request.requestId).code(401);
-      return { ok: false, error: "refresh token is required", requestId: request.requestId };
+      return sendErrorEnvelope(reply, request, "refresh token is required", 401);
     }
     try {
       const session = await refreshSession({ refreshToken, env });
@@ -196,16 +198,14 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
       reply.header(requestIdResponseHeader(), request.requestId);
       return { ok: true, data: session, requestId: request.requestId };
     } catch (error) {
-      reply.header(requestIdResponseHeader(), request.requestId).code(401);
-      return { ok: false, error: error instanceof Error ? error.message : "Refresh failed", requestId: request.requestId };
+      return sendErrorEnvelope(reply, request, error instanceof Error ? error.message : "Refresh failed", 401);
     }
   });
 
   app.post("/api/auth/password/forgot", async (request, reply) => {
     const body = bodyAs<{ email?: string; redirectTo?: string }>(request);
     if (!body?.email) {
-      reply.header(requestIdResponseHeader(), request.requestId).code(400);
-      return { ok: false, error: "email is required", requestId: request.requestId };
+      return sendErrorEnvelope(reply, request, "email is required", 400);
     }
     try {
       const redirectTo = body.redirectTo ?? createAppUrl("/", fullUrl(request), env).toString();
@@ -213,24 +213,21 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
       reply.header(requestIdResponseHeader(), request.requestId);
       return { ok: true, data: result, requestId: request.requestId };
     } catch (error) {
-      reply.header(requestIdResponseHeader(), request.requestId).code(400);
-      return { ok: false, error: error instanceof Error ? error.message : "Password reset request failed", requestId: request.requestId };
+      return sendErrorEnvelope(reply, request, error instanceof Error ? error.message : "Password reset request failed", 400);
     }
   });
 
   app.post("/api/auth/password/reset", async (request, reply) => {
     const body = bodyAs<{ accessToken?: string; password?: string }>(request);
     if (!body?.accessToken || !body.password) {
-      reply.header(requestIdResponseHeader(), request.requestId).code(400);
-      return { ok: false, error: "access token and password are required", requestId: request.requestId };
+      return sendErrorEnvelope(reply, request, "access token and password are required", 400);
     }
     try {
       const result = await resetPassword({ accessToken: body.accessToken, password: body.password, env });
       reply.header(requestIdResponseHeader(), request.requestId);
       return { ok: true, data: result, requestId: request.requestId };
     } catch (error) {
-      reply.header(requestIdResponseHeader(), request.requestId).code(400);
-      return { ok: false, error: error instanceof Error ? error.message : "Password reset failed", requestId: request.requestId };
+      return sendErrorEnvelope(reply, request, error instanceof Error ? error.message : "Password reset failed", 400);
     }
   });
 
@@ -240,7 +237,7 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
     const challenge = await createCodeChallenge(verifier);
     const state = createOauthState();
     const oauthUrl = createSupabaseOAuthUrl("google", redirectTo, env, { codeChallenge: challenge, state });
-    if (!oauthUrl) return reply.code(503).send({ ok: false, error: "Supabase OAuth env is missing" });
+    if (!oauthUrl) return sendErrorEnvelope(reply, request, "Supabase OAuth env is missing", 503);
     const cookieOptions = sessionCookieOptions(60 * 10);
     reply.setCookie(oauthCodeVerifierCookieName, verifier, cookieOptions);
     reply.setCookie(oauthStateCookieName, state, cookieOptions);
@@ -260,7 +257,7 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
       const verifier = request.cookies[oauthCodeVerifierCookieName];
       const expectedState = request.cookies[oauthStateCookieName];
       if (!verifier || !expectedState || expectedState !== state) {
-        return reply.code(400).send({ ok: false, error: "OAuth state or verifier is invalid" });
+        return sendErrorEnvelope(reply, request, "OAuth state or verifier is invalid", 400);
       }
       try {
         const session = await exchangeSupabaseOAuthCode({
@@ -274,11 +271,11 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
         reply.clearCookie(oauthStateCookieName, { path: "/" });
         return reply.redirect(createAppUrl("/", fullUrl(request), env).toString());
       } catch (error) {
-        return reply.code(400).send({ ok: false, error: error instanceof Error ? error.message : "OAuth callback failed" });
+        return sendErrorEnvelope(reply, request, error instanceof Error ? error.message : "OAuth callback failed", 400);
       }
     }
 
-    if (!accessToken) return reply.code(400).send({ ok: false, error: "access_token or code is required" });
+    if (!accessToken) return sendErrorEnvelope(reply, request, "access_token or code is required", 400);
     const session = sessionFromSupabaseTokens({
       accessToken,
       refreshToken,
@@ -316,8 +313,7 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
       };
     } catch (error) {
       const status = error instanceof AuthRequiredError ? error.status : 500;
-      reply.header(requestIdResponseHeader(), request.requestId).code(status);
-      return { ok: false, error: error instanceof Error ? error.message : "Account deletion failed", requestId: request.requestId };
+      return sendErrorEnvelope(reply, request, error instanceof Error ? error.message : "Account deletion failed", status);
     }
   });
 
@@ -457,8 +453,7 @@ async function withDataContext(
     return sendResult(reply, result, options.errorStatus ?? 200);
   } catch (error) {
     const status = error instanceof AuthRequiredError ? error.status : 500;
-    reply.code(status);
-    return { ok: false, error: error instanceof Error ? error.message : "Unexpected API error", requestId: request.requestId };
+    return sendErrorEnvelope(reply, request, status >= 500 ? "Unexpected API error" : error instanceof Error ? error.message : "Unexpected API error", status);
   }
 }
 
@@ -503,6 +498,7 @@ async function resolveApiUser(request: FastifyRequest, allowDemoFallback = false
 
 function sendResult(reply: FastifyReply, result: ApiResult<unknown>, errorStatus = 200) {
   if (!result.ok) reply.code(errorStatus);
+  if (!result.ok) return { ...result, errorCode: result.errorCode ?? normalizeErrorCode(result.error), requestId: reply.getHeader(requestIdResponseHeader()) };
   return { ...result, requestId: reply.getHeader(requestIdResponseHeader()) };
 }
 
@@ -513,11 +509,11 @@ function bodyAs<T>(request: FastifyRequest): T {
 function requireCronAuth(request: FastifyRequest, reply: FastifyReply, env: NodeJS.ProcessEnv) {
   const secret = env.CRON_SECRET;
   if (!secret) {
-    reply.code(503).send({ ok: false, error: "CRON_SECRET is not configured", requestId: request.requestId });
+    sendErrorEnvelope(reply, request, "CRON_SECRET is not configured", 503);
     return false;
   }
   if (!isCronAuthorized(request, env)) {
-    reply.code(401).send({ ok: false, error: "Unauthorized", requestId: request.requestId });
+    sendErrorEnvelope(reply, request, "Unauthorized", 401);
     return false;
   }
   return true;
@@ -560,10 +556,12 @@ function setSessionCookie(reply: FastifyReply, session: { accessToken?: string; 
 }
 
 function sessionCookieOptions(maxAge: number) {
+  const sameSite: "none" | "strict" | "lax" = process.env.COOKIE_SAMESITE === "none" ? "none" : process.env.COOKIE_SAMESITE === "strict" ? "strict" : "lax";
   return {
     httpOnly: true,
-    sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
+    sameSite,
+    secure: process.env.NODE_ENV === "production" || sameSite === "none",
+    domain: process.env.COOKIE_DOMAIN,
     path: "/",
     maxAge
   };
@@ -573,4 +571,311 @@ function fullUrl(request: FastifyRequest): string {
   const proto = request.headers["x-forwarded-proto"]?.toString() ?? "http";
   const host = request.headers.host ?? "localhost";
   return `${proto}://${host}${request.url}`;
+}
+
+function sendErrorEnvelope(reply: FastifyReply, request: FastifyRequest, error: string, status: number, details?: unknown) {
+  const errorCode = normalizeErrorCode(error);
+  return reply.header(requestIdResponseHeader(), request.requestId).code(status).send({ ok: false, error, errorCode, details, requestId: request.requestId });
+}
+
+function validateRouteRequest(request: FastifyRequest): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const method = request.method.toUpperCase();
+  const path = request.routeOptions.url ?? request.url.split("?")[0] ?? request.url;
+  const params = (request.params ?? {}) as Record<string, unknown>;
+  const query = (request.query ?? {}) as Record<string, unknown>;
+  const body = (request.body ?? {}) as Record<string, unknown>;
+
+  if (path.includes(":id")) requireText(params.id, "params.id", issues, { max: 200 });
+  if (method !== "GET" && method !== "DELETE" && !isPlainObject(request.body ?? {})) {
+    issues.push({ field: "body", message: "body must be an object" });
+    return issues;
+  }
+
+  if (path === "/api/auth/session" || path === "/api/auth/oauth/google" || path === "/api/auth/callback" || path === "/api/auth/account") return issues;
+  if (path === "/api/observability/logs") {
+    optionalText(query.requestId, "query.requestId", issues, { max: 120 });
+    return issues;
+  }
+  if (path === "/api/notifications/status" || path === "/api/notifications/config") {
+    optionalText(query.localProfileId, "query.localProfileId", issues, { max: 320 });
+    return issues;
+  }
+
+  if (path === "/api/auth/sign-in") {
+    optionalEmail(body.email, "body.email", issues);
+    optionalText(body.password, "body.password", issues, { min: 1, max: 200 });
+    optionalEnum(body.mode, "body.mode", ["local", "email", "google"], issues);
+    return issues;
+  }
+  if (path === "/api/auth/sign-up") {
+    requireEmail(body.email, "body.email", issues);
+    requireText(body.password, "body.password", issues, { min: 8, max: 200 });
+    optionalUrl(body.redirectTo, "body.redirectTo", issues);
+    return issues;
+  }
+  if (path === "/api/auth/refresh") {
+    optionalText(body.refreshToken, "body.refreshToken", issues, { min: 1, max: 4096 });
+    return issues;
+  }
+  if (path === "/api/auth/password/forgot") {
+    requireEmail(body.email, "body.email", issues);
+    optionalUrl(body.redirectTo, "body.redirectTo", issues);
+    return issues;
+  }
+  if (path === "/api/auth/password/reset") {
+    requireText(body.accessToken, "body.accessToken", issues, { min: 1, max: 4096 });
+    requireText(body.password, "body.password", issues, { min: 8, max: 200 });
+    return issues;
+  }
+  if (path === "/api/hydration/log" && method === "POST") {
+    requireNumber(body.amountMl, "body.amountMl", issues, { min: 1, max: 10000 });
+    return issues;
+  }
+  if (path === "/api/hydration/log/:id") {
+    if (method === "PATCH") requireNumber(body.amountMl, "body.amountMl", issues, { min: 1, max: 10000 });
+    return issues;
+  }
+  if (path === "/api/supplements" && method === "POST") {
+    requireText(body.name, "body.name", issues, { min: 1, max: 120 });
+    requireNumber(body.defaultAmount, "body.defaultAmount", issues, { min: 0.001, max: 100000 });
+    optionalEnum(body.unit, "body.unit", ["g", "mg", "capsule"], issues);
+    return issues;
+  }
+  if (path === "/api/supplements/log") {
+    requireText(body.name, "body.name", issues, { min: 1, max: 120 });
+    requireNumber(body.amount, "body.amount", issues, { min: 0, max: 100000 });
+    optionalText(body.supplementId, "body.supplementId", issues, { max: 200 });
+    optionalEnum(body.unit, "body.unit", ["g", "mg", "capsule"], issues);
+    optionalEnum(body.status, "body.status", ["taken", "skipped"], issues);
+    optionalText(body.skippedReason, "body.skippedReason", issues, { max: 500 });
+    return issues;
+  }
+  if (path === "/api/supplements/:id/reminder") {
+    if (method === "PATCH") requireInteger(body.reminderHour, "body.reminderHour", issues, { min: 0, max: 23 });
+    if (method === "PUT") {
+      optionalText(body.name, "body.name", issues, { min: 1, max: 120 });
+      optionalNumber(body.defaultAmount, "body.defaultAmount", issues, { min: 0.001, max: 100000 });
+      optionalInteger(body.reminderHour, "body.reminderHour", issues, { min: 0, max: 23 });
+      optionalNumberArray(body.scheduleHours, "body.scheduleHours", issues, { integer: true, min: 0, max: 23 });
+      optionalBoolean(body.active, "body.active", issues);
+    }
+    return issues;
+  }
+  if (path === "/api/routines" && method === "POST") {
+    requireText(body.name, "body.name", issues, { min: 1, max: 160 });
+    optionalInteger(body.daysPerWeek, "body.daysPerWeek", issues, { min: 1, max: 14 });
+    optionalArray(body.days, "body.days", issues);
+    return issues;
+  }
+  if (path === "/api/routines/:id" && method === "PATCH") {
+    optionalText(body.name, "body.name", issues, { min: 1, max: 160 });
+    optionalInteger(body.daysPerWeek, "body.daysPerWeek", issues, { min: 1, max: 14 });
+    optionalArray(body.days, "body.days", issues);
+    optionalText(body.baseUpdatedAt, "body.baseUpdatedAt", issues, { max: 80 });
+    optionalEnum(body.conflictResolution, "body.conflictResolution", ["confirm"], issues);
+    return issues;
+  }
+  if (path === "/api/exercises" && method === "POST") {
+    requireText(body.name, "body.name", issues, { min: 1, max: 160 });
+    optionalText(body.muscleGroup, "body.muscleGroup", issues, { max: 120 });
+    optionalEnum(body.equipment, "body.equipment", ["barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "other"], issues);
+    optionalEnum(body.movementPattern, "body.movementPattern", ["push", "pull", "squat", "hinge", "lunge", "carry", "isolation", "core"], issues);
+    optionalBoolean(body.builtIn, "body.builtIn", issues);
+    optionalText(body.notes, "body.notes", issues, { max: 1000 });
+    return issues;
+  }
+  if (path === "/api/exercises/:id" && method === "PATCH") {
+    optionalText(body.name, "body.name", issues, { min: 1, max: 160 });
+    optionalText(body.muscleGroup, "body.muscleGroup", issues, { max: 120 });
+    optionalEnum(body.equipment, "body.equipment", ["barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "other"], issues);
+    optionalEnum(body.movementPattern, "body.movementPattern", ["push", "pull", "squat", "hinge", "lunge", "carry", "isolation", "core"], issues);
+    optionalBoolean(body.builtIn, "body.builtIn", issues);
+    optionalText(body.notes, "body.notes", issues, { max: 1000 });
+    return issues;
+  }
+  if (path === "/api/workouts/sessions") {
+    optionalText(body.routineId, "body.routineId", issues, { max: 200 });
+    optionalText(body.workoutDayId, "body.workoutDayId", issues, { max: 200 });
+    optionalText(body.sessionName, "body.sessionName", issues, { max: 160 });
+    optionalStringArray(body.sessionExerciseOrder, "body.sessionExerciseOrder", issues);
+    return issues;
+  }
+  if (path === "/api/workouts/sessions/:id/reorder") {
+    optionalArray(body.queue, "body.queue", issues);
+    return issues;
+  }
+  if (path === "/api/workouts/sets") return validateWorkoutSetBody(body, issues, true);
+  if (path === "/api/workouts/sets/:id" && method === "PATCH") return validateWorkoutSetBody(body, issues, false);
+  if (path === "/api/progression/recalculate") {
+    requireText(body.exerciseId, "body.exerciseId", issues, { min: 1, max: 200 });
+    return issues;
+  }
+  if (path === "/api/sync/batch") {
+    requireArray(body.items, "body.items", issues, { max: 250 });
+    optionalText(body.idempotencyKey, "body.idempotencyKey", issues, { max: 200 });
+    return issues;
+  }
+  if (path === "/api/leaderboards/visibility") {
+    requireBoolean(body.isPublic, "body.isPublic", issues);
+    return issues;
+  }
+  if (path === "/api/coach/recommendations/:id/feedback") {
+    requireEnum(body.decision, "body.decision", ["accepted", "dismissed", "adjusted"], issues);
+    optionalText(body.feedback, "body.feedback", issues, { max: 1000 });
+    return issues;
+  }
+  if (path === "/api/notifications/subscribe") {
+    requireText(body.endpoint, "body.endpoint", issues, { min: 1, max: 2048 });
+    if (!body.p256dh && !isPlainObject(body.keys)) issues.push({ field: "body.p256dh", message: "p256dh is required" });
+    if (!body.auth && !isPlainObject(body.keys)) issues.push({ field: "body.auth", message: "auth is required" });
+    return issues;
+  }
+  if (path === "/api/notifications/unsubscribe") {
+    requireText(body.endpoint, "body.endpoint", issues, { min: 1, max: 2048 });
+    return issues;
+  }
+  if (path === "/api/notifications/test") {
+    optionalText(body.endpoint, "body.endpoint", issues, { max: 2048 });
+    optionalText(body.localProfileId, "body.localProfileId", issues, { max: 320 });
+    return issues;
+  }
+  if (path === "/api/client-errors") {
+    requireText(body.message, "body.message", issues, { min: 1, max: 2000 });
+    optionalText(body.requestId, "body.requestId", issues, { max: 120 });
+    optionalText(body.digest, "body.digest", issues, { max: 200 });
+    optionalText(body.stack, "body.stack", issues, { max: 4000 });
+    optionalText(body.path, "body.path", issues, { max: 500 });
+    optionalText(body.userAgent, "body.userAgent", issues, { max: 500 });
+  }
+  return issues;
+}
+
+function validateWorkoutSetBody(body: Record<string, unknown>, issues: ValidationIssue[], required: boolean): ValidationIssue[] {
+  const text = required ? requireText : optionalText;
+  const number = required ? requireNumber : optionalNumber;
+  text(body.exerciseId, "body.exerciseId", issues, { min: 1, max: 200 });
+  text(body.exerciseName, "body.exerciseName", issues, { min: 1, max: 160 });
+  optionalText(body.sessionId, "body.sessionId", issues, { max: 200 });
+  optionalEnum(body.setType, "body.setType", ["warmup", "working", "drop", "failure", "skipped"], issues);
+  number(body.targetWeightKg, "body.targetWeightKg", issues, { min: 0, max: 10000 });
+  number(body.targetReps, "body.targetReps", issues, { min: 0, max: 1000 });
+  number(body.actualWeightKg, "body.actualWeightKg", issues, { min: 0, max: 10000 });
+  number(body.actualReps, "body.actualReps", issues, { min: 0, max: 1000 });
+  optionalNumber(body.rpe, "body.rpe", issues, { min: 0, max: 10 });
+  optionalText(body.completedAt, "body.completedAt", issues, { max: 80 });
+  return issues;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function requireText(value: unknown, field: string, issues: ValidationIssue[], options: { min?: number; max?: number } = {}) {
+  if (typeof value !== "string") {
+    issues.push({ field, message: "must be a string" });
+    return;
+  }
+  if ((options.min ?? 0) > value.length) issues.push({ field, message: `must be at least ${options.min} characters` });
+  if (options.max !== undefined && value.length > options.max) issues.push({ field, message: `must be at most ${options.max} characters` });
+}
+
+function optionalText(value: unknown, field: string, issues: ValidationIssue[], options: { min?: number; max?: number } = {}) {
+  if (value === undefined || value === null || value === "") return;
+  requireText(value, field, issues, options);
+}
+
+function requireEmail(value: unknown, field: string, issues: ValidationIssue[]) {
+  requireText(value, field, issues, { min: 3, max: 320 });
+  if (typeof value === "string" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) issues.push({ field, message: "must be a valid email" });
+}
+
+function optionalEmail(value: unknown, field: string, issues: ValidationIssue[]) {
+  if (value === undefined || value === null || value === "") return;
+  requireEmail(value, field, issues);
+}
+
+function optionalUrl(value: unknown, field: string, issues: ValidationIssue[]) {
+  if (value === undefined || value === null || value === "") return;
+  if (typeof value !== "string") {
+    issues.push({ field, message: "must be a URL string" });
+    return;
+  }
+  try {
+    const url = new URL(value);
+    if (!["http:", "https:"].includes(url.protocol)) issues.push({ field, message: "must be an http(s) URL" });
+  } catch {
+    issues.push({ field, message: "must be a URL string" });
+  }
+}
+
+function requireNumber(value: unknown, field: string, issues: ValidationIssue[], options: { min?: number; max?: number } = {}) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    issues.push({ field, message: "must be a finite number" });
+    return;
+  }
+  if (options.min !== undefined && value < options.min) issues.push({ field, message: `must be at least ${options.min}` });
+  if (options.max !== undefined && value > options.max) issues.push({ field, message: `must be at most ${options.max}` });
+}
+
+function optionalNumber(value: unknown, field: string, issues: ValidationIssue[], options: { min?: number; max?: number } = {}) {
+  if (value === undefined || value === null) return;
+  requireNumber(value, field, issues, options);
+}
+
+function requireInteger(value: unknown, field: string, issues: ValidationIssue[], options: { min?: number; max?: number } = {}) {
+  requireNumber(value, field, issues, options);
+  if (typeof value === "number" && !Number.isInteger(value)) issues.push({ field, message: "must be an integer" });
+}
+
+function optionalInteger(value: unknown, field: string, issues: ValidationIssue[], options: { min?: number; max?: number } = {}) {
+  if (value === undefined || value === null) return;
+  requireInteger(value, field, issues, options);
+}
+
+function requireBoolean(value: unknown, field: string, issues: ValidationIssue[]) {
+  if (typeof value !== "boolean") issues.push({ field, message: "must be a boolean" });
+}
+
+function optionalBoolean(value: unknown, field: string, issues: ValidationIssue[]) {
+  if (value === undefined || value === null) return;
+  requireBoolean(value, field, issues);
+}
+
+function requireEnum(value: unknown, field: string, allowed: string[], issues: ValidationIssue[]) {
+  if (typeof value !== "string" || !allowed.includes(value)) issues.push({ field, message: `must be one of: ${allowed.join(", ")}` });
+}
+
+function optionalEnum(value: unknown, field: string, allowed: string[], issues: ValidationIssue[]) {
+  if (value === undefined || value === null || value === "") return;
+  requireEnum(value, field, allowed, issues);
+}
+
+function requireArray(value: unknown, field: string, issues: ValidationIssue[], options: { max?: number } = {}) {
+  if (!Array.isArray(value)) {
+    issues.push({ field, message: "must be an array" });
+    return;
+  }
+  if (options.max !== undefined && value.length > options.max) issues.push({ field, message: `must contain at most ${options.max} items` });
+}
+
+function optionalArray(value: unknown, field: string, issues: ValidationIssue[]) {
+  if (value === undefined || value === null) return;
+  requireArray(value, field, issues);
+}
+
+function optionalStringArray(value: unknown, field: string, issues: ValidationIssue[]) {
+  if (value === undefined || value === null) return;
+  requireArray(value, field, issues);
+  if (Array.isArray(value) && value.some((item) => typeof item !== "string")) issues.push({ field, message: "must contain only strings" });
+}
+
+function optionalNumberArray(value: unknown, field: string, issues: ValidationIssue[], options: { integer?: boolean; min?: number; max?: number }) {
+  if (value === undefined || value === null) return;
+  requireArray(value, field, issues);
+  if (!Array.isArray(value)) return;
+  value.forEach((item, index) => {
+    if (options.integer) optionalInteger(item, `${field}.${index}`, issues, options);
+    else optionalNumber(item, `${field}.${index}`, issues, options);
+  });
 }

@@ -18,8 +18,9 @@ export function jsonOk<T>(context: ApiContext, data: T, status = 200) {
   return { ok: true, data, requestId };
 }
 
-export function jsonFail(context: ApiContext, error: string, status = 400) {
+export function jsonFail(context: ApiContext, error: string, status = 400, details?: unknown) {
   const requestId = requestIdFor(context.request);
+  const errorCode = normalizeErrorCode(error);
   context.reply.header(requestIdResponseHeader(), requestId).code(status);
   recordRequestLog({
     requestId,
@@ -29,20 +30,20 @@ export function jsonFail(context: ApiContext, error: string, status = 400) {
     path: context.path,
     status,
     source: "api",
-    errorCode: normalizeErrorCode(error),
+    errorCode,
     message: error
   });
-  return { ok: false, error, requestId } as const;
+  return { ok: false, error, errorCode, details, requestId } as const;
 }
 
 export async function withApiErrorHandling<T>(
   context: ApiContext,
   handler: () => T | Promise<T>
-): Promise<T | { ok: false; error: string; requestId: string }> {
+): Promise<T | { ok: false; error: string; errorCode: string; details?: unknown; requestId: string }> {
   try {
     return await handler();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unexpected API error";
+  } catch {
+    const message = "Unexpected API error";
     return jsonFail(context, message, 500);
   }
 }

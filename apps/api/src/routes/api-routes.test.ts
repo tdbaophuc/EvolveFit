@@ -40,7 +40,7 @@ describe("Fastify API contract", () => {
 
     const signUp = await app.inject({ method: "POST", url: "/api/auth/sign-up", payload: { email: "missing-password@example.com" } });
     expect(signUp.statusCode).toBe(400);
-    expect(signUp.json()).toMatchObject({ ok: false, error: "email and password are required" });
+    expect(signUp.json()).toMatchObject({ ok: false, error: "Validation failed", errorCode: "validation_failed", details: expect.any(Array) });
 
     expect((await app.inject({ method: "POST", url: "/api/auth/refresh", payload: {} })).statusCode).toBe(401);
     expect((await app.inject({ method: "POST", url: "/api/auth/refresh", payload: { refreshToken: "local-refresh" } })).json()).toMatchObject({
@@ -242,5 +242,45 @@ describe("Fastify API contract", () => {
     });
     expect((await app.inject({ method: "POST", url: "/api/cron/creatine-reminders", headers: { authorization: "Bearer cron-test" } })).json()).toMatchObject({ ok: true, data: { cron: { status: "ran" } } });
     expect((await app.inject({ method: "POST", url: "/api/cron/monthly-achievements", headers: { authorization: "Bearer cron-test" } })).json()).toMatchObject({ ok: true, data: { cron: { status: "ran" } } });
+  });
+
+  it("hardens validation, rate limits, cron auth, and CORS contracts", async () => {
+    const invalidHydration = await app.inject({ method: "POST", url: "/api/hydration/log", payload: { amountMl: -1 } });
+    expect(invalidHydration.statusCode).toBe(400);
+    expect(invalidHydration.json()).toMatchObject({
+      ok: false,
+      error: "Validation failed",
+      errorCode: "validation_failed",
+      requestId: expect.any(String),
+      details: expect.arrayContaining([expect.objectContaining({ field: "body.amountMl" })])
+    });
+
+    const cron = await app.inject({ method: "POST", url: "/api/cron/creatine-reminders", headers: { authorization: "Bearer wrong" } });
+    expect(cron.statusCode).toBe(401);
+    expect(cron.json()).toMatchObject({ ok: false, errorCode: "unauthorized", requestId: expect.any(String) });
+
+    const limitedApp = await buildApp({ API_RATE_LIMIT_PUBLIC_MAX: "1", API_RATE_LIMIT_PUBLIC_WINDOW_MS: "60000" });
+    await limitedApp.ready();
+    expect((await limitedApp.inject("/api/health")).statusCode).toBe(200);
+    const limited = await limitedApp.inject("/api/health");
+    expect(limited.statusCode).toBe(429);
+    expect(limited.json()).toMatchObject({ ok: false, errorCode: "rate_limit_exceeded", details: { group: "public" } });
+    await limitedApp.close();
+
+    const corsApp = await buildApp({ API_CORS_ORIGIN: "https://allowed.example" });
+    await corsApp.ready();
+    const allowed = await corsApp.inject({
+      method: "OPTIONS",
+      url: "/api/health",
+      headers: { origin: "https://allowed.example", "access-control-request-method": "GET" }
+    });
+    expect(allowed.headers["access-control-allow-origin"]).toBe("https://allowed.example");
+    const denied = await corsApp.inject({
+      method: "OPTIONS",
+      url: "/api/health",
+      headers: { origin: "https://evil.example", "access-control-request-method": "GET" }
+    });
+    expect(denied.headers["access-control-allow-origin"]).toBeUndefined();
+    await corsApp.close();
   });
 });

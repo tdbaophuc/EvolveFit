@@ -46,6 +46,13 @@
           "error": {
             "type": "string"
           },
+          "errorCode": {
+            "type": "string",
+            "description": "Stable snake_case error code derived from the public error message."
+          },
+          "details": {
+            "description": "Optional structured validation or policy details. Validation failures return an array of field issues."
+          },
           "requestId": {
             "type": "string"
           }

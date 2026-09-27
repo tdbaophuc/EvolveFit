@@ -16,6 +16,9 @@ Required for production-like Supabase mode:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `API_CORS_ORIGIN=http://localhost:3000`
+- optional `API_BODY_LIMIT_BYTES`
+- optional grouped rate limits such as `API_RATE_LIMIT_AUTH_MAX`, `API_RATE_LIMIT_SYNC_MAX`, and `API_RATE_LIMIT_PUBLIC_WINDOW_MS`
+- optional `COOKIE_DOMAIN`
 - `CRON_SECRET`
 - `CRON_USER_ID` and optional `CRON_USER_EMAIL` for scheduler-owned cron state
 
@@ -45,6 +48,12 @@ Default local ports are API `4000` and web `3000` unless `PORT` is overridden.
 - `GET /api/docs/openapi`: serves the backend OpenAPI contract from `docs/api-v1.openapi.json`.
 
 Use `/api/health` for container liveness and `/api/ready` for load balancer readiness.
+
+## API Contract and Hardening
+
+All API errors return `{ ok: false, error, errorCode, requestId }` and may include structured `details`. Validation failures use `errorCode=validation_failed`; rate limits use `errorCode=rate_limit_exceeded`.
+
+Request validation covers params, query, and body for data, auth, cron, notification, sync, and observability endpoints. See `docs/api-hardening-contract.md` for the endpoint groups, rate-limit defaults, body-limit behavior, CORS behavior, and current public error messages.
 
 ## Auth and Account Lifecycle
 
@@ -160,6 +169,9 @@ Rollback web and API independently:
 ## Troubleshooting
 
 - CORS errors: verify `API_CORS_ORIGIN` exactly matches the browser origin, including scheme and port.
+- Validation errors: inspect `details[].field` in the API error envelope.
+- 429 errors: adjust the matching grouped rate limit env, for example `API_RATE_LIMIT_AUTH_MAX`.
+- Payload too large: raise `API_BODY_LIMIT_BYTES` only after confirming the endpoint really needs larger bodies.
 - Auth returns 401 in Supabase mode: ensure frontend sends Supabase bearer token or backend session cookie is present.
 - Cron returns 401: check `Authorization: Bearer` or `X-Cron-Secret`.
 - Cron returns 503: set `CRON_SECRET`.
