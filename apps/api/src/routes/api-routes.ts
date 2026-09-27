@@ -26,6 +26,7 @@ import {
   notificationStatus,
   patchHydrationLog,
   pauseWorkoutSessionById,
+  previewWorkoutPlanner,
   recalculateAchievements,
   recalculateProgression,
   reorderWorkoutSession,
@@ -345,6 +346,7 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
   app.delete<{ Params: IdParams }>("/api/exercises/:id", (request, reply) => withDataContext(request, reply, () => deleteExercise(request.params.id), { errorStatus: 404, persist: true }));
 
   app.get("/api/workouts/today", (request, reply) => withDataContext(request, reply, () => getWorkoutToday()));
+  app.post("/api/workouts/planner/preview", (request, reply) => withDataContext(request, reply, () => previewWorkoutPlanner(bodyAs(request)), { errorStatus: 400 }));
   app.post("/api/workouts/sessions", (request, reply) => withDataContext(request, reply, () => startWorkoutSession(bodyAs(request)), { errorStatus: 400, persist: true }));
   app.post<{ Params: IdParams }>("/api/workouts/sessions/:id/finish", (request, reply) => withDataContext(request, reply, () => finishWorkoutSessionById(request.params.id), { errorStatus: 404, persist: true }));
   app.post<{ Params: IdParams }>("/api/workouts/sessions/:id/pause", (request, reply) => withDataContext(request, reply, () => pauseWorkoutSessionById(request.params.id), { errorStatus: 404, persist: true }));
@@ -701,6 +703,15 @@ function validateRouteRequest(request: FastifyRequest): ValidationIssue[] {
     optionalStringArray(body.sessionExerciseOrder, "body.sessionExerciseOrder", issues);
     return issues;
   }
+  if (path === "/api/workouts/planner/preview") {
+    optionalEnum(body.goal, "body.goal", ["strength", "muscle", "fat-loss", "health"], issues);
+    optionalInteger(body.daysPerWeek, "body.daysPerWeek", issues, { min: 1, max: 6 });
+    optionalStringArray(body.equipment, "body.equipment", issues);
+    optionalEnum(body.experienceLevel, "body.experienceLevel", ["beginner", "intermediate", "advanced"], issues);
+    optionalInteger(body.minutesPerSession, "body.minutesPerSession", issues, { min: 20, max: 120 });
+    optionalStringArray(body.musclePriority, "body.musclePriority", issues);
+    return issues;
+  }
   if (path === "/api/workouts/sessions/:id/reorder") {
     optionalArray(body.queue, "body.queue", issues);
     return issues;
@@ -721,7 +732,7 @@ function validateRouteRequest(request: FastifyRequest): ValidationIssue[] {
     return issues;
   }
   if (path === "/api/coach/recommendations/:id/feedback") {
-    requireEnum(body.decision, "body.decision", ["accepted", "dismissed", "adjusted"], issues);
+    requireEnum(body.decision, "body.decision", ["accepted", "rejected"], issues);
     optionalText(body.feedback, "body.feedback", issues, { max: 1000 });
     return issues;
   }

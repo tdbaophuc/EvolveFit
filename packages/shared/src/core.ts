@@ -145,6 +145,7 @@ export type WorkoutExercise = {
 };
 
 export type EquipmentType = "barbell" | "dumbbell" | "cable" | "machine" | "bodyweight" | "kettlebell" | "other";
+export type ExerciseDifficulty = "beginner" | "intermediate" | "advanced";
 
 export type MovementPattern =
   | "push"
@@ -164,6 +165,16 @@ export type ExerciseDefinition = {
   movementPattern: MovementPattern;
   builtIn: boolean;
   notes?: string;
+  primaryMuscles?: string[];
+  secondaryMuscles?: string[];
+  cues?: string[];
+  commonMistakes?: string[];
+  substitutions?: string[];
+  mediaUrl?: string;
+  difficulty?: ExerciseDifficulty;
+  unilateral?: boolean;
+  equipmentAlternatives?: EquipmentType[];
+  tags?: string[];
 };
 
 export type RoutineExercise = WorkoutExercise & {
@@ -205,13 +216,15 @@ export type Recommendation = {
   title: string;
   reason: string;
   source: "rule" | "ai-assisted";
-  action: "increase" | "hold" | "deload";
+  action: "increase" | "decrease" | "hold" | "deload";
   nextWeightKg: number;
   dataBasis: string[];
   suggestedAction: string;
   guardrail: string;
   aiEligible: boolean;
   mode: "rule-fallback" | "gemini" | "openai";
+  detectedSignals?: string[];
+  substituteExerciseIds?: string[];
 };
 
 export type RecommendationDecision = {
@@ -234,6 +247,35 @@ export type RecommendationHistoryItem = Recommendation & {
   exerciseName: string;
   status: "pending" | "accepted" | "rejected";
   feedback?: string;
+};
+
+export type WorkoutPlannerInput = {
+  goal: "strength" | "muscle" | "fat-loss" | "health";
+  daysPerWeek: number;
+  equipment: EquipmentType[];
+  experienceLevel: ExerciseDifficulty;
+  minutesPerSession?: number;
+  musclePriority?: string[];
+  recoveryDays?: string[];
+  now?: Date;
+};
+
+export type WorkoutPlannerPreview = {
+  routine: Routine;
+  rationale: string[];
+  warnings: string[];
+  equipmentMissing: EquipmentType[];
+};
+
+export type CoachV2Input = {
+  exercise: WorkoutExercise;
+  recentSets: WorkoutSet[];
+  allSets?: WorkoutSet[];
+  workoutSessions?: WorkoutSession[];
+  readiness?: { energy: number; sleepQuality: number; soreness: number; stress: number };
+  availableEquipment?: EquipmentType[];
+  exerciseLibrary?: ExerciseDefinition[];
+  now?: Date;
 };
 
 export type Friend = {
@@ -420,6 +462,151 @@ export const builtInExerciseDefinitions: ExerciseDefinition[] = [
   { id: "lib-plank", name: "Plank", muscleGroup: "Core", equipment: "bodyweight", movementPattern: "core", builtIn: true },
   { id: "lib-cable-crunch", name: "Cable Crunch", muscleGroup: "Core", equipment: "cable", movementPattern: "core", builtIn: true }
 ];
+
+const exerciseIntelligenceDefaults: Record<string, Partial<ExerciseDefinition>> = {
+  "lib-bench-press": {
+    primaryMuscles: ["Chest"],
+    secondaryMuscles: ["Triceps", "Front delts"],
+    cues: ["Shoulder blades back and down", "Touch lower chest with control", "Drive feet into floor"],
+    commonMistakes: ["Bouncing the bar", "Elbows flaring hard", "Losing upper-back tightness"],
+    substitutions: ["lib-incline-db-press", "lib-push-up"],
+    difficulty: "intermediate",
+    tags: ["horizontal push", "compound", "strength"]
+  },
+  "lib-incline-db-press": {
+    primaryMuscles: ["Upper chest"],
+    secondaryMuscles: ["Front delts", "Triceps"],
+    cues: ["Keep wrists stacked", "Lower dumbbells with control", "Press up and slightly in"],
+    substitutions: ["lib-bench-press", "lib-push-up"],
+    difficulty: "beginner",
+    unilateral: false,
+    tags: ["incline", "hypertrophy"]
+  },
+  "lib-push-up": {
+    primaryMuscles: ["Chest"],
+    secondaryMuscles: ["Triceps", "Core"],
+    cues: ["Brace ribs down", "Keep body in one line", "Finish with elbows extended"],
+    substitutions: ["lib-bench-press", "lib-incline-db-press"],
+    difficulty: "beginner",
+    equipmentAlternatives: ["bodyweight"],
+    tags: ["home", "bodyweight"]
+  },
+  "lib-row": {
+    primaryMuscles: ["Back"],
+    secondaryMuscles: ["Rear delts", "Biceps"],
+    cues: ["Pull elbows toward hips", "Pause at the top", "Keep chest supported"],
+    substitutions: ["lib-lat-pulldown", "lib-pull-up"],
+    difficulty: "beginner",
+    tags: ["horizontal pull", "back"]
+  },
+  "lib-lat-pulldown": {
+    primaryMuscles: ["Lats"],
+    secondaryMuscles: ["Biceps", "Upper back"],
+    cues: ["Pull elbows down", "Keep ribs stacked", "Control the stretch"],
+    substitutions: ["lib-pull-up", "lib-row"],
+    difficulty: "beginner",
+    tags: ["vertical pull", "back"]
+  },
+  "lib-pull-up": {
+    primaryMuscles: ["Lats"],
+    secondaryMuscles: ["Biceps", "Core"],
+    cues: ["Start from a dead hang", "Drive elbows to ribs", "Avoid kicking"],
+    substitutions: ["lib-lat-pulldown", "lib-row"],
+    difficulty: "advanced",
+    tags: ["bodyweight", "vertical pull"]
+  },
+  "lib-squat": {
+    primaryMuscles: ["Quads", "Glutes"],
+    secondaryMuscles: ["Core", "Adductors"],
+    cues: ["Brace before descending", "Knees track toes", "Stand tall through midfoot"],
+    substitutions: ["lib-leg-press"],
+    difficulty: "intermediate",
+    tags: ["squat", "compound", "lower"]
+  },
+  "lib-rdl": {
+    primaryMuscles: ["Hamstrings", "Glutes"],
+    secondaryMuscles: ["Back", "Core"],
+    cues: ["Hinge hips back", "Keep lats tight", "Stop when hamstrings limit range"],
+    substitutions: ["lib-leg-press"],
+    difficulty: "intermediate",
+    tags: ["hinge", "posterior chain"]
+  },
+  "lib-leg-press": {
+    primaryMuscles: ["Quads", "Glutes"],
+    secondaryMuscles: ["Hamstrings"],
+    cues: ["Use full controlled range", "Keep hips down", "Do not lock knees hard"],
+    substitutions: ["lib-squat"],
+    difficulty: "beginner",
+    tags: ["machine", "lower"]
+  },
+  "lib-shoulder-press": {
+    primaryMuscles: ["Shoulders"],
+    secondaryMuscles: ["Triceps", "Upper chest"],
+    cues: ["Brace before pressing", "Press in a straight path", "Finish with biceps near ears"],
+    substitutions: ["lib-lateral-raise", "lib-push-up"],
+    difficulty: "intermediate",
+    tags: ["vertical push"]
+  },
+  "lib-lateral-raise": {
+    primaryMuscles: ["Side delts"],
+    secondaryMuscles: ["Traps"],
+    cues: ["Lead with elbows", "Stop around shoulder height", "Use controlled tempo"],
+    substitutions: ["lib-shoulder-press"],
+    difficulty: "beginner",
+    unilateral: false,
+    tags: ["isolation", "shoulders"]
+  },
+  "lib-curl": {
+    primaryMuscles: ["Biceps"],
+    secondaryMuscles: ["Forearms"],
+    cues: ["Keep elbows quiet", "Control the lowering", "Avoid swinging"],
+    substitutions: ["lib-row"],
+    difficulty: "beginner",
+    tags: ["arms", "isolation"]
+  },
+  "lib-triceps-pushdown": {
+    primaryMuscles: ["Triceps"],
+    secondaryMuscles: [],
+    cues: ["Pin elbows by sides", "Lock out under control", "Do not lean through reps"],
+    substitutions: ["lib-push-up"],
+    difficulty: "beginner",
+    tags: ["arms", "isolation"]
+  },
+  "lib-plank": {
+    primaryMuscles: ["Core"],
+    secondaryMuscles: ["Glutes", "Shoulders"],
+    cues: ["Ribs down", "Squeeze glutes", "Breathe behind the brace"],
+    substitutions: ["lib-cable-crunch"],
+    difficulty: "beginner",
+    tags: ["core", "bodyweight"]
+  },
+  "lib-cable-crunch": {
+    primaryMuscles: ["Abs"],
+    secondaryMuscles: ["Hip flexors"],
+    cues: ["Curl ribs toward pelvis", "Keep hips stable", "Control the return"],
+    substitutions: ["lib-plank"],
+    difficulty: "beginner",
+    tags: ["core", "cable"]
+  }
+};
+
+export function normalizeExerciseDefinition(exercise: ExerciseDefinition): ExerciseDefinition {
+  const defaults = exerciseIntelligenceDefaults[exercise.id] ?? {};
+  const primaryMuscles = exercise.primaryMuscles?.length ? exercise.primaryMuscles : defaults.primaryMuscles ?? [exercise.muscleGroup];
+  return {
+    ...defaults,
+    ...exercise,
+    primaryMuscles,
+    secondaryMuscles: exercise.secondaryMuscles ?? defaults.secondaryMuscles ?? [],
+    cues: exercise.cues ?? defaults.cues ?? [],
+    commonMistakes: exercise.commonMistakes ?? defaults.commonMistakes ?? [],
+    substitutions: exercise.substitutions ?? defaults.substitutions ?? [],
+    difficulty: exercise.difficulty ?? defaults.difficulty ?? "beginner",
+    unilateral: exercise.unilateral ?? defaults.unilateral ?? false,
+    equipmentAlternatives: exercise.equipmentAlternatives ?? defaults.equipmentAlternatives ?? [],
+    tags: exercise.tags ?? defaults.tags ?? []
+  };
+}
 
 export const defaultDrinkModules: DrinkModule[] = [
   {
@@ -798,8 +985,25 @@ export function filterExerciseLibrary(
   const query = filters.query?.trim().toLowerCase() ?? "";
   const muscleGroup = filters.muscleGroup ? normalizeMuscleGroupForFilter(filters.muscleGroup) : undefined;
   return exercises
-    .filter((exercise) => !query || exercise.name.toLowerCase().includes(query) || exercise.muscleGroup.toLowerCase().includes(query))
-    .filter((exercise) => !muscleGroup || muscleGroup === "all" || normalizeMuscleGroupForFilter(exercise.muscleGroup) === muscleGroup)
+    .map(normalizeExerciseDefinition)
+    .filter((exercise) => {
+      if (!query) return true;
+      const haystack = [
+        exercise.name,
+        exercise.muscleGroup,
+        ...(exercise.primaryMuscles ?? []),
+        ...(exercise.secondaryMuscles ?? []),
+        ...(exercise.tags ?? []),
+        ...(exercise.cues ?? [])
+      ].join(" ").toLowerCase();
+      return haystack.includes(query);
+    })
+    .filter((exercise) => {
+      if (!muscleGroup || muscleGroup === "all") return true;
+      return [exercise.muscleGroup, ...(exercise.primaryMuscles ?? []), ...(exercise.secondaryMuscles ?? [])]
+        .map(normalizeMuscleGroupForFilter)
+        .includes(muscleGroup);
+    })
     .filter((exercise) => !filters.equipment || filters.equipment === "all" || exercise.equipment === filters.equipment)
     .filter((exercise) => !filters.movementPattern || filters.movementPattern === "all" || exercise.movementPattern === filters.movementPattern)
     .sort((a, b) => Number(b.builtIn) - Number(a.builtIn) || a.muscleGroup.localeCompare(b.muscleGroup) || a.name.localeCompare(b.name));
@@ -811,16 +1015,36 @@ export function createCustomExerciseDefinition(input: {
   equipment: EquipmentType;
   movementPattern: MovementPattern;
   notes?: string;
+  primaryMuscles?: string[];
+  secondaryMuscles?: string[];
+  cues?: string[];
+  commonMistakes?: string[];
+  substitutions?: string[];
+  mediaUrl?: string;
+  difficulty?: ExerciseDifficulty;
+  unilateral?: boolean;
+  equipmentAlternatives?: EquipmentType[];
+  tags?: string[];
 }): ExerciseDefinition {
-  return {
+  return normalizeExerciseDefinition({
     id: cryptoSafeId(),
     name: input.name.trim() || "Bài tập tùy chỉnh",
     muscleGroup: input.muscleGroup.trim() || "Tùy chỉnh",
     equipment: input.equipment,
     movementPattern: input.movementPattern,
     notes: input.notes,
+    primaryMuscles: input.primaryMuscles,
+    secondaryMuscles: input.secondaryMuscles,
+    cues: input.cues,
+    commonMistakes: input.commonMistakes,
+    substitutions: input.substitutions,
+    mediaUrl: input.mediaUrl,
+    difficulty: input.difficulty,
+    unilateral: input.unilateral,
+    equipmentAlternatives: input.equipmentAlternatives,
+    tags: input.tags,
     builtIn: false
-  };
+  });
 }
 
 export function workoutSessionDurationSeconds(session: Pick<WorkoutSession, "startedAt" | "endedAt">, now = new Date()): number {
@@ -1309,6 +1533,232 @@ export function coachDataBasis(params: {
     `Mục tiêu: ${params.targetWeightKg}kg x ${params.targetRepsMax} rep`,
     `Set gần đây: ${recentSetText}`
   ];
+}
+
+function clampInt(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function includesEquipment(exercise: ExerciseDefinition, equipment: EquipmentType[]): boolean {
+  return equipment.includes(exercise.equipment) || (exercise.equipmentAlternatives ?? []).some((item) => equipment.includes(item));
+}
+
+function plannerWeekdays(daysPerWeek: number): string[] {
+  const options: Record<number, string[]> = {
+    1: ["Mon"],
+    2: ["Mon", "Thu"],
+    3: ["Mon", "Wed", "Fri"],
+    4: ["Mon", "Tue", "Thu", "Fri"],
+    5: ["Mon", "Tue", "Wed", "Fri", "Sat"],
+    6: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+  };
+  return options[clampInt(daysPerWeek, 1, 6)] ?? options[3];
+}
+
+function plannerSplit(daysPerWeek: number, goal: WorkoutPlannerInput["goal"]): { name: string; patterns: MovementPattern[]; muscles: string[] }[] {
+  if (daysPerWeek >= 5) {
+    return [
+      { name: "Push", patterns: ["push", "isolation"], muscles: ["Chest", "Shoulders", "Triceps", "Ngá»±c", "Vai", "Tay"] },
+      { name: "Pull", patterns: ["pull", "isolation"], muscles: ["Back", "Lats", "Biceps", "LÆ°ng", "Tay"] },
+      { name: "Legs", patterns: ["squat", "hinge", "lunge"], muscles: ["Quads", "Glutes", "Hamstrings", "ChÃ¢n"] },
+      { name: "Upper", patterns: ["push", "pull", "isolation"], muscles: ["Chest", "Back", "Shoulders", "Arms", "Ngá»±c", "LÆ°ng", "Vai", "Tay"] },
+      { name: goal === "health" ? "Full body skill" : "Full body volume", patterns: ["push", "pull", "squat", "hinge", "core"], muscles: ["Core", "Chest", "Back", "Legs", "Core"] },
+      { name: "Recovery pump", patterns: ["isolation", "core", "carry"], muscles: ["Core", "Arms", "Shoulders"] }
+    ];
+  }
+  if (daysPerWeek >= 4) {
+    return [
+      { name: "Upper A", patterns: ["push", "pull", "isolation"], muscles: ["Chest", "Back", "Shoulders", "Arms", "Ngá»±c", "LÆ°ng", "Vai"] },
+      { name: "Lower A", patterns: ["squat", "hinge", "lunge", "core"], muscles: ["Quads", "Glutes", "Hamstrings", "Core", "ChÃ¢n"] },
+      { name: "Upper B", patterns: ["pull", "push", "isolation"], muscles: ["Back", "Chest", "Shoulders", "Arms", "LÆ°ng", "Ngá»±c"] },
+      { name: "Lower B", patterns: ["hinge", "squat", "core"], muscles: ["Hamstrings", "Glutes", "Quads", "Core", "ChÃ¢n"] }
+    ];
+  }
+  return [
+    { name: "Full body A", patterns: ["squat", "push", "pull", "core"], muscles: ["Quads", "Chest", "Back", "Core", "ChÃ¢n", "Ngá»±c", "LÆ°ng"] },
+    { name: "Full body B", patterns: ["hinge", "pull", "push", "core"], muscles: ["Hamstrings", "Back", "Shoulders", "Core", "ChÃ¢n", "LÆ°ng", "Vai"] },
+    { name: "Full body C", patterns: ["lunge", "push", "pull", "isolation"], muscles: ["Glutes", "Chest", "Back", "Arms", "Ngá»±c", "LÆ°ng", "Tay"] }
+  ];
+}
+
+function exerciseScore(exercise: ExerciseDefinition, target: { patterns: MovementPattern[]; muscles: string[] }, input: WorkoutPlannerInput): number {
+  const normalized = normalizeExerciseDefinition(exercise);
+  let score = 0;
+  if (target.patterns.includes(normalized.movementPattern)) score += 5;
+  const muscles = [normalized.muscleGroup, ...(normalized.primaryMuscles ?? []), ...(normalized.secondaryMuscles ?? [])].map((item) => item.toLowerCase());
+  score += target.muscles.filter((muscle) => muscles.includes(muscle.toLowerCase())).length * 3;
+  score += (input.musclePriority ?? []).filter((muscle) => muscles.includes(muscle.toLowerCase())).length * 3;
+  if (includesEquipment(normalized, input.equipment)) score += 4;
+  if (normalized.difficulty === input.experienceLevel) score += 2;
+  if (input.experienceLevel === "beginner" && normalized.difficulty === "advanced") score -= 5;
+  if (input.goal === "strength" && normalized.tags?.includes("compound")) score += 2;
+  if (input.goal === "fat-loss" && (normalized.equipment === "bodyweight" || normalized.tags?.includes("home"))) score += 1;
+  return score;
+}
+
+function routineExerciseFromDefinition(exercise: ExerciseDefinition, order: number, goal: WorkoutPlannerInput["goal"], experience: ExerciseDifficulty): RoutineExercise {
+  const normalized = normalizeExerciseDefinition(exercise);
+  const strength = goal === "strength";
+  const health = goal === "health";
+  const beginner = experience === "beginner";
+  return {
+    id: cryptoSafeId(),
+    definitionId: normalized.id,
+    order,
+    name: normalized.name,
+    muscleGroup: normalized.primaryMuscles?.[0] ?? normalized.muscleGroup,
+    targetSets: strength ? (beginner ? 3 : 4) : health ? 2 : 3,
+    targetRepsMin: strength ? 4 : normalized.movementPattern === "core" ? 30 : 8,
+    targetRepsMax: strength ? 6 : normalized.movementPattern === "core" ? 60 : goal === "fat-loss" ? 15 : 12,
+    targetWeightKg: normalized.equipment === "bodyweight" ? 0 : strength ? 50 : 25,
+    restSeconds: strength ? 150 : normalized.movementPattern === "isolation" || goal === "fat-loss" ? 60 : 90,
+    lastSession: `Planner: ${normalized.cues?.[0] ?? "start conservative"}`
+  };
+}
+
+export function buildWorkoutPlannerPreview(input: WorkoutPlannerInput, library: ExerciseDefinition[] = builtInExerciseDefinitions): WorkoutPlannerPreview {
+  const daysPerWeek = clampInt(input.daysPerWeek, 1, 6);
+  const equipment: EquipmentType[] = input.equipment.length ? input.equipment : ["bodyweight"];
+  const normalizedInput: WorkoutPlannerInput = { ...input, daysPerWeek, equipment };
+  const normalizedLibrary = library.map(normalizeExerciseDefinition);
+  const available = normalizedLibrary.filter((exercise) => includesEquipment(exercise, equipment));
+  const source = available.length ? available : normalizedLibrary.filter((exercise) => exercise.equipment === "bodyweight");
+  const weekdays = plannerWeekdays(daysPerWeek);
+  const split = plannerSplit(daysPerWeek, input.goal);
+  const exercisesPerDay = input.minutesPerSession && input.minutesPerSession < 40 ? 4 : input.minutesPerSession && input.minutesPerSession > 75 ? 7 : 5;
+  const usedByDay = new Set<string>();
+  const days = weekdays.map((weekday, index) => {
+    const target = split[index % split.length];
+    const picked = source
+      .map((exercise) => ({ exercise, score: exerciseScore(exercise, target, normalizedInput) }))
+      .sort((a, b) => b.score - a.score || a.exercise.name.localeCompare(b.exercise.name))
+      .filter((entry) => entry.score > 0 || source.length <= exercisesPerDay)
+      .filter((entry) => !usedByDay.has(entry.exercise.id))
+      .slice(0, exercisesPerDay);
+    if (picked.length < Math.min(3, exercisesPerDay)) {
+      source.slice(0, exercisesPerDay - picked.length).forEach((exercise) => picked.push({ exercise, score: 0 }));
+    }
+    picked.forEach((entry) => usedByDay.add(entry.exercise.id));
+    if (usedByDay.size > source.length - exercisesPerDay) usedByDay.clear();
+    return {
+      id: `planner-day-${index + 1}-${cryptoSafeId()}`,
+      name: target.name,
+      day: weekday,
+      order: index,
+      exercises: picked.map((entry, order) => routineExerciseFromDefinition(entry.exercise, order, input.goal, input.experienceLevel))
+    };
+  });
+  const nowIso = (input.now ?? new Date()).toISOString();
+  const missing = Array.from(new Set(library.map((exercise) => exercise.equipment).filter((item) => !equipment.includes(item))));
+  return {
+    routine: {
+      id: `routine-planner-${cryptoSafeId()}`,
+      name: `Coach planner ${daysPerWeek}d ${input.goal}`,
+      daysPerWeek,
+      days,
+      createdAt: nowIso,
+      updatedAt: nowIso
+    },
+    rationale: [
+      `Goal ${input.goal}, ${daysPerWeek} days/week, ${input.experienceLevel} level.`,
+      `Selected exercises from ${source.length} matching library entries.`,
+      `Session length target ${input.minutesPerSession ?? 60} minutes.`
+    ],
+    warnings: available.length ? [] : ["No exact equipment matches; generated bodyweight fallback plan."],
+    equipmentMissing: missing
+  };
+}
+
+function recentWeeklyVolume(sets: WorkoutSet[], now: Date, days: number): number {
+  const since = now.getTime() - days * 86400000;
+  return workingSetVolumeKg(sets.filter((set) => set.completedAt && new Date(set.completedAt).getTime() >= since));
+}
+
+function missedWorkoutCount(sessions: WorkoutSession[], now: Date): number {
+  const finished = sessions.filter((session) => session.status === "finished").sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  if (!finished[0]) return 0;
+  const daysSince = (now.getTime() - new Date(finished[0].startedAt).getTime()) / 86400000;
+  return Math.max(0, Math.floor(daysSince / 3));
+}
+
+export function coachV2Recommendation(input: CoachV2Input): Recommendation {
+  const now = input.now ?? new Date();
+  const base = progressiveOverloadRecommendation({
+    exerciseName: input.exercise.name,
+    targetWeightKg: input.exercise.targetWeightKg,
+    targetRepsMax: input.exercise.targetRepsMax,
+    recentSets: input.recentSets
+  });
+  const signals: string[] = [];
+  let recommendation: Recommendation = { ...base, title: `Coach V2: ${base.title}`, detectedSignals: signals };
+  const usefulSets = input.recentSets.filter(isWorkingVolumeSet).slice(-6);
+  const e1rms = usefulSets.map((set) => estimatedOneRepMax(set.actualWeightKg, set.actualReps));
+  const plateau = e1rms.length >= 4 && Math.max(...e1rms) - Math.min(...e1rms) <= Math.max(1, Math.max(...e1rms) * 0.025);
+  const currentVolume = recentWeeklyVolume(input.allSets ?? input.recentSets, now, 7);
+  const previousVolume = recentWeeklyVolume(input.allSets ?? [], new Date(now.getTime() - 7 * 86400000), 7);
+  const volumeJump = previousVolume > 0 && currentVolume > previousVolume * 1.35;
+  const readiness = input.readiness ? readinessScore(input.readiness) : undefined;
+  const missed = missedWorkoutCount(input.workoutSessions ?? [], now);
+
+  if (volumeJump) signals.push("volume-spike");
+  if (plateau) signals.push("plateau");
+  if (readiness !== undefined && readiness < 55) signals.push("low-readiness");
+  if (missed > 0) signals.push("missed-workouts");
+
+  if (volumeJump || (readiness !== undefined && readiness < 45)) {
+    recommendation = {
+      ...recommendation,
+      title: `Coach V2: deload ${input.exercise.name}`,
+      reason: volumeJump ? "Weekly volume increased too quickly, so a deload is safer than another load jump." : "Readiness is low, so reduce load and keep movement quality high.",
+      action: "deload",
+      nextWeightKg: Math.round(input.exercise.targetWeightKg * 0.9 * 2) / 2,
+      suggestedAction: "Run one easier week at roughly 90% load or 70% set volume, then reassess.",
+      dataBasis: [...recommendation.dataBasis, `7-day volume: ${Math.round(currentVolume)}kg`, previousVolume ? `Previous 7-day volume: ${Math.round(previousVolume)}kg` : "Previous 7-day volume unavailable"],
+      detectedSignals: signals
+    };
+  } else if (plateau) {
+    recommendation = {
+      ...recommendation,
+      title: `Coach V2: break plateau on ${input.exercise.name}`,
+      reason: "Estimated 1RM has stayed flat across recent working sets.",
+      action: "decrease",
+      nextWeightKg: Math.max(0, Math.round(input.exercise.targetWeightKg * 0.95 * 2) / 2),
+      suggestedAction: "Reduce load 5%, add one clean rep target, or swap variation for 2-3 weeks.",
+      dataBasis: [...recommendation.dataBasis, `Recent e1RM range: ${Math.round(Math.min(...e1rms))}-${Math.round(Math.max(...e1rms))}kg`],
+      detectedSignals: signals
+    };
+  } else if (missed > 0 && recommendation.action === "increase") {
+    recommendation = {
+      ...recommendation,
+      action: "hold",
+      nextWeightKg: input.exercise.targetWeightKg,
+      reason: "You earned a progression, but recent missed workouts make holding load for one exposure more reliable.",
+      suggestedAction: "Repeat the current load once, then increase if reps and RPE are stable.",
+      dataBasis: [...recommendation.dataBasis, `Missed workout blocks: ${missed}`],
+      detectedSignals: signals
+    };
+  }
+
+  const unavailable = input.availableEquipment?.length && input.exerciseLibrary?.length
+    ? input.exerciseLibrary.map(normalizeExerciseDefinition).filter((exercise) => exercise.name === input.exercise.name && !includesEquipment(exercise, input.availableEquipment ?? []))
+    : [];
+  if (unavailable.length) {
+    const substitutes = input.exerciseLibrary
+      ?.map(normalizeExerciseDefinition)
+      .filter((exercise) => includesEquipment(exercise, input.availableEquipment ?? []) && (exercise.primaryMuscles ?? []).includes(input.exercise.muscleGroup))
+      .slice(0, 3) ?? [];
+    if (substitutes.length) {
+      recommendation = {
+        ...recommendation,
+        detectedSignals: [...(recommendation.detectedSignals ?? []), "equipment-missing"],
+        substituteExerciseIds: substitutes.map((exercise) => exercise.id),
+        dataBasis: [...recommendation.dataBasis, `Substitutions: ${substitutes.map((exercise) => exercise.name).join(", ")}`]
+      };
+    }
+  }
+
+  return recommendation;
 }
 
 export function defaultSocialPrivacySettings(): SocialPrivacySettings {

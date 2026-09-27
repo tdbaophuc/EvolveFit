@@ -11,8 +11,10 @@ import {
   buildBodyMetricChartDataset,
   buildProgressDashboard,
   buildProgressReports,
+  buildWorkoutPlannerPreview,
   buildWorkoutSummarySharePreview,
   calculatePlatesPerSide,
+  coachV2Recommendation,
   completeSessionExercise,
   createCustomExerciseDefinition,
   createWorkoutSession,
@@ -32,6 +34,7 @@ import {
   kgToLb,
   lbToKg,
   normalizeDrinkModules,
+  normalizeExerciseDefinition,
   parseRoutineCsv,
   parkSessionExercise,
   privateFriendLeaderboard,
@@ -333,12 +336,20 @@ describe("routine model and exercise library", () => {
     expect(results.map((exercise) => exercise.name)).toEqual(["Barbell Bench Press"]);
   });
 
+  it("normalizes advanced exercise metadata and searches across tags/cues", () => {
+    const bench = normalizeExerciseDefinition(builtInExerciseDefinitions.find((exercise) => exercise.id === "lib-bench-press")!);
+    expect(bench.primaryMuscles).toContain("Chest");
+    expect(bench.cues?.length).toBeGreaterThan(0);
+    expect(filterExerciseLibrary(builtInExerciseDefinitions, { query: "horizontal push" }).map((exercise) => exercise.id)).toContain("lib-bench-press");
+  });
+
   it("creates custom exercise definitions as editable non-built-in records", () => {
     const custom = createCustomExerciseDefinition({
       name: "Reverse Sled Drag",
       muscleGroup: "Legs",
       equipment: "other",
-      movementPattern: "lunge"
+      movementPattern: "lunge",
+      primaryMuscles: ["Quads"]
     });
 
     expect(custom).toMatchObject({
@@ -346,8 +357,67 @@ describe("routine model and exercise library", () => {
       muscleGroup: "Legs",
       equipment: "other",
       movementPattern: "lunge",
+      primaryMuscles: ["Quads"],
       builtIn: false
     });
+  });
+
+  it("builds a planner preview from goal, equipment and weekly frequency", () => {
+    const preview = buildWorkoutPlannerPreview({
+      goal: "muscle",
+      daysPerWeek: 4,
+      equipment: ["dumbbell", "bodyweight"],
+      experienceLevel: "beginner",
+      minutesPerSession: 45,
+      now: new Date("2026-09-01T00:00:00.000Z")
+    });
+
+    expect(preview.routine.days).toHaveLength(4);
+    expect(preview.routine.days[0].exercises.length).toBeGreaterThanOrEqual(3);
+    expect(preview.routine.days.flatMap((day) => day.exercises).every((exercise) => exercise.targetSets >= 2)).toBe(true);
+    expect(preview.rationale[0]).toContain("muscle");
+  });
+
+  it("detects Coach V2 plateau and volume spike with rule-first recommendations", () => {
+    const exercise = {
+      id: "bench",
+      name: "Bench Press",
+      muscleGroup: "Chest",
+      targetSets: 3,
+      targetRepsMin: 8,
+      targetRepsMax: 10,
+      targetWeightKg: 60,
+      restSeconds: 90,
+      lastSession: "60kg x 8"
+    };
+    const recentSets = [1, 2, 3, 4].map((index) => ({
+      id: `s${index}`,
+      exerciseId: "bench",
+      exerciseName: "Bench Press",
+      targetWeightKg: 60,
+      targetReps: 10,
+      actualWeightKg: 60,
+      actualReps: 8,
+      rpe: 9,
+      completedAt: `2026-09-0${index}T00:00:00.000Z`
+    }));
+
+    const plateau = coachV2Recommendation({ exercise, recentSets, now: new Date("2026-09-08T00:00:00.000Z") });
+    expect(plateau.detectedSignals).toContain("plateau");
+    expect(plateau.action).toBe("decrease");
+
+    const volumeSpike = coachV2Recommendation({
+      exercise,
+      recentSets,
+      allSets: [
+        ...recentSets,
+        ...recentSets.map((set, index) => ({ ...set, id: `v${index}`, actualWeightKg: 120, completedAt: "2026-09-07T00:00:00.000Z" }))
+      ],
+      readiness: { energy: 2, sleepQuality: 2, soreness: 5, stress: 5 },
+      now: new Date("2026-09-08T00:00:00.000Z")
+    });
+    expect(volumeSpike.detectedSignals).toContain("low-readiness");
+    expect(volumeSpike.action).toBe("deload");
   });
 });
 

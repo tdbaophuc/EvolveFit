@@ -1075,6 +1075,22 @@
         }
       }
     },
+    "/api/workouts/planner/preview": {
+      "post": {
+        "summary": "Preview a rule-first workout plan from goal, equipment, experience and frequency.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/workouts/sessions": {
       "post": {
         "summary": "Start workout session",

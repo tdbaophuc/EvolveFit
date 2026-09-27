@@ -8,6 +8,8 @@ import type {
   SessionExerciseQueueItem,
   Supplement,
   SupplementLog,
+  WorkoutPlannerInput,
+  WorkoutPlannerPreview,
   WorkoutSession,
   WorkoutSet
 } from "@evolvefit/shared";
@@ -182,6 +184,10 @@ export class EvolveFitApiClient {
     sessionExerciseOrder?: string[];
   }): Promise<ApiResult<WorkoutSession>> {
     return this.post("/api/workouts/sessions", input);
+  }
+
+  async previewWorkoutPlanner(input: Partial<WorkoutPlannerInput>): Promise<ApiResult<WorkoutPlannerPreview>> {
+    return this.post("/api/workouts/planner/preview", input);
   }
 
   async finishWorkoutSession(id: string): Promise<ApiResult<WorkoutSession>> {

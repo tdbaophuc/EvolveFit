@@ -93,11 +93,15 @@ describe("Fastify API contract", () => {
       data: { reminderHour: 9 }
     });
 
-    const exercise = (await app.inject({ method: "POST", url: "/api/exercises", payload: { name: "API Curl" } })).json();
+    const exercise = (await app.inject({
+      method: "POST",
+      url: "/api/exercises",
+      payload: { name: "API Curl", primaryMuscles: ["Biceps"], cues: ["Elbows quiet"], tags: ["arms"] }
+    })).json();
     expect((await app.inject("/api/exercises")).json()).toMatchObject({ ok: true });
     expect((await app.inject({ method: "PATCH", url: `/api/exercises/${exercise.data.id}`, payload: { notes: "ported" } })).json()).toMatchObject({
       ok: true,
-      data: { notes: "ported" }
+      data: { notes: "ported", primaryMuscles: ["Biceps"] }
     });
 
     const routine = (await app.inject({ method: "POST", url: "/api/routines", payload: { name: "API Routine", days: [] } })).json();
@@ -113,6 +117,10 @@ describe("Fastify API contract", () => {
   it("keeps workouts, progression, sync, achievements, leaderboards, coach, notifications, and cron", async () => {
     const today = (await app.inject("/api/workouts/today")).json();
     expect(today).toMatchObject({ ok: true });
+    expect((await app.inject({ method: "POST", url: "/api/workouts/planner/preview", payload: { goal: "muscle", daysPerWeek: 3, equipment: ["dumbbell", "bodyweight"] } })).json()).toMatchObject({
+      ok: true,
+      data: { routine: { daysPerWeek: 3 }, rationale: expect.any(Array) }
+    });
     const session = (await app.inject({ method: "POST", url: "/api/workouts/sessions", payload: { sessionName: "API Session" } })).json();
     expect(session).toMatchObject({ ok: true, data: { status: "active" } });
     expect((await app.inject({ method: "POST", url: `/api/workouts/sessions/${session.data.id}/pause` })).json()).toMatchObject({ ok: true, data: { status: "paused" } });

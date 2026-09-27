@@ -656,7 +656,26 @@ type DrinkModuleRow = { id: string; user_id: string; drink_type: string; name: s
 type HydrationLogRow = { id: string; user_id: string; amount_ml: number; drink_type: HydrationLog["drinkType"]; logged_at: string };
 type SupplementRow = { id: string; user_id: string; name: string; default_amount: number | string; unit: Supplement["unit"]; reminder_time?: string | null; schedule_rule?: { hours?: number[] } | null; active: boolean };
 type SupplementLogRow = { id: string; user_id: string; supplement_id?: string | null; name: string; amount: number | string; unit: SupplementLog["unit"]; logged_at: string; status?: SupplementLog["status"]; skipped_reason?: string | null };
-type ExerciseLibraryRow = { id: string; user_id: string; name: string; muscle_group: string; equipment: ExerciseDefinition["equipment"]; movement_pattern: ExerciseDefinition["movementPattern"]; built_in: boolean; notes?: string | null };
+type ExerciseLibraryRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  muscle_group: string;
+  equipment: ExerciseDefinition["equipment"];
+  movement_pattern: ExerciseDefinition["movementPattern"];
+  built_in: boolean;
+  notes?: string | null;
+  primary_muscles?: string[] | null;
+  secondary_muscles?: string[] | null;
+  cues?: string[] | null;
+  common_mistakes?: string[] | null;
+  substitutions?: string[] | null;
+  media_url?: string | null;
+  difficulty?: ExerciseDefinition["difficulty"] | null;
+  unilateral?: boolean | null;
+  equipment_alternatives?: ExerciseDefinition["equipmentAlternatives"] | null;
+  tags?: string[] | null;
+};
 type RoutineRow = { id: string; user_id: string; name: string; days_per_week: number; created_at: string; updated_at?: string };
 type WorkoutDayRow = { id: string; user_id: string; routine_id: string; name: string; weekday: string; order_index: number };
 type RoutineExerciseRow = { id: string; user_id: string; workout_day_id: string; exercise_id?: string; order_index: number; target_sets: number; target_reps_min: number; target_reps_max: number; target_weight_kg: number | string; rest_seconds: number; progression_rule?: string; superset_group?: string | null; name?: string; muscle_group?: string };
@@ -738,11 +757,48 @@ function supplementLogToRow(userId: string, item: SupplementLog) {
 }
 
 function exerciseFromRow(row: ExerciseLibraryRow): ExerciseDefinition {
-  return { id: row.id, name: row.name, muscleGroup: row.muscle_group, equipment: row.equipment, movementPattern: row.movement_pattern, builtIn: row.built_in, notes: row.notes ?? undefined };
+  return {
+    id: row.id,
+    name: row.name,
+    muscleGroup: row.muscle_group,
+    equipment: row.equipment,
+    movementPattern: row.movement_pattern,
+    builtIn: row.built_in,
+    notes: row.notes ?? undefined,
+    primaryMuscles: row.primary_muscles ?? undefined,
+    secondaryMuscles: row.secondary_muscles ?? undefined,
+    cues: row.cues ?? undefined,
+    commonMistakes: row.common_mistakes ?? undefined,
+    substitutions: row.substitutions ?? undefined,
+    mediaUrl: row.media_url ?? undefined,
+    difficulty: row.difficulty ?? undefined,
+    unilateral: row.unilateral ?? undefined,
+    equipmentAlternatives: row.equipment_alternatives ?? undefined,
+    tags: row.tags ?? undefined
+  };
 }
 
 function exerciseToRow(userId: string, item: ExerciseDefinition) {
-  return { id: item.id, user_id: userId, name: item.name, muscle_group: item.muscleGroup, equipment: item.equipment, movement_pattern: item.movementPattern, built_in: item.builtIn, notes: item.notes ?? null };
+  return {
+    id: item.id,
+    user_id: userId,
+    name: item.name,
+    muscle_group: item.muscleGroup,
+    equipment: item.equipment,
+    movement_pattern: item.movementPattern,
+    built_in: item.builtIn,
+    notes: item.notes ?? null,
+    primary_muscles: item.primaryMuscles ?? [],
+    secondary_muscles: item.secondaryMuscles ?? [],
+    cues: item.cues ?? [],
+    common_mistakes: item.commonMistakes ?? [],
+    substitutions: item.substitutions ?? [],
+    media_url: item.mediaUrl ?? null,
+    difficulty: item.difficulty ?? null,
+    unilateral: item.unilateral ?? false,
+    equipment_alternatives: item.equipmentAlternatives ?? [],
+    tags: item.tags ?? []
+  };
 }
 
 function routineFromRows(routine: RoutineRow, days: WorkoutDayRow[], exercises: RoutineExerciseRow[]): Routine {

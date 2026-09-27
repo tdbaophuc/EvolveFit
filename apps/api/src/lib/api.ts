@@ -1,5 +1,8 @@
 import {
   buildProgressReports,
+  buildWorkoutPlannerPreview,
+  coachV2Recommendation,
+  createCustomExerciseDefinition,
   createWorkoutSession,
   cryptoSafeId,
   finishWorkoutSession,
@@ -15,6 +18,7 @@ import {
   type HydrationLog,
   type BodyMetric,
   type ExerciseDefinition,
+  type EquipmentType,
   type Friend,
   type RecommendationDecision,
   type RecommendationHistoryItem,
@@ -26,7 +30,6 @@ import {
   type WorkoutSession,
   type WorkoutSet
 } from "@evolvefit/shared";
-import { aiCoachRecommendation } from "./integrations";
 import { getVapidPublicKey, isWebPushConfigured, sendWebPush, type PushPayload } from "./push";
 import { currentApiRuntime, currentApiState, drainResourceMutations, recordResourceMutation, resourceMutationCheckpoint } from "./api-runtime";
 
@@ -244,13 +247,26 @@ export function listExercises() {
 export function createExercise(input: Partial<ExerciseDefinition>): ApiResult<ExerciseDefinition> {
   if (!input.name?.trim()) return fail("name is required");
   const exercise: ExerciseDefinition = {
+    ...createCustomExerciseDefinition({
+      name: input.name,
+      muscleGroup: input.muscleGroup ?? "General",
+      equipment: input.equipment ?? "other",
+      movementPattern: input.movementPattern ?? "isolation",
+      notes: input.notes,
+      primaryMuscles: input.primaryMuscles,
+      secondaryMuscles: input.secondaryMuscles,
+      cues: input.cues,
+      commonMistakes: input.commonMistakes,
+      substitutions: input.substitutions,
+      mediaUrl: input.mediaUrl,
+      difficulty: input.difficulty,
+      unilateral: input.unilateral,
+      equipmentAlternatives: input.equipmentAlternatives,
+      tags: input.tags
+    }),
     id: input.id ?? cryptoSafeId(),
     name: input.name.trim(),
-    muscleGroup: input.muscleGroup?.trim() || "General",
-    equipment: input.equipment ?? "other",
-    movementPattern: input.movementPattern ?? "isolation",
-    builtIn: input.builtIn ?? false,
-    notes: input.notes
+    builtIn: input.builtIn ?? false
   };
   serverState().exerciseLibrary.push(exercise);
   recordResourceMutation({ type: "exercise.upsert", exercise });
@@ -267,7 +283,17 @@ export function updateExercise(id: string, input: Partial<ExerciseDefinition>): 
     ...(input.equipment !== undefined ? { equipment: input.equipment } : {}),
     ...(input.movementPattern !== undefined ? { movementPattern: input.movementPattern } : {}),
     ...(input.builtIn !== undefined ? { builtIn: input.builtIn } : {}),
-    ...(input.notes !== undefined ? { notes: input.notes } : {})
+    ...(input.notes !== undefined ? { notes: input.notes } : {}),
+    ...(input.primaryMuscles !== undefined ? { primaryMuscles: input.primaryMuscles } : {}),
+    ...(input.secondaryMuscles !== undefined ? { secondaryMuscles: input.secondaryMuscles } : {}),
+    ...(input.cues !== undefined ? { cues: input.cues } : {}),
+    ...(input.commonMistakes !== undefined ? { commonMistakes: input.commonMistakes } : {}),
+    ...(input.substitutions !== undefined ? { substitutions: input.substitutions } : {}),
+    ...(input.mediaUrl !== undefined ? { mediaUrl: input.mediaUrl } : {}),
+    ...(input.difficulty !== undefined ? { difficulty: input.difficulty } : {}),
+    ...(input.unilateral !== undefined ? { unilateral: input.unilateral } : {}),
+    ...(input.equipmentAlternatives !== undefined ? { equipmentAlternatives: input.equipmentAlternatives } : {}),
+    ...(input.tags !== undefined ? { tags: input.tags } : {})
   });
   recordResourceMutation({ type: "exercise.upsert", exercise });
   return ok(exercise);
@@ -565,15 +591,44 @@ export function recalculateProgression(exerciseId: string) {
   );
 }
 
+export function previewWorkoutPlanner(input: {
+  goal?: "strength" | "muscle" | "fat-loss" | "health";
+  daysPerWeek?: number;
+  equipment?: EquipmentType[];
+  experienceLevel?: "beginner" | "intermediate" | "advanced";
+  minutesPerSession?: number;
+  musclePriority?: string[];
+}) {
+  const goal = input.goal ?? serverState().profile.trainingGoal ?? "muscle";
+  const daysPerWeek = input.daysPerWeek ?? (serverState().profile.workoutDays.length || 3);
+  const equipment = input.equipment?.length ? input.equipment : serverState().profile.availableEquipment ?? ["bodyweight"];
+  const experienceLevel = input.experienceLevel ?? serverState().profile.experienceLevel ?? "intermediate";
+  return ok(
+    buildWorkoutPlannerPreview(
+      {
+        goal,
+        daysPerWeek,
+        equipment,
+        experienceLevel,
+        minutesPerSession: input.minutesPerSession,
+        musclePriority: input.musclePriority
+      },
+      serverState().exerciseLibrary
+    )
+  );
+}
+
 export async function coachRecommend() {
   const exercise = serverState().workoutExercises[serverState().activeExerciseIndex] ?? serverState().workoutExercises[0];
   const recentSets = serverState().workoutSets.filter((set) => set.exerciseId === exercise.id && isWorkingVolumeSet(set)).slice(-exercise.targetSets);
-  const recommendation = await aiCoachRecommendation({
-    exerciseName: exercise.name,
-    targetWeightKg: exercise.targetWeightKg,
-    targetRepsMax: exercise.targetRepsMax,
+  const recommendation = coachV2Recommendation({
+    exercise,
     recentSets,
-    recoveryNote: "Local readiness score and soreness can be injected here."
+    allSets: serverState().workoutSets,
+    workoutSessions: serverState().workoutSessions,
+    readiness: serverState().recovery,
+    availableEquipment: serverState().profile.availableEquipment,
+    exerciseLibrary: serverState().exerciseLibrary
   });
   const historyItem: RecommendationHistoryItem = {
     ...recommendation,

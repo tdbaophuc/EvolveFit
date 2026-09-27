@@ -28,6 +28,8 @@ import {
   buildBodyMetricChartDataset,
   buildBadgeSharePreview,
   buildWorkoutSummarySharePreview,
+  buildWorkoutPlannerPreview,
+  coachV2Recommendation,
   buildProgressDashboard,
   buildProgressReports,
   calculatePlatesPerSide,
@@ -54,7 +56,6 @@ import {
   parkSessionExercise,
   privateFriendLeaderboard,
   publishSharePreview,
-  progressiveOverloadRecommendation,
   readinessScore,
   filterExerciseLibrary,
   finishWorkoutSession,
@@ -115,7 +116,8 @@ import {
   type WorkoutSetPr,
   type WorkoutExercise,
   type WorkoutSet,
-  type WorkoutSetType
+  type WorkoutSetType,
+  type WorkoutPlannerPreview
 } from "@evolvefit/shared";
 import {
   allRestoreSections,
@@ -354,6 +356,7 @@ export default function AppPage() {
   const [newLibraryEquipment, setNewLibraryEquipment] = useState<EquipmentType>("cable");
   const [newLibraryPattern, setNewLibraryPattern] = useState<MovementPattern>("isolation");
   const [routineImportPreview, setRoutineImportPreview] = useState<RoutineImportPreview | null>(null);
+  const [workoutPlannerPreview, setWorkoutPlannerPreview] = useState<WorkoutPlannerPreview | null>(null);
   const [newMetricWeight, setNewMetricWeight] = useState(72);
   const [newMetricBodyFat, setNewMetricBodyFat] = useState(18);
   const [newMetricWaist, setNewMetricWaist] = useState(82);
@@ -660,11 +663,14 @@ export default function AppPage() {
   const allSetsForActive = currentSessionSets.filter((set) => set.exerciseId === activeExercise.id);
   const recentCoachSets = state.workoutSets.filter((set) => set.exerciseId === activeExercise.id && isWorkingVolumeSet(set)).slice(-activeExercise.targetSets);
   const activeRecommendation: RecommendationHistoryItem = {
-    ...progressiveOverloadRecommendation({
-      exerciseName: activeExercise.name,
-      targetWeightKg: activeExercise.targetWeightKg,
-      targetRepsMax: activeExercise.targetRepsMax,
-      recentSets: recentCoachSets
+    ...coachV2Recommendation({
+      exercise: activeExercise,
+      recentSets: recentCoachSets,
+      allSets: state.workoutSets,
+      workoutSessions: state.workoutSessions,
+      readiness: state.recovery,
+      availableEquipment: state.profile.availableEquipment,
+      exerciseLibrary: state.exerciseLibrary
     }),
     id: `local-${activeExercise.id}`,
     generatedAt: new Date().toISOString(),
@@ -1178,6 +1184,41 @@ export default function AppPage() {
       routine,
       `�?ã áp dụng mẫu ${templateLabels[template]}`
     );
+  }
+
+  function previewWorkoutPlanner() {
+    const preview = buildWorkoutPlannerPreview(
+      {
+        goal: state.profile.trainingGoal ?? "muscle",
+        daysPerWeek: Math.max(1, state.profile.workoutDays.length || activeRoutine?.daysPerWeek || 3),
+        equipment: state.profile.availableEquipment?.length ? state.profile.availableEquipment : ["bodyweight"],
+        experienceLevel: state.profile.experienceLevel ?? "intermediate",
+        minutesPerSession: 60,
+        musclePriority: latestMetric?.bodyFatPercent && latestMetric.bodyFatPercent > 20 ? ["Legs", "Back"] : undefined
+      },
+      state.exerciseLibrary
+    );
+    setWorkoutPlannerPreview(preview);
+    setToast("Coach Planner V2 đã tạo bản xem trước");
+  }
+
+  function applyWorkoutPlanner() {
+    if (!workoutPlannerPreview) return;
+    const routine = workoutPlannerPreview.routine;
+    commitSynced(
+      syncSelectedDay({
+        ...state,
+        activeTemplate: "custom",
+        routines: [...state.routines, routine],
+        activeRoutineId: routine.id,
+        selectedWorkoutDayId: routine.days[0]?.id ?? state.selectedWorkoutDayId,
+        activeExerciseIndex: 0
+      }),
+      "routine.create",
+      routine,
+      "Đã áp dụng Coach Planner V2"
+    );
+    setWorkoutPlannerPreview(null);
   }
 
   function selectWorkoutDay(dayId: string) {
@@ -2354,6 +2395,10 @@ export default function AppPage() {
             downloadRoutineSampleXlsx={downloadRoutineSampleXlsx}
             confirmRoutineImport={confirmRoutineImport}
             clearRoutineImport={() => setRoutineImportPreview(null)}
+            workoutPlannerPreview={workoutPlannerPreview}
+            previewWorkoutPlanner={previewWorkoutPlanner}
+            applyWorkoutPlanner={applyWorkoutPlanner}
+            clearWorkoutPlanner={() => setWorkoutPlannerPreview(null)}
             deleteExercise={deleteExercise}
             moveExercise={moveExercise}
             reorderSessionExercise={reorderSessionExercise}
@@ -3192,6 +3237,10 @@ function WorkoutView(props: {
   downloadRoutineSampleXlsx: () => void;
   confirmRoutineImport: (mode: "replace" | "append") => void;
   clearRoutineImport: () => void;
+  workoutPlannerPreview: WorkoutPlannerPreview | null;
+  previewWorkoutPlanner: () => void;
+  applyWorkoutPlanner: () => void;
+  clearWorkoutPlanner: () => void;
   deleteExercise: (id: string) => void;
   moveExercise: (id: string, direction: -1 | 1) => void;
   reorderSessionExercise: (id: string, direction: -1 | 1) => void;
@@ -3261,6 +3310,38 @@ function WorkoutView(props: {
           <button className="primary-button training-bg" onClick={props.startWorkout}>
             <Check size={18} /> Bắt đầu tập
           </button>
+        </section>
+
+        <section className="card">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Coach Planner V2</p>
+              <h2>Gợi ý lịch rule-first</h2>
+            </div>
+            <Trophy size={20} />
+          </div>
+          <p>Tạo lịch theo mục tiêu, số buổi/tuần, thiết bị, kinh nghiệm và ràng buộc phục hồi trong hồ sơ.</p>
+          <div className="split-actions">
+            <button className="secondary-button" onClick={props.previewWorkoutPlanner}>Tạo preview</button>
+            <button className="primary-button training-bg" onClick={props.applyWorkoutPlanner} disabled={!props.workoutPlannerPreview}>Áp dụng lịch</button>
+            <button className="secondary-button" onClick={props.clearWorkoutPlanner} disabled={!props.workoutPlannerPreview}>Xóa preview</button>
+          </div>
+          {props.workoutPlannerPreview && (
+            <div className="timeline compact">
+              <div>
+                <span>{props.workoutPlannerPreview.routine.name}</span>
+                <strong>{props.workoutPlannerPreview.routine.days.length} ngày - {props.workoutPlannerPreview.routine.days.reduce((sum, day) => sum + day.exercises.length, 0)} bài</strong>
+                <em>{props.workoutPlannerPreview.rationale.join(" | ")}</em>
+              </div>
+              {props.workoutPlannerPreview.routine.days.map((day) => (
+                <div key={day.id}>
+                  <span>{day.day}</span>
+                  <strong>{day.name}</strong>
+                  <em>{day.exercises.map((exercise) => exercise.name).join(", ")}</em>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="card">
@@ -3959,6 +4040,13 @@ function ProgressView(props: {
             <li key={point}>{point}</li>
           ))}
         </ul>
+        {props.coachRecommendation.detectedSignals?.length ? (
+          <div className="chip-row" aria-label="Tín hiệu Coach V2">
+            {props.coachRecommendation.detectedSignals.map((signal) => (
+              <span key={signal} className="tiny-chip">{signal}</span>
+            ))}
+          </div>
+        ) : null}
         <div className="setting-row">
           <span>Hành động gợi ý</span>
           <strong>{props.coachRecommendation.suggestedAction}</strong>
