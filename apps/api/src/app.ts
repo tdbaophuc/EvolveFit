@@ -106,7 +106,7 @@ function sendError(reply: FastifyReply, request: FastifyRequest, error: string, 
   reply.code(status).send({ ok: false, error, errorCode, details, requestId: request.requestId });
 }
 
-type RateLimitGroup = "auth" | "cron" | "sync" | "write" | "public";
+type RateLimitGroup = "admin" | "auth" | "cron" | "sync" | "write" | "public";
 
 function createGroupedRateLimiter(env: NodeJS.ProcessEnv) {
   const buckets = new Map<string, { count: number; resetAt: number }>();
@@ -129,6 +129,7 @@ function createGroupedRateLimiter(env: NodeJS.ProcessEnv) {
 }
 
 function rateLimitGroup(method: string, path: string): RateLimitGroup {
+  if (path.startsWith("/api/admin")) return "admin";
   if (path.startsWith("/api/auth")) return "auth";
   if (path.startsWith("/api/cron")) return "cron";
   if (path === "/api/sync/batch") return "sync";
@@ -137,6 +138,7 @@ function rateLimitGroup(method: string, path: string): RateLimitGroup {
 }
 
 function defaultRateLimitMax(group: RateLimitGroup): number {
+  if (group === "admin") return 60;
   if (group === "auth") return 30;
   if (group === "cron") return 20;
   if (group === "sync") return 120;

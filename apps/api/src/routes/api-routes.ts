@@ -60,6 +60,25 @@ import {
 } from "../lib/api";
 import { createAppUrl } from "../lib/app-url";
 import {
+  adminDashboardSummary,
+  adminSupportUserLookup,
+  createAdminMarketplaceExercise,
+  createAdminRoutineTemplate,
+  grantAdminRole,
+  listAdminAuditLogs,
+  listAdminMarketplaceExercises,
+  listAdminRoles,
+  listAdminRoutineTemplates,
+  recordAdminAuditLog,
+  requireAdminPermission,
+  resolveAdminActor,
+  revokeAdminRole,
+  updateAdminMarketplaceExercise,
+  updateAdminRoutineTemplate,
+  type AdminPermission,
+  type AdminRole
+} from "../lib/admin";
+import {
   authCookieName,
   createCodeChallenge,
   createCodeVerifier,
@@ -142,6 +161,67 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
     reply.header(requestIdResponseHeader(), request.requestId).header("cache-control", "public, max-age=300");
     return spec;
   });
+
+  app.get("/api/admin/dashboard", (request, reply) =>
+    withAdminContext(request, reply, "admin:dashboard", ({ state, actor }) => ({ actor: adminActorPayload(actor), summary: adminDashboardSummary(state) }))
+  );
+  app.get("/api/admin/governance/health", (request, reply) =>
+    withAdminContext(request, reply, "admin:dashboard", ({ actor }) => ({
+      actor: adminActorPayload(actor),
+      mode: request.apiRepository.mode,
+      bootstrapConfigured: Boolean(env.ADMIN_BOOTSTRAP_EMAILS),
+      checkedAt: new Date().toISOString()
+    }))
+  );
+  app.get("/api/admin/roles", (request, reply) =>
+    withAdminContext(request, reply, "audit:read", () => ({ items: listAdminRoles(env), total: listAdminRoles(env).length }))
+  );
+  app.post("/api/admin/roles", (request, reply) =>
+    withAdminContext(request, reply, "roles:write", ({ actor }) => {
+      const body = bodyAs<{ email: string; role: AdminRole; revoke?: boolean }>(request);
+      const result = body.revoke ? revokeAdminRole({ email: body.email, role: body.role }) : grantAdminRole({ email: body.email, role: body.role, grantedBy: actor.user.email });
+      return result ?? { email: body.email, role: body.role, revoked: true };
+    }, { mutation: { action: "admin.role.write", resourceType: "admin_role" } })
+  );
+  app.get("/api/admin/exercises", (request, reply) =>
+    withAdminContext(request, reply, "content:read", ({ state }) => listAdminMarketplaceExercises(state, request.query as Record<string, never>))
+  );
+  app.post("/api/admin/exercises", (request, reply) =>
+    withAdminContext(request, reply, "content:write", ({ state }) => createAdminMarketplaceExercise(state, bodyAs(request)), {
+      mutation: { action: "admin.exercise.create", resourceType: "exercise" }
+    })
+  );
+  app.patch<{ Params: IdParams }>("/api/admin/exercises/:id", (request, reply) =>
+    withAdminContext(request, reply, "content:write", ({ state }) => {
+      const exercise = updateAdminMarketplaceExercise(state, request.params.id, bodyAs(request));
+      if (!exercise) throw new AdminRouteError("exercise not found", 404);
+      return exercise;
+    }, { mutation: { action: "admin.exercise.update", resourceType: "exercise", resourceId: request.params.id } })
+  );
+  app.get("/api/admin/routine-templates", (request, reply) =>
+    withAdminContext(request, reply, "content:read", ({ state }) => listAdminRoutineTemplates(state, request.query as Record<string, never>))
+  );
+  app.post("/api/admin/routine-templates", (request, reply) =>
+    withAdminContext(request, reply, "content:write", ({ state }) => createAdminRoutineTemplate(state, bodyAs(request)), {
+      mutation: { action: "admin.routineTemplate.create", resourceType: "routine_template" }
+    })
+  );
+  app.patch<{ Params: IdParams }>("/api/admin/routine-templates/:id", (request, reply) =>
+    withAdminContext(request, reply, "content:write", ({ state }) => {
+      const template = updateAdminRoutineTemplate(state, request.params.id, bodyAs(request));
+      if (!template) throw new AdminRouteError("routine template not found", 404);
+      return template;
+    }, { mutation: { action: "admin.routineTemplate.update", resourceType: "routine_template", resourceId: request.params.id } })
+  );
+  app.get("/api/admin/feedback", (request, reply) =>
+    withAdminContext(request, reply, "support:read", () => ({ items: [], total: 0, redacted: true }))
+  );
+  app.get("/api/admin/users", (request, reply) =>
+    withAdminContext(request, reply, "support:read", ({ actor }) => ({ items: adminSupportUserLookup([actor.user], String((request.query as Record<string, unknown>).query ?? "")), redacted: true }))
+  );
+  app.get("/api/admin/audit-logs", (request, reply) =>
+    withAdminContext(request, reply, "audit:read", () => listAdminAuditLogs(request.query as Record<string, never>))
+  );
 
   app.get("/api/auth/session", async (request, reply) => {
     const cookie = request.cookies[authCookieName];
@@ -496,6 +576,62 @@ async function withDataContext(
   }
 }
 
+async function withAdminContext(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  permission: AdminPermission,
+  handler: (context: { actor: NonNullable<ReturnType<typeof resolveAdminActor>>; state: ReturnType<typeof currentApiState> }) => unknown | Promise<unknown>,
+  options: { mutation?: { action: string; resourceType: string; resourceId?: string } } = {}
+) {
+  try {
+    const user = await resolveApiUser(request);
+    const actor = resolveAdminActor(user, request.apiEnv);
+    const authorized = requireAdminPermission(actor, permission);
+    if (!authorized.ok) return sendErrorEnvelope(reply, request, authorized.error, authorized.status);
+
+    const state = await request.apiRepository.loadUserState(user);
+    const before = options.mutation ? structuredClone(state) : undefined;
+    const data = await handler({ actor: authorized.actor, state });
+    if (options.mutation) {
+      await request.apiRepository.saveUserState(user, state);
+      recordAdminAuditLog({
+        actorUserId: user.id,
+        actorEmail: user.email,
+        action: options.mutation.action,
+        resourceType: options.mutation.resourceType,
+        resourceId: options.mutation.resourceId,
+        before,
+        after: data,
+        requestId: request.requestId,
+        ip: request.ip,
+        userAgent: request.headers["user-agent"]?.toString()
+      });
+    }
+    reply.header(requestIdResponseHeader(), request.requestId);
+    return { ok: true, data, requestId: request.requestId };
+  } catch (error) {
+    const status = error instanceof AdminRouteError ? error.status : error instanceof AuthRequiredError ? error.status : 500;
+    return sendErrorEnvelope(reply, request, status >= 500 ? "Unexpected API error" : error instanceof Error ? error.message : "Unexpected API error", status);
+  }
+}
+
+class AdminRouteError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+  }
+}
+
+function adminActorPayload(actor: NonNullable<ReturnType<typeof resolveAdminActor>>) {
+  return {
+    email: actor.user.email,
+    roles: actor.roles,
+    permissions: actor.permissions
+  };
+}
+
 class AuthRequiredError extends Error {
   constructor(
     message: string,
@@ -634,6 +770,44 @@ function validateRouteRequest(request: FastifyRequest): ValidationIssue[] {
   if (path === "/api/auth/session" || path === "/api/auth/oauth/google" || path === "/api/auth/callback" || path === "/api/auth/account") return issues;
   if (path === "/api/observability/logs") {
     optionalText(query.requestId, "query.requestId", issues, { max: 120 });
+    return issues;
+  }
+  if (path.startsWith("/api/admin")) {
+    optionalInteger(query.page === undefined ? undefined : Number(query.page), "query.page", issues, { min: 1, max: 10000 });
+    optionalInteger(query.pageSize === undefined ? undefined : Number(query.pageSize), "query.pageSize", issues, { min: 1, max: 100 });
+    optionalText(query.query, "query.query", issues, { max: 160 });
+    optionalEnum(query.status, "query.status", ["all", "draft", "published", "archived", "pending-review"], issues);
+    optionalText(query.action, "query.action", issues, { max: 120 });
+    optionalText(query.resourceType, "query.resourceType", issues, { max: 120 });
+    if (path === "/api/admin/roles" && method === "POST") {
+      requireEmail(body.email, "body.email", issues);
+      requireEnum(body.role, "body.role", ["super-admin", "content-admin", "support"], issues);
+      optionalBoolean(body.revoke, "body.revoke", issues);
+    }
+    if (path === "/api/admin/exercises" && method === "POST") {
+      requireText(body.name, "body.name", issues, { min: 1, max: 160 });
+      validateExerciseBody(body, issues);
+      optionalEnum(body.status, "body.status", ["draft", "published", "archived", "pending-review"], issues);
+    }
+    if (path === "/api/admin/exercises/:id" && method === "PATCH") {
+      optionalText(body.name, "body.name", issues, { min: 1, max: 160 });
+      validateExerciseBody(body, issues);
+      optionalEnum(body.status, "body.status", ["draft", "published", "archived", "pending-review"], issues);
+    }
+    if (path === "/api/admin/routine-templates" && method === "POST") {
+      requireText(body.name, "body.name", issues, { min: 1, max: 160 });
+      optionalEnum(body.status, "body.status", ["draft", "published", "archived"], issues);
+      optionalEnum(body.targetGoal, "body.targetGoal", ["strength", "muscle", "fat-loss", "health"], issues);
+      optionalInteger(body.daysPerWeek, "body.daysPerWeek", issues, { min: 1, max: 7 });
+      optionalInteger(body.minutesPerSession, "body.minutesPerSession", issues, { min: 15, max: 180 });
+    }
+    if (path === "/api/admin/routine-templates/:id" && method === "PATCH") {
+      optionalText(body.name, "body.name", issues, { min: 1, max: 160 });
+      optionalEnum(body.status, "body.status", ["draft", "published", "archived"], issues);
+      optionalEnum(body.targetGoal, "body.targetGoal", ["strength", "muscle", "fat-loss", "health"], issues);
+      optionalInteger(body.daysPerWeek, "body.daysPerWeek", issues, { min: 1, max: 7 });
+      optionalInteger(body.minutesPerSession, "body.minutesPerSession", issues, { min: 15, max: 180 });
+    }
     return issues;
   }
   if (path === "/api/notifications/status" || path === "/api/notifications/config") {

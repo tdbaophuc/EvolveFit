@@ -6,7 +6,7 @@ describe("Fastify API contract", () => {
   let app: FastifyInstance;
 
   beforeAll(async () => {
-    app = await buildApp({ ...process.env, CRON_SECRET: "cron-test", API_CORS_ORIGIN: "http://localhost:5173" });
+    app = await buildApp({ ...process.env, CRON_SECRET: "cron-test", API_CORS_ORIGIN: "http://localhost:5173", ADMIN_BOOTSTRAP_EMAILS: "admin@example.com" });
     await app.ready();
   });
 
@@ -165,6 +165,55 @@ describe("Fastify API contract", () => {
     expect((await app.inject({ method: "PATCH", url: "/api/exercises/marketplace/single-arm-dumbbell-row", payload: { notes: "bad" } })).statusCode).toBe(404);
     expect((await app.inject({ method: "DELETE", url: `/api/exercises/${exercise.data.id}` })).json()).toMatchObject({ ok: true });
     expect((await app.inject({ method: "DELETE", url: `/api/routines/${routine.data.id}` })).json()).toMatchObject({ ok: true });
+  });
+
+  it("protects admin roles, content governance, support lookup, and audit logs", async () => {
+    await app.inject({ method: "POST", url: "/api/auth/sign-in", payload: { email: "plain-user@example.com", mode: "local" } });
+    expect((await app.inject("/api/admin/dashboard")).statusCode).toBe(401);
+
+    await app.inject({ method: "POST", url: "/api/auth/sign-in", payload: { email: "admin@example.com", mode: "local" } });
+    expect((await app.inject("/api/admin/dashboard")).json()).toMatchObject({
+      ok: true,
+      data: { actor: { roles: ["super-admin"] }, summary: { marketplaceExercises: expect.any(Number), routineTemplates: expect.any(Number) } }
+    });
+
+    expect((await app.inject({
+      method: "POST",
+      url: "/api/admin/roles",
+      payload: { email: "content@example.com", role: "content-admin" }
+    })).json()).toMatchObject({ ok: true, data: { email: "content@example.com", role: "content-admin" } });
+    expect((await app.inject({
+      method: "POST",
+      url: "/api/admin/roles",
+      payload: { email: "support@example.com", role: "support" }
+    })).json()).toMatchObject({ ok: true, data: { email: "support@example.com", role: "support" } });
+
+    await app.inject({ method: "POST", url: "/api/auth/sign-in", payload: { email: "content@example.com", mode: "local" } });
+    const createdExercise = (await app.inject({
+      method: "POST",
+      url: "/api/admin/exercises",
+      payload: { name: "Admin Landmine Press", muscleGroup: "Shoulders", equipment: "barbell", movementPattern: "push", status: "draft" }
+    })).json();
+    expect(createdExercise).toMatchObject({ ok: true, data: { name: "Admin Landmine Press", catalogSource: "marketplace", status: "draft" } });
+    expect((await app.inject({
+      method: "PATCH",
+      url: `/api/admin/exercises/${createdExercise.data.id}`,
+      payload: { status: "published" }
+    })).json()).toMatchObject({ ok: true, data: { status: "published" } });
+    expect((await app.inject({
+      method: "POST",
+      url: "/api/admin/roles",
+      payload: { email: "bad@example.com", role: "support" }
+    })).statusCode).toBe(403);
+
+    await app.inject({ method: "POST", url: "/api/auth/sign-in", payload: { email: "support@example.com", mode: "local" } });
+    expect((await app.inject("/api/admin/users?query=support")).json()).toMatchObject({ ok: true, data: { redacted: true, items: expect.any(Array) } });
+    expect((await app.inject({ method: "POST", url: "/api/admin/exercises", payload: { name: "Nope" } })).statusCode).toBe(403);
+
+    await app.inject({ method: "POST", url: "/api/auth/sign-in", payload: { email: "admin@example.com", mode: "local" } });
+    const audit = (await app.inject("/api/admin/audit-logs?resourceType=exercise")).json();
+    expect(audit).toMatchObject({ ok: true, data: { total: expect.any(Number), items: expect.any(Array) } });
+    expect(audit.data.items.some((item: { action: string }) => item.action === "admin.exercise.create")).toBe(true);
   });
 
   it("keeps workouts, progression, sync, achievements, leaderboards, coach, notifications, and cron", async () => {

@@ -471,6 +471,165 @@
         "security": []
       }
     },
+    "/api/admin/dashboard": {
+      "get": {
+        "summary": "Admin dashboard summary for marketplace, templates, reports and governance.",
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "429": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/governance/health": {
+      "get": {
+        "summary": "Admin governance health and bootstrap status.",
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/roles": {
+      "get": {
+        "summary": "List active admin role assignments.",
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "post": {
+        "summary": "Grant or revoke an admin role. Requires super-admin.",
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/exercises": {
+      "get": {
+        "summary": "List marketplace exercises for admin governance.",
+        "parameters": [
+          { "name": "query", "in": "query", "schema": { "type": "string" } },
+          { "name": "status", "in": "query", "schema": { "type": "string" } },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100 } }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "post": {
+        "summary": "Create marketplace exercise draft or published item. Requires content-admin.",
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/exercises/{id}": {
+      "patch": {
+        "summary": "Update, publish or archive a marketplace exercise. Requires content-admin.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/routine-templates": {
+      "get": {
+        "summary": "List routine templates for admin governance.",
+        "parameters": [
+          { "name": "query", "in": "query", "schema": { "type": "string" } },
+          { "name": "status", "in": "query", "schema": { "type": "string" } },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100 } }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "post": {
+        "summary": "Create routine template draft or published item. Requires content-admin.",
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/routine-templates/{id}": {
+      "patch": {
+        "summary": "Update, publish or archive a routine template. Requires content-admin.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/feedback": {
+      "get": {
+        "summary": "List feedback and moderation queues with redaction.",
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "summary": "Support user lookup with redacted personal data.",
+        "parameters": [
+          { "name": "query", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/audit-logs": {
+      "get": {
+        "summary": "List admin audit logs.",
+        "parameters": [
+          { "name": "action", "in": "query", "schema": { "type": "string" } },
+          { "name": "resourceType", "in": "query", "schema": { "type": "string" } },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100 } }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/observability/logs": {
       "get": {
         "summary": "Recent structured logs, optionally filtered by requestId",
