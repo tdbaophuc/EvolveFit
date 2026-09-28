@@ -33,6 +33,7 @@ import {
   isWorkingVolumeSet,
   isDrinkModuleActive,
   listMarketplaceExercises,
+  listRoutineTemplates,
   marketplaceExerciseDefinitions,
   monthlyAchievements,
   latestBodyMetric,
@@ -53,6 +54,10 @@ import {
   reorderSessionExerciseQueue,
   revokeHealthIntegrationPermission,
   readinessScore,
+  previewRoutineTemplateApply,
+  routineFromMarketplaceTemplate,
+  routineMarketplaceTemplates,
+  routineTemplateCompatibility,
   validateBodyMetric,
   enqueueSync,
   exercisePersonalRecords,
@@ -397,6 +402,44 @@ describe("routine model and exercise library", () => {
 
     expect(substitutes.length).toBeGreaterThan(0);
     expect(substitutes.every((exercise) => exercise.equipment === "dumbbell" || exercise.equipmentAlternatives?.includes("dumbbell"))).toBe(true);
+  });
+
+  it("lists routine templates by marketplace filters and scores compatibility", () => {
+    const templates = listRoutineTemplates(routineMarketplaceTemplates, {
+      goal: "strength",
+      equipment: "barbell",
+      sort: "compatibility",
+      profile: {
+        trainingGoal: "strength",
+        experienceLevel: "intermediate",
+        availableEquipment: ["barbell", "dumbbell", "cable", "machine"]
+      }
+    });
+
+    expect(templates.map((template) => template.slug)).toContain("upper-lower-strength-4d");
+    const compatibility = routineTemplateCompatibility(templates[0], {
+      trainingGoal: "strength",
+      experienceLevel: "intermediate",
+      availableEquipment: ["bodyweight"]
+    });
+    expect(compatibility.score).toBeLessThan(100);
+    expect(compatibility.missingEquipment).toContain("barbell");
+  });
+
+  it("copies routine marketplace templates into user-owned routines without mutating the source", () => {
+    const template = routineMarketplaceTemplates.find((item) => item.slug === "beginner-full-body-3d")!;
+    const preview = previewRoutineTemplateApply(template, {
+      trainingGoal: "health",
+      experienceLevel: "beginner",
+      availableEquipment: ["dumbbell", "bodyweight"]
+    });
+    const routine = routineFromMarketplaceTemplate(template, { id: "routine-copy", name: "My Full Body" });
+
+    expect(preview.routine.days).toHaveLength(template.days.length);
+    expect(routine).toMatchObject({ id: "routine-copy", name: "My Full Body", daysPerWeek: template.daysPerWeek });
+    expect(routine.days[0].exercises[0]).toMatchObject({ definitionId: template.days[0].exercises[0].exerciseId });
+    expect(routine.days[0].id).not.toBe(template.days[0].id);
+    expect(template.days[0].exercises[0].id).toBe("template-bfb-a-1");
   });
 
   it("builds a planner preview from goal, equipment and weekly frequency", () => {

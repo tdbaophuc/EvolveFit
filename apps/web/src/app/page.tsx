@@ -51,6 +51,7 @@ import {
   isDrinkModuleActive,
   isUserOwnedExercise,
   listMarketplaceExercises,
+  listRoutineTemplates,
   normalizeDrinkModules,
   normalizeExerciseDefinition,
   normalizePlateInventory,
@@ -69,6 +70,8 @@ import {
   requestHealthIntegrationPermission,
   revokeHealthIntegrationPermission,
   reorderSessionExerciseQueue,
+  previewRoutineTemplateApply,
+  routineFromMarketplaceTemplate,
   routineExercisesToWorkoutExercises,
   saveSessionExerciseOrderToRoutine,
   selectedWorkoutDay,
@@ -106,6 +109,8 @@ import {
   type PlateCalculation,
   type PlateSettings,
   type RoutineImportPreview,
+  type RoutineTemplate,
+  type RoutineTemplatePreview,
   type RoutineExercise,
   type SessionExerciseQueueItem,
   type Supplement,
@@ -358,6 +363,11 @@ export default function AppPage() {
   const [libraryDifficultyFilter, setLibraryDifficultyFilter] = useState("all");
   const [libraryTagFilter, setLibraryTagFilter] = useState("all");
   const [selectedMarketplaceExerciseId, setSelectedMarketplaceExerciseId] = useState<string | null>(null);
+  const [routineTemplateSearch, setRoutineTemplateSearch] = useState("");
+  const [routineTemplateGoalFilter, setRoutineTemplateGoalFilter] = useState<"all" | RoutineTemplate["targetGoal"]>("all");
+  const [routineTemplateEquipmentFilter, setRoutineTemplateEquipmentFilter] = useState<"all" | EquipmentType>("all");
+  const [selectedRoutineTemplateId, setSelectedRoutineTemplateId] = useState<string | null>(null);
+  const [routineTemplatePreview, setRoutineTemplatePreview] = useState<RoutineTemplatePreview | null>(null);
   const [newLibraryExerciseName, setNewLibraryExerciseName] = useState("Cable Fly");
   const [newLibraryMuscleGroup, setNewLibraryMuscleGroup] = useState("Ngực");
   const [newLibraryEquipment, setNewLibraryEquipment] = useState<EquipmentType>("cable");
@@ -673,6 +683,31 @@ export default function AppPage() {
   const selectedMarketplaceExercise = selectedMarketplaceExerciseId
     ? marketplaceExercises.find((exercise) => exercise.id === selectedMarketplaceExerciseId) ?? null
     : marketplaceExercises[0] ?? null;
+  const routineTemplateCatalog = listRoutineTemplates(state.routineTemplatesMarketplace, {
+    query: routineTemplateSearch,
+    goal: routineTemplateGoalFilter,
+    equipment: routineTemplateEquipmentFilter,
+    status: "published",
+    sort: "compatibility",
+    profile: {
+      trainingGoal: state.profile.trainingGoal,
+      experienceLevel: state.profile.experienceLevel,
+      availableEquipment: state.profile.availableEquipment
+    }
+  });
+  const selectedRoutineTemplate = selectedRoutineTemplateId
+    ? routineTemplateCatalog.find((template) => template.id === selectedRoutineTemplateId) ?? null
+    : routineTemplateCatalog[0] ?? null;
+  const activeRoutineTemplatePreview =
+    routineTemplatePreview && selectedRoutineTemplate && routineTemplatePreview.template.id === selectedRoutineTemplate.id
+      ? routineTemplatePreview
+      : selectedRoutineTemplate
+        ? previewRoutineTemplateApply(selectedRoutineTemplate, {
+            trainingGoal: state.profile.trainingGoal,
+            experienceLevel: state.profile.experienceLevel,
+            availableEquipment: state.profile.availableEquipment
+          })
+        : null;
   const activeQueueItem = activeSessionQueue[state.activeExerciseIndex] ?? activeSessionQueue.find((item) => item.status !== "completed") ?? activeSessionQueue[0];
   const activeExercise =
     (activeWorkoutSession && activeQueueItem
@@ -1205,6 +1240,45 @@ export default function AppPage() {
       routine,
       `�?ã áp dụng mẫu ${templateLabels[template]}`
     );
+  }
+
+  function previewRoutineTemplate(template: RoutineTemplate) {
+    setSelectedRoutineTemplateId(template.id);
+    setRoutineTemplatePreview(
+      previewRoutineTemplateApply(template, {
+        trainingGoal: state.profile.trainingGoal,
+        experienceLevel: state.profile.experienceLevel,
+        availableEquipment: state.profile.availableEquipment
+      })
+    );
+    setToast(`Da tao preview ${template.name}`);
+  }
+
+  function applyRoutineMarketplaceTemplate(template: RoutineTemplate, customize = false) {
+    const routine = routineFromMarketplaceTemplate(template, {
+      id: `routine-template-${template.id}-${cryptoSafeId()}`,
+      name: customize ? `${template.name} (custom)` : template.name
+    });
+    commitSynced(
+      syncSelectedDay({
+        ...state,
+        activeTemplate: "custom",
+        routines: [...state.routines, routine],
+        activeRoutineId: routine.id,
+        selectedWorkoutDayId: routine.days[0]?.id ?? state.selectedWorkoutDayId,
+        workoutExercises: routine.days[0]?.exercises ?? state.workoutExercises,
+        activeExerciseIndex: 0
+      }),
+      "routine.create",
+      {
+        ...routine,
+        marketplaceTemplateId: template.id,
+        marketplaceTemplateVersion: template.version,
+        customize
+      },
+      customize ? `Da tao ban tuy bien tu ${template.name}` : `Da ap dung ${template.name}`
+    );
+    setRoutineTemplatePreview(null);
   }
 
   function previewWorkoutPlanner() {
@@ -2455,6 +2529,18 @@ export default function AppPage() {
             addCustomExerciseDefinition={addCustomExerciseDefinition}
             updateExerciseDefinition={updateExerciseDefinition}
             deleteExerciseDefinition={deleteExerciseDefinition}
+            routineTemplateCatalog={routineTemplateCatalog}
+            selectedRoutineTemplate={selectedRoutineTemplate}
+            routineTemplatePreview={activeRoutineTemplatePreview}
+            routineTemplateSearch={routineTemplateSearch}
+            setRoutineTemplateSearch={setRoutineTemplateSearch}
+            routineTemplateGoalFilter={routineTemplateGoalFilter}
+            setRoutineTemplateGoalFilter={setRoutineTemplateGoalFilter}
+            routineTemplateEquipmentFilter={routineTemplateEquipmentFilter}
+            setRoutineTemplateEquipmentFilter={setRoutineTemplateEquipmentFilter}
+            selectRoutineTemplate={setSelectedRoutineTemplateId}
+            previewRoutineTemplate={previewRoutineTemplate}
+            applyRoutineMarketplaceTemplate={applyRoutineMarketplaceTemplate}
             wakeLockStatus={wakeLockStatus}
           />
         )}
@@ -3306,6 +3392,18 @@ function WorkoutView(props: {
   addCustomExerciseDefinition: () => void;
   updateExerciseDefinition: (id: string, patch: Partial<ExerciseDefinition>) => void;
   deleteExerciseDefinition: (id: string) => void;
+  routineTemplateCatalog: RoutineTemplate[];
+  selectedRoutineTemplate: RoutineTemplate | null;
+  routineTemplatePreview: RoutineTemplatePreview | null;
+  routineTemplateSearch: string;
+  setRoutineTemplateSearch: (value: string) => void;
+  routineTemplateGoalFilter: "all" | RoutineTemplate["targetGoal"];
+  setRoutineTemplateGoalFilter: (value: "all" | RoutineTemplate["targetGoal"]) => void;
+  routineTemplateEquipmentFilter: "all" | EquipmentType;
+  setRoutineTemplateEquipmentFilter: (value: "all" | EquipmentType) => void;
+  selectRoutineTemplate: (id: string) => void;
+  previewRoutineTemplate: (template: RoutineTemplate) => void;
+  applyRoutineMarketplaceTemplate: (template: RoutineTemplate, customize?: boolean) => void;
   wakeLockStatus: "unknown" | "unsupported" | "active" | "failed";
 }) {
   const totalVolume = workingSetVolumeKg(props.currentSessionSets);
@@ -3331,6 +3429,8 @@ function WorkoutView(props: {
 
   const selectedMarketplaceExercise = props.selectedMarketplaceExercise ? normalizeExerciseDefinition(props.selectedMarketplaceExercise) : null;
   const marketplaceTags = Array.from(new Set(props.marketplaceExercises.flatMap((exercise) => normalizeExerciseDefinition(exercise).tags ?? []))).slice(0, 12);
+  const goalOptions: ("all" | RoutineTemplate["targetGoal"])[] = ["all", "strength", "muscle", "fat-loss", "health"];
+  const equipmentOptions: ("all" | EquipmentType)[] = ["all", "barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "other"];
 
   if (props.mode === "finished") {
     return (
@@ -3363,6 +3463,95 @@ function WorkoutView(props: {
           <button className="primary-button training-bg" onClick={props.startWorkout}>
             <Check size={18} /> Bắt đầu tập
           </button>
+        </section>
+
+        <section className="card">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Marketplace lich tap</p>
+              <h2>Chon template co san</h2>
+            </div>
+            <CalendarCheck size={20} />
+          </div>
+          <div className="exercise-edit-grid">
+            <label className="wide-field">
+              <span>Tim template</span>
+              <input value={props.routineTemplateSearch} onChange={(event) => props.setRoutineTemplateSearch(event.target.value)} placeholder="PPL, home, strength..." />
+            </label>
+            <label>
+              <span>Muc tieu</span>
+              <select value={props.routineTemplateGoalFilter} onChange={(event) => props.setRoutineTemplateGoalFilter(event.target.value as "all" | RoutineTemplate["targetGoal"])}>
+                {goalOptions.map((goal) => <option key={goal} value={goal}>{goal === "all" ? "Tat ca" : goal}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>Thiet bi</span>
+              <select value={props.routineTemplateEquipmentFilter} onChange={(event) => props.setRoutineTemplateEquipmentFilter(event.target.value as "all" | EquipmentType)}>
+                {equipmentOptions.map((equipment) => <option key={equipment} value={equipment}>{equipment === "all" ? "Tat ca" : equipment}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="exercise-marketplace-grid">
+            <div className="timeline compact">
+              {props.routineTemplateCatalog.slice(0, 8).map((template) => {
+                const preview = previewRoutineTemplateApply(template, {
+                  trainingGoal: props.state.profile.trainingGoal,
+                  experienceLevel: props.state.profile.experienceLevel,
+                  availableEquipment: props.state.profile.availableEquipment
+                });
+                return (
+                  <button key={template.id} className={props.selectedRoutineTemplate?.id === template.id ? "active" : ""} onClick={() => props.selectRoutineTemplate(template.id)}>
+                    <span>{template.targetGoal} - {template.daysPerWeek}d/wk</span>
+                    <strong>{template.name}</strong>
+                    <em>{template.minutesPerSession} phut/buoi - fit {preview.compatibility.score}%</em>
+                  </button>
+                );
+              })}
+              {!props.routineTemplateCatalog.length && <div><span>Trong</span><strong>Khong co template phu hop</strong><em>Thu bo bot filter hoac tim theo muc tieu khac.</em></div>}
+            </div>
+            <div className="library-detail">
+              {props.selectedRoutineTemplate && props.routineTemplatePreview ? (
+                <>
+                  <div>
+                    <p className="eyebrow">{props.selectedRoutineTemplate.creatorName} - v{props.selectedRoutineTemplate.version}</p>
+                    <h3>{props.selectedRoutineTemplate.name}</h3>
+                    <p>{props.selectedRoutineTemplate.summary}</p>
+                  </div>
+                  <div className="metric-grid compact">
+                    <div><span>Fit score</span><strong>{props.routineTemplatePreview.compatibility.score}%</strong></div>
+                    <div><span>Ngay/tuan</span><strong>{props.selectedRoutineTemplate.daysPerWeek}</strong></div>
+                    <div><span>Thoi luong</span><strong>{props.selectedRoutineTemplate.minutesPerSession}p</strong></div>
+                    <div><span>Kinh nghiem</span><strong>{props.selectedRoutineTemplate.experienceLevel}</strong></div>
+                  </div>
+                  {props.routineTemplatePreview.compatibility.warnings.length > 0 && (
+                    <div className="sync-conflict">
+                      {props.routineTemplatePreview.compatibility.warnings.map((warning) => <p key={warning}>{warning}</p>)}
+                    </div>
+                  )}
+                  <div className="timeline compact">
+                    {props.routineTemplatePreview.routine.days.map((day) => (
+                      <div key={day.id}>
+                        <span>{day.day} - {day.exercises.length} bai</span>
+                        <strong>{day.name}</strong>
+                        <em>{day.exercises.map((exercise) => exercise.name).join(", ")}</em>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="split-actions">
+                    <button className="secondary-button" onClick={() => props.previewRoutineTemplate(props.selectedRoutineTemplate!)}>Xem preview</button>
+                    <button className="secondary-button" onClick={() => props.applyRoutineMarketplaceTemplate(props.selectedRoutineTemplate!, true)}>Tuy bien truoc khi luu</button>
+                    <button className="primary-button training-bg" onClick={() => props.applyRoutineMarketplaceTemplate(props.selectedRoutineTemplate!)}>Ap dung</button>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <span>Trong</span>
+                  <strong>Chon mot template de xem chi tiet</strong>
+                  <em>Template public chi duoc copy thanh routine cua ban khi ap dung.</em>
+                </div>
+              )}
+            </div>
+          </div>
         </section>
 
         <section className="card">

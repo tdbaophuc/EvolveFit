@@ -1,6 +1,6 @@
 # EvolveFit - Goal commands dua san pham len production
 
-Cap nhat: 2026-09-27
+Cap nhat: 2026-09-28
 
 Tai lieu nay gom cac goal lon de bien EvolveFit tu nen local-first PWA + API hien tai thanh mot san pham production co the van hanh that. Moi goal duoc viet nhu mot lenh `/goal` doc lap, nhung nen chay tuan tu vi cac goal sau phu thuoc vao contract, staging va persistence cua goal truoc.
 

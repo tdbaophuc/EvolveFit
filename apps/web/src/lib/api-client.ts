@@ -5,6 +5,8 @@ import type {
   RecommendationDecision,
   RecommendationHistoryItem,
   Routine,
+  RoutineTemplate,
+  RoutineTemplatePreview,
   SessionExerciseQueueItem,
   Supplement,
   SupplementLog,
@@ -202,6 +204,45 @@ export class EvolveFitApiClient {
 
   async addMarketplaceExerciseToRoutine(idOrSlug: string, input: { routineId?: string; workoutDayId?: string } = {}): Promise<ApiResult<{ routine: Routine; workoutDay: Routine["days"][number]; exercise: Routine["days"][number]["exercises"][number] }>> {
     return this.post(`/api/exercises/marketplace/${idOrSlug}/add-to-routine`, input);
+  }
+
+  async routineTemplates(input: {
+    query?: string;
+    goal?: "all" | "strength" | "muscle" | "fat-loss" | "health";
+    daysPerWeek?: number | "all";
+    equipment?: string;
+    experienceLevel?: string;
+    tag?: string;
+    sort?: "name" | "goal" | "days" | "compatibility";
+    page?: number;
+    pageSize?: number;
+  } = {}): Promise<ApiResult<{ items: (RoutineTemplate & { compatibility?: RoutineTemplatePreview["compatibility"] })[]; page: number; pageSize: number; total: number }>> {
+    const params = new URLSearchParams();
+    Object.entries(input).forEach(([key, value]) => {
+      if (value !== undefined && value !== "" && value !== "all") params.set(key, String(value));
+    });
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return this.get(`/api/routine-templates${suffix}`);
+  }
+
+  async routineTemplate(idOrSlug: string): Promise<ApiResult<RoutineTemplate & { compatibility?: RoutineTemplatePreview["compatibility"] }>> {
+    return this.get(`/api/routine-templates/${idOrSlug}`);
+  }
+
+  async previewRoutineTemplate(idOrSlug: string, input: { routineName?: string } = {}): Promise<ApiResult<RoutineTemplatePreview>> {
+    return this.post(`/api/routine-templates/${idOrSlug}/preview`, input);
+  }
+
+  async applyRoutineTemplate(idOrSlug: string, input: { routineName?: string; idempotencyKey?: string } = {}): Promise<ApiResult<{ routine: Routine; template: RoutineTemplate; applied: boolean; idempotent: boolean }>> {
+    return this.post(`/api/routine-templates/${idOrSlug}/apply`, input);
+  }
+
+  async cloneRoutineTemplate(idOrSlug: string, input: { routineName?: string } = {}): Promise<ApiResult<{ routine: Routine; template: RoutineTemplate }>> {
+    return this.post(`/api/routine-templates/${idOrSlug}/clone`, input);
+  }
+
+  async routineTemplateFeedback(idOrSlug: string, input: { decision: "accepted" | "rejected"; favorite?: boolean; feedback?: string }): Promise<ApiResult<{ templateId: string; decision: "accepted" | "rejected"; favorite: boolean; decidedAt: string }>> {
+    return this.post(`/api/routine-templates/${idOrSlug}/feedback`, input);
   }
 
   async createExercise(input: Partial<ExerciseDefinition>): Promise<ApiResult<ExerciseDefinition>> {

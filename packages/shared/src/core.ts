@@ -214,6 +214,101 @@ export type Routine = {
   updatedAt: string;
 };
 
+export type RoutineTemplateStatus = "draft" | "published" | "archived";
+export type RoutineTemplateVisibility = "public" | "private" | "admin-curated";
+export type RoutineTemplateGoal = "strength" | "muscle" | "fat-loss" | "health";
+
+export type RoutineTemplateExerciseSlot = {
+  id: string;
+  exerciseId: string;
+  name: string;
+  muscleGroup: string;
+  order: number;
+  targetSets: number;
+  targetRepsMin: number;
+  targetRepsMax: number;
+  targetWeightKg: number;
+  restSeconds: number;
+  tempo?: string;
+  rpe?: number;
+  note?: string;
+  substitutions?: string[];
+};
+
+export type RoutineTemplateDay = {
+  id: string;
+  name: string;
+  day: string;
+  order: number;
+  estimatedMinutes: number;
+  warmup?: string;
+  cooldown?: string;
+  exercises: RoutineTemplateExerciseSlot[];
+};
+
+export type RoutineTemplate = {
+  id: string;
+  slug: string;
+  name: string;
+  summary: string;
+  creatorName: string;
+  source?: string;
+  license: string;
+  targetGoal: RoutineTemplateGoal;
+  daysPerWeek: number;
+  minutesPerSession: number;
+  experienceLevel: ExerciseDifficulty;
+  equipment: EquipmentType[];
+  musclePriority?: string[];
+  recoveryDays?: string[];
+  progressionNotes?: string;
+  deloadNotes?: string;
+  muscleDistribution?: Record<string, number>;
+  tags: string[];
+  status: RoutineTemplateStatus;
+  visibility: RoutineTemplateVisibility;
+  version: number;
+  publishedAt?: string;
+  updatedAt: string;
+  days: RoutineTemplateDay[];
+};
+
+export type RoutineTemplateCompatibility = {
+  score: number;
+  missingEquipment: EquipmentType[];
+  matchedEquipment: EquipmentType[];
+  warnings: string[];
+  reasons: string[];
+};
+
+export type RoutineTemplatePreview = {
+  template: RoutineTemplate;
+  routine: Routine;
+  compatibility: RoutineTemplateCompatibility;
+  warnings: string[];
+  rationale: string[];
+};
+
+export type RoutineTemplateFilters = {
+  query?: string;
+  goal?: RoutineTemplateGoal | "all";
+  daysPerWeek?: number | "all";
+  equipment?: EquipmentType | "all";
+  experienceLevel?: ExerciseDifficulty | "all";
+  tag?: string;
+  status?: RoutineTemplateStatus | "all";
+  visibility?: RoutineTemplateVisibility | "all";
+  includeArchived?: boolean;
+  sort?: "name" | "goal" | "days" | "compatibility";
+  profile?: RoutineTemplateProfile;
+};
+
+export type RoutineTemplateProfile = {
+  trainingGoal?: RoutineTemplateGoal;
+  experienceLevel?: ExerciseDifficulty;
+  availableEquipment?: EquipmentType[];
+};
+
 export type RoutineImportRow = WorkoutExercise & {
   sourceLine: number;
   session: string;
@@ -580,6 +675,320 @@ export const marketplaceExerciseDefinitions: ExerciseDefinition[] = [
 export const defaultExerciseCatalog: ExerciseDefinition[] = [
   ...builtInExerciseDefinitions,
   ...marketplaceExerciseDefinitions
+];
+
+export const routineMarketplaceTemplates: RoutineTemplate[] = [
+  {
+    id: "template-beginner-full-body-3d",
+    slug: "beginner-full-body-3d",
+    name: "Beginner Full Body 3D",
+    summary: "A simple three-day routine for new lifters who want repeatable full-body practice.",
+    creatorName: "EvolveFit Coach",
+    source: "EvolveFit curated",
+    license: "EvolveFit original",
+    targetGoal: "health",
+    daysPerWeek: 3,
+    minutesPerSession: 45,
+    experienceLevel: "beginner",
+    equipment: ["dumbbell", "bodyweight", "cable"],
+    musclePriority: ["Quads", "Chest", "Back", "Core"],
+    recoveryDays: ["Tue", "Thu", "Sat", "Sun"],
+    progressionNotes: "Add 1-2 reps before adding load. Keep two reps in reserve for the first two weeks.",
+    deloadNotes: "Every fourth week, keep the same exercises but reduce working sets by one.",
+    muscleDistribution: { legs: 30, push: 25, pull: 25, core: 20 },
+    tags: ["beginner", "full-body", "home-friendly"],
+    status: "published",
+    visibility: "admin-curated",
+    version: 1,
+    publishedAt: "2026-09-28T00:00:00.000Z",
+    updatedAt: "2026-09-28T00:00:00.000Z",
+    days: [
+      {
+        id: "template-bfb-day-a",
+        name: "Full Body A",
+        day: "Mon",
+        order: 0,
+        estimatedMinutes: 45,
+        warmup: "5 minutes easy cardio plus hip and shoulder mobility.",
+        cooldown: "Easy walk and breathing reset.",
+        exercises: [
+          { id: "template-bfb-a-1", exerciseId: "market-goblet-squat", name: "Goblet Squat", muscleGroup: "Quads", order: 0, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 16, restSeconds: 75, substitutions: ["lib-squat", "lib-leg-press"] },
+          { id: "template-bfb-a-2", exerciseId: "lib-push-up", name: "Push-up", muscleGroup: "Chest", order: 1, targetSets: 3, targetRepsMin: 8, targetRepsMax: 15, targetWeightKg: 0, restSeconds: 60, substitutions: ["lib-bench-press", "lib-incline-db-press"] },
+          { id: "template-bfb-a-3", exerciseId: "lib-lat-pulldown", name: "Lat Pulldown", muscleGroup: "Back", order: 2, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 35, restSeconds: 75, substitutions: ["lib-pull-up", "lib-row"] },
+          { id: "template-bfb-a-4", exerciseId: "market-dead-bug", name: "Dead Bug", muscleGroup: "Core", order: 3, targetSets: 2, targetRepsMin: 8, targetRepsMax: 12, targetWeightKg: 0, restSeconds: 45, substitutions: ["lib-plank"] }
+        ]
+      },
+      {
+        id: "template-bfb-day-b",
+        name: "Full Body B",
+        day: "Wed",
+        order: 1,
+        estimatedMinutes: 45,
+        warmup: "5 minutes easy cardio plus hinge pattern practice.",
+        cooldown: "Hamstring and lat stretch.",
+        exercises: [
+          { id: "template-bfb-b-1", exerciseId: "lib-rdl", name: "Romanian Deadlift", muscleGroup: "Hamstrings", order: 0, targetSets: 3, targetRepsMin: 8, targetRepsMax: 10, targetWeightKg: 45, restSeconds: 90, substitutions: ["market-hip-thrust"] },
+          { id: "template-bfb-b-2", exerciseId: "lib-incline-db-press", name: "Incline Dumbbell Press", muscleGroup: "Upper chest", order: 1, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 16, restSeconds: 75, substitutions: ["lib-push-up"] },
+          { id: "template-bfb-b-3", exerciseId: "market-single-arm-db-row", name: "Single-arm Dumbbell Row", muscleGroup: "Back", order: 2, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 18, restSeconds: 75, substitutions: ["lib-row"] },
+          { id: "template-bfb-b-4", exerciseId: "lib-plank", name: "Plank", muscleGroup: "Core", order: 3, targetSets: 2, targetRepsMin: 30, targetRepsMax: 45, targetWeightKg: 0, restSeconds: 45, substitutions: ["market-dead-bug"] }
+        ]
+      },
+      {
+        id: "template-bfb-day-c",
+        name: "Full Body C",
+        day: "Fri",
+        order: 2,
+        estimatedMinutes: 45,
+        warmup: "5 minutes easy cardio plus squat and row rehearsal.",
+        cooldown: "Quad and chest stretch.",
+        exercises: [
+          { id: "template-bfb-c-1", exerciseId: "lib-leg-press", name: "Leg Press", muscleGroup: "Quads", order: 0, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 80, restSeconds: 90, substitutions: ["market-goblet-squat", "lib-squat"] },
+          { id: "template-bfb-c-2", exerciseId: "lib-shoulder-press", name: "Seated Shoulder Press", muscleGroup: "Shoulders", order: 1, targetSets: 3, targetRepsMin: 8, targetRepsMax: 10, targetWeightKg: 16, restSeconds: 75, substitutions: ["lib-incline-db-press"] },
+          { id: "template-bfb-c-3", exerciseId: "lib-row", name: "Chest Supported Row", muscleGroup: "Back", order: 2, targetSets: 3, targetRepsMin: 8, targetRepsMax: 10, targetWeightKg: 35, restSeconds: 75, substitutions: ["market-single-arm-db-row"] },
+          { id: "template-bfb-c-4", exerciseId: "lib-curl", name: "Dumbbell Curl", muscleGroup: "Arms", order: 3, targetSets: 2, targetRepsMin: 12, targetRepsMax: 15, targetWeightKg: 10, restSeconds: 45, substitutions: ["lib-triceps-pushdown"] }
+        ]
+      }
+    ]
+  },
+  {
+    id: "template-upper-lower-strength-4d",
+    slug: "upper-lower-strength-4d",
+    name: "Upper Lower Strength 4D",
+    summary: "A four-day upper/lower template focused on compound lifts and measured progression.",
+    creatorName: "EvolveFit Coach",
+    source: "EvolveFit curated",
+    license: "EvolveFit original",
+    targetGoal: "strength",
+    daysPerWeek: 4,
+    minutesPerSession: 65,
+    experienceLevel: "intermediate",
+    equipment: ["barbell", "dumbbell", "cable", "machine"],
+    musclePriority: ["Chest", "Back", "Quads", "Hamstrings"],
+    recoveryDays: ["Wed", "Sat", "Sun"],
+    progressionNotes: "When all sets hit the top rep target twice, add 2.5kg upper body or 5kg lower body.",
+    deloadNotes: "Deload after two failed progressions on the same main lift.",
+    muscleDistribution: { upper: 50, lower: 50 },
+    tags: ["strength", "upper-lower", "barbell"],
+    status: "published",
+    visibility: "admin-curated",
+    version: 1,
+    publishedAt: "2026-09-28T00:00:00.000Z",
+    updatedAt: "2026-09-28T00:00:00.000Z",
+    days: [
+      {
+        id: "template-ul-day-upper-a",
+        name: "Upper A",
+        day: "Mon",
+        order: 0,
+        estimatedMinutes: 65,
+        warmup: "Band pull-aparts, ramp sets for bench press.",
+        cooldown: "Light pec and lat mobility.",
+        exercises: [
+          { id: "template-ul-ua-1", exerciseId: "lib-bench-press", name: "Barbell Bench Press", muscleGroup: "Chest", order: 0, targetSets: 4, targetRepsMin: 4, targetRepsMax: 6, targetWeightKg: 60, restSeconds: 150, rpe: 8, substitutions: ["lib-incline-db-press"] },
+          { id: "template-ul-ua-2", exerciseId: "lib-row", name: "Chest Supported Row", muscleGroup: "Back", order: 1, targetSets: 4, targetRepsMin: 6, targetRepsMax: 8, targetWeightKg: 45, restSeconds: 120, substitutions: ["market-single-arm-db-row"] },
+          { id: "template-ul-ua-3", exerciseId: "lib-shoulder-press", name: "Seated Shoulder Press", muscleGroup: "Shoulders", order: 2, targetSets: 3, targetRepsMin: 6, targetRepsMax: 8, targetWeightKg: 24, restSeconds: 120 },
+          { id: "template-ul-ua-4", exerciseId: "lib-triceps-pushdown", name: "Cable Triceps Pushdown", muscleGroup: "Arms", order: 3, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 30, restSeconds: 60 }
+        ]
+      },
+      {
+        id: "template-ul-day-lower-a",
+        name: "Lower A",
+        day: "Tue",
+        order: 1,
+        estimatedMinutes: 65,
+        warmup: "Hip airplanes, squat ramp sets.",
+        cooldown: "Easy walk.",
+        exercises: [
+          { id: "template-ul-la-1", exerciseId: "lib-squat", name: "Back Squat", muscleGroup: "Quads", order: 0, targetSets: 4, targetRepsMin: 4, targetRepsMax: 6, targetWeightKg: 80, restSeconds: 150, rpe: 8, substitutions: ["lib-leg-press"] },
+          { id: "template-ul-la-2", exerciseId: "lib-rdl", name: "Romanian Deadlift", muscleGroup: "Hamstrings", order: 1, targetSets: 3, targetRepsMin: 6, targetRepsMax: 8, targetWeightKg: 70, restSeconds: 120, substitutions: ["market-hip-thrust"] },
+          { id: "template-ul-la-3", exerciseId: "lib-cable-crunch", name: "Cable Crunch", muscleGroup: "Core", order: 2, targetSets: 3, targetRepsMin: 10, targetRepsMax: 15, targetWeightKg: 25, restSeconds: 60 },
+          { id: "template-ul-la-4", exerciseId: "market-dead-bug", name: "Dead Bug", muscleGroup: "Core", order: 3, targetSets: 2, targetRepsMin: 8, targetRepsMax: 12, targetWeightKg: 0, restSeconds: 45 }
+        ]
+      },
+      {
+        id: "template-ul-day-upper-b",
+        name: "Upper B",
+        day: "Thu",
+        order: 2,
+        estimatedMinutes: 65,
+        warmup: "Scapular pull-ups and shoulder circles.",
+        cooldown: "Lat stretch.",
+        exercises: [
+          { id: "template-ul-ub-1", exerciseId: "lib-pull-up", name: "Pull-up", muscleGroup: "Back", order: 0, targetSets: 4, targetRepsMin: 4, targetRepsMax: 8, targetWeightKg: 0, restSeconds: 150, substitutions: ["lib-lat-pulldown"] },
+          { id: "template-ul-ub-2", exerciseId: "lib-incline-db-press", name: "Incline Dumbbell Press", muscleGroup: "Upper chest", order: 1, targetSets: 4, targetRepsMin: 6, targetRepsMax: 8, targetWeightKg: 24, restSeconds: 120, substitutions: ["lib-bench-press"] },
+          { id: "template-ul-ub-3", exerciseId: "lib-lateral-raise", name: "Lateral Raise", muscleGroup: "Shoulders", order: 2, targetSets: 3, targetRepsMin: 12, targetRepsMax: 15, targetWeightKg: 8, restSeconds: 60 },
+          { id: "template-ul-ub-4", exerciseId: "lib-curl", name: "Dumbbell Curl", muscleGroup: "Arms", order: 3, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 12, restSeconds: 60 }
+        ]
+      },
+      {
+        id: "template-ul-day-lower-b",
+        name: "Lower B",
+        day: "Fri",
+        order: 3,
+        estimatedMinutes: 60,
+        warmup: "Glute bridges and hinge ramp sets.",
+        cooldown: "Hamstring mobility.",
+        exercises: [
+          { id: "template-ul-lb-1", exerciseId: "market-hip-thrust", name: "Barbell Hip Thrust", muscleGroup: "Glutes", order: 0, targetSets: 4, targetRepsMin: 6, targetRepsMax: 8, targetWeightKg: 70, restSeconds: 120, substitutions: ["lib-rdl"] },
+          { id: "template-ul-lb-2", exerciseId: "lib-leg-press", name: "Leg Press", muscleGroup: "Quads", order: 1, targetSets: 3, targetRepsMin: 8, targetRepsMax: 10, targetWeightKg: 100, restSeconds: 120, substitutions: ["lib-squat"] },
+          { id: "template-ul-lb-3", exerciseId: "market-goblet-squat", name: "Goblet Squat", muscleGroup: "Quads", order: 2, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 24, restSeconds: 75 },
+          { id: "template-ul-lb-4", exerciseId: "lib-plank", name: "Plank", muscleGroup: "Core", order: 3, targetSets: 3, targetRepsMin: 30, targetRepsMax: 60, targetWeightKg: 0, restSeconds: 45 }
+        ]
+      }
+    ]
+  },
+  {
+    id: "template-ppl-hypertrophy-5d",
+    slug: "ppl-hypertrophy-5d",
+    name: "PPL Hypertrophy 5D",
+    summary: "A high-volume push/pull/legs split for lifters who want more weekly muscle exposure.",
+    creatorName: "EvolveFit Coach",
+    source: "EvolveFit curated",
+    license: "EvolveFit original",
+    targetGoal: "muscle",
+    daysPerWeek: 5,
+    minutesPerSession: 70,
+    experienceLevel: "intermediate",
+    equipment: ["barbell", "dumbbell", "cable", "machine"],
+    musclePriority: ["Chest", "Back", "Shoulders", "Glutes"],
+    recoveryDays: ["Thu", "Sun"],
+    progressionNotes: "Use double progression on accessories and keep most sets at RPE 7-9.",
+    deloadNotes: "Take a lower-volume week when soreness or performance drops for two sessions.",
+    muscleDistribution: { push: 35, pull: 30, legs: 30, core: 5 },
+    tags: ["hypertrophy", "ppl", "volume"],
+    status: "published",
+    visibility: "public",
+    version: 1,
+    publishedAt: "2026-09-28T00:00:00.000Z",
+    updatedAt: "2026-09-28T00:00:00.000Z",
+    days: [
+      {
+        id: "template-ppl-day-push-a",
+        name: "Push A",
+        day: "Mon",
+        order: 0,
+        estimatedMinutes: 70,
+        exercises: [
+          { id: "template-ppl-pa-1", exerciseId: "lib-bench-press", name: "Barbell Bench Press", muscleGroup: "Chest", order: 0, targetSets: 4, targetRepsMin: 6, targetRepsMax: 8, targetWeightKg: 60, restSeconds: 120 },
+          { id: "template-ppl-pa-2", exerciseId: "lib-shoulder-press", name: "Seated Shoulder Press", muscleGroup: "Shoulders", order: 1, targetSets: 3, targetRepsMin: 8, targetRepsMax: 10, targetWeightKg: 24, restSeconds: 90 },
+          { id: "template-ppl-pa-3", exerciseId: "lib-lateral-raise", name: "Lateral Raise", muscleGroup: "Shoulders", order: 2, targetSets: 3, targetRepsMin: 12, targetRepsMax: 15, targetWeightKg: 8, restSeconds: 60 },
+          { id: "template-ppl-pa-4", exerciseId: "lib-triceps-pushdown", name: "Cable Triceps Pushdown", muscleGroup: "Arms", order: 3, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 30, restSeconds: 60 }
+        ]
+      },
+      {
+        id: "template-ppl-day-pull-a",
+        name: "Pull A",
+        day: "Tue",
+        order: 1,
+        estimatedMinutes: 65,
+        exercises: [
+          { id: "template-ppl-pua-1", exerciseId: "lib-lat-pulldown", name: "Lat Pulldown", muscleGroup: "Back", order: 0, targetSets: 4, targetRepsMin: 8, targetRepsMax: 10, targetWeightKg: 45, restSeconds: 90 },
+          { id: "template-ppl-pua-2", exerciseId: "market-single-arm-db-row", name: "Single-arm Dumbbell Row", muscleGroup: "Back", order: 1, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 22, restSeconds: 75 },
+          { id: "template-ppl-pua-3", exerciseId: "lib-curl", name: "Dumbbell Curl", muscleGroup: "Arms", order: 2, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 12, restSeconds: 60 }
+        ]
+      },
+      {
+        id: "template-ppl-day-legs-a",
+        name: "Legs A",
+        day: "Wed",
+        order: 2,
+        estimatedMinutes: 70,
+        exercises: [
+          { id: "template-ppl-la-1", exerciseId: "lib-squat", name: "Back Squat", muscleGroup: "Quads", order: 0, targetSets: 4, targetRepsMin: 6, targetRepsMax: 8, targetWeightKg: 80, restSeconds: 120 },
+          { id: "template-ppl-la-2", exerciseId: "market-hip-thrust", name: "Barbell Hip Thrust", muscleGroup: "Glutes", order: 1, targetSets: 3, targetRepsMin: 8, targetRepsMax: 10, targetWeightKg: 70, restSeconds: 90 },
+          { id: "template-ppl-la-3", exerciseId: "lib-cable-crunch", name: "Cable Crunch", muscleGroup: "Core", order: 2, targetSets: 3, targetRepsMin: 12, targetRepsMax: 15, targetWeightKg: 25, restSeconds: 60 }
+        ]
+      },
+      {
+        id: "template-ppl-day-upper-pump",
+        name: "Upper Pump",
+        day: "Fri",
+        order: 3,
+        estimatedMinutes: 60,
+        exercises: [
+          { id: "template-ppl-up-1", exerciseId: "lib-incline-db-press", name: "Incline Dumbbell Press", muscleGroup: "Upper chest", order: 0, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 24, restSeconds: 75 },
+          { id: "template-ppl-up-2", exerciseId: "lib-row", name: "Chest Supported Row", muscleGroup: "Back", order: 1, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 40, restSeconds: 75 },
+          { id: "template-ppl-up-3", exerciseId: "lib-lateral-raise", name: "Lateral Raise", muscleGroup: "Shoulders", order: 2, targetSets: 3, targetRepsMin: 15, targetRepsMax: 20, targetWeightKg: 6, restSeconds: 45 },
+          { id: "template-ppl-up-4", exerciseId: "lib-triceps-pushdown", name: "Cable Triceps Pushdown", muscleGroup: "Arms", order: 3, targetSets: 2, targetRepsMin: 12, targetRepsMax: 15, targetWeightKg: 25, restSeconds: 45 }
+        ]
+      },
+      {
+        id: "template-ppl-day-legs-b",
+        name: "Legs B",
+        day: "Sat",
+        order: 4,
+        estimatedMinutes: 65,
+        exercises: [
+          { id: "template-ppl-lb-1", exerciseId: "lib-rdl", name: "Romanian Deadlift", muscleGroup: "Hamstrings", order: 0, targetSets: 4, targetRepsMin: 8, targetRepsMax: 10, targetWeightKg: 70, restSeconds: 120 },
+          { id: "template-ppl-lb-2", exerciseId: "lib-leg-press", name: "Leg Press", muscleGroup: "Quads", order: 1, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 100, restSeconds: 90 },
+          { id: "template-ppl-lb-3", exerciseId: "market-dead-bug", name: "Dead Bug", muscleGroup: "Core", order: 2, targetSets: 2, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 0, restSeconds: 45 }
+        ]
+      }
+    ]
+  },
+  {
+    id: "template-bodyweight-home-3d",
+    slug: "bodyweight-home-3d",
+    name: "Home Bodyweight 3D",
+    summary: "A low-equipment routine for users training at home with bodyweight and one dumbbell.",
+    creatorName: "EvolveFit Coach",
+    source: "EvolveFit curated",
+    license: "EvolveFit original",
+    targetGoal: "fat-loss",
+    daysPerWeek: 3,
+    minutesPerSession: 35,
+    experienceLevel: "beginner",
+    equipment: ["bodyweight", "dumbbell"],
+    musclePriority: ["Core", "Chest", "Quads"],
+    recoveryDays: ["Tue", "Thu", "Sat", "Sun"],
+    progressionNotes: "Shorten rest first, then add reps, then add load where possible.",
+    deloadNotes: "Keep movement quality high and reduce one round when recovery is poor.",
+    muscleDistribution: { legs: 30, push: 25, pull: 15, core: 30 },
+    tags: ["home", "bodyweight", "fat-loss"],
+    status: "published",
+    visibility: "public",
+    version: 1,
+    publishedAt: "2026-09-28T00:00:00.000Z",
+    updatedAt: "2026-09-28T00:00:00.000Z",
+    days: [
+      {
+        id: "template-home-day-a",
+        name: "Home Circuit A",
+        day: "Mon",
+        order: 0,
+        estimatedMinutes: 35,
+        exercises: [
+          { id: "template-home-a-1", exerciseId: "lib-push-up", name: "Push-up", muscleGroup: "Chest", order: 0, targetSets: 3, targetRepsMin: 8, targetRepsMax: 15, targetWeightKg: 0, restSeconds: 45 },
+          { id: "template-home-a-2", exerciseId: "market-goblet-squat", name: "Goblet Squat", muscleGroup: "Quads", order: 1, targetSets: 3, targetRepsMin: 12, targetRepsMax: 15, targetWeightKg: 16, restSeconds: 45 },
+          { id: "template-home-a-3", exerciseId: "market-dead-bug", name: "Dead Bug", muscleGroup: "Core", order: 2, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 0, restSeconds: 30 }
+        ]
+      },
+      {
+        id: "template-home-day-b",
+        name: "Home Circuit B",
+        day: "Wed",
+        order: 1,
+        estimatedMinutes: 35,
+        exercises: [
+          { id: "template-home-b-1", exerciseId: "market-single-arm-db-row", name: "Single-arm Dumbbell Row", muscleGroup: "Back", order: 0, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 18, restSeconds: 45 },
+          { id: "template-home-b-2", exerciseId: "lib-plank", name: "Plank", muscleGroup: "Core", order: 1, targetSets: 3, targetRepsMin: 30, targetRepsMax: 45, targetWeightKg: 0, restSeconds: 30 },
+          { id: "template-home-b-3", exerciseId: "lib-lateral-raise", name: "Lateral Raise", muscleGroup: "Shoulders", order: 2, targetSets: 3, targetRepsMin: 12, targetRepsMax: 15, targetWeightKg: 6, restSeconds: 45 }
+        ]
+      },
+      {
+        id: "template-home-day-c",
+        name: "Home Circuit C",
+        day: "Fri",
+        order: 2,
+        estimatedMinutes: 35,
+        exercises: [
+          { id: "template-home-c-1", exerciseId: "lib-push-up", name: "Push-up", muscleGroup: "Chest", order: 0, targetSets: 3, targetRepsMin: 10, targetRepsMax: 16, targetWeightKg: 0, restSeconds: 45 },
+          { id: "template-home-c-2", exerciseId: "market-goblet-squat", name: "Goblet Squat", muscleGroup: "Quads", order: 1, targetSets: 3, targetRepsMin: 10, targetRepsMax: 14, targetWeightKg: 18, restSeconds: 45 },
+          { id: "template-home-c-3", exerciseId: "market-dead-bug", name: "Dead Bug", muscleGroup: "Core", order: 2, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 0, restSeconds: 30 }
+        ]
+      }
+    ]
+  }
 ];
 
 const exerciseIntelligenceDefaults: Record<string, Partial<ExerciseDefinition>> = {
@@ -1285,6 +1694,180 @@ export function isUserOwnedExercise(exercise: ExerciseDefinition): boolean {
 export function isPublicCatalogExercise(exercise: ExerciseDefinition): boolean {
   const normalized = normalizeExerciseDefinition(exercise);
   return normalized.catalogSource === "built-in" || normalized.catalogSource === "marketplace";
+}
+
+export function normalizeRoutineTemplate(template: RoutineTemplate): RoutineTemplate {
+  const days = [...template.days]
+    .sort((a, b) => a.order - b.order)
+    .map((day) => ({
+      ...day,
+      estimatedMinutes: clampInt(day.estimatedMinutes, 15, 180),
+      exercises: [...day.exercises]
+        .sort((a, b) => a.order - b.order)
+        .map((slot, order) => ({
+          ...slot,
+          order,
+          targetSets: clampInt(slot.targetSets, 1, 12),
+          targetRepsMin: clampInt(slot.targetRepsMin, 1, 200),
+          targetRepsMax: Math.max(clampInt(slot.targetRepsMax, 1, 200), clampInt(slot.targetRepsMin, 1, 200)),
+          restSeconds: clampInt(slot.restSeconds, 15, 600),
+          targetWeightKg: Number.isFinite(slot.targetWeightKg) ? Math.max(0, slot.targetWeightKg) : 0
+        }))
+    }));
+  return {
+    ...template,
+    slug: template.slug.trim().toLowerCase(),
+    name: template.name.trim() || "Routine template",
+    summary: template.summary.trim(),
+    daysPerWeek: clampInt(template.daysPerWeek, 1, 7),
+    minutesPerSession: clampInt(template.minutesPerSession, 15, 180),
+    equipment: [...new Set<EquipmentType>(template.equipment.length ? template.equipment : ["bodyweight"])],
+    tags: [...new Set(template.tags.map((tag) => tag.trim()).filter(Boolean))],
+    days
+  };
+}
+
+export function routineTemplateCompatibility(
+  template: RoutineTemplate,
+  profile: RoutineTemplateProfile = {}
+): RoutineTemplateCompatibility {
+  const normalized = normalizeRoutineTemplate(template);
+  const available = profile.availableEquipment?.length ? profile.availableEquipment : [];
+  const missingEquipment = available.length ? normalized.equipment.filter((item) => !available.includes(item)) : [];
+  const matchedEquipment = available.length ? normalized.equipment.filter((item) => available.includes(item)) : normalized.equipment;
+  const reasons: string[] = [];
+  const warnings: string[] = [];
+  let score = 55;
+  if (profile.trainingGoal && profile.trainingGoal === normalized.targetGoal) {
+    score += 20;
+    reasons.push("Goal matches profile.");
+  } else if (profile.trainingGoal) {
+    score -= 5;
+    warnings.push(`Template goal is ${normalized.targetGoal}, profile goal is ${profile.trainingGoal}.`);
+  }
+  if (profile.experienceLevel && profile.experienceLevel === normalized.experienceLevel) {
+    score += 15;
+    reasons.push("Experience level matches.");
+  } else if (profile.experienceLevel === "beginner" && normalized.experienceLevel === "advanced") {
+    score -= 20;
+    warnings.push("Template may be too advanced for a beginner.");
+  }
+  if (available.length) {
+    score += Math.round((matchedEquipment.length / Math.max(1, normalized.equipment.length)) * 20);
+    if (missingEquipment.length) warnings.push(`Missing equipment: ${missingEquipment.join(", ")}.`);
+  } else {
+    reasons.push("No equipment profile set; compatibility uses template defaults.");
+  }
+  if (normalized.visibility === "admin-curated") score += 5;
+  return {
+    score: clampInt(score, 0, 100),
+    missingEquipment,
+    matchedEquipment,
+    warnings,
+    reasons
+  };
+}
+
+export function listRoutineTemplates(
+  templates: RoutineTemplate[] = routineMarketplaceTemplates,
+  filters: RoutineTemplateFilters = {}
+): RoutineTemplate[] {
+  const query = filters.query?.trim().toLowerCase() ?? "";
+  const tag = filters.tag?.trim().toLowerCase();
+  const result = templates
+    .map(normalizeRoutineTemplate)
+    .filter((template) => filters.includeArchived || template.status !== "archived")
+    .filter((template) => !filters.status || filters.status === "all" || template.status === filters.status)
+    .filter((template) => !filters.visibility || filters.visibility === "all" || template.visibility === filters.visibility)
+    .filter((template) => !filters.goal || filters.goal === "all" || template.targetGoal === filters.goal)
+    .filter((template) => !filters.daysPerWeek || filters.daysPerWeek === "all" || template.daysPerWeek === filters.daysPerWeek)
+    .filter((template) => !filters.equipment || filters.equipment === "all" || template.equipment.includes(filters.equipment))
+    .filter((template) => !filters.experienceLevel || filters.experienceLevel === "all" || template.experienceLevel === filters.experienceLevel)
+    .filter((template) => !tag || tag === "all" || template.tags.some((item) => item.toLowerCase() === tag))
+    .filter((template) => {
+      if (!query) return true;
+      const haystack = [
+        template.name,
+        template.slug,
+        template.summary,
+        template.creatorName,
+        template.targetGoal,
+        template.experienceLevel,
+        ...template.tags,
+        ...template.equipment,
+        ...template.days.flatMap((day) => [day.name, ...day.exercises.map((slot) => slot.name)])
+      ].join(" ").toLowerCase();
+      return haystack.includes(query);
+    });
+
+  return result.sort((a, b) => {
+    if (filters.sort === "compatibility") {
+      return routineTemplateCompatibility(b, filters.profile).score - routineTemplateCompatibility(a, filters.profile).score || a.name.localeCompare(b.name);
+    }
+    if (filters.sort === "goal") return a.targetGoal.localeCompare(b.targetGoal) || a.name.localeCompare(b.name);
+    if (filters.sort === "days") return a.daysPerWeek - b.daysPerWeek || a.name.localeCompare(b.name);
+    return a.name.localeCompare(b.name);
+  });
+}
+
+export function routineTemplateDetail(templates: RoutineTemplate[], idOrSlug: string): RoutineTemplate | undefined {
+  const key = idOrSlug.trim().toLowerCase();
+  return templates.map(normalizeRoutineTemplate).find((template) => template.id.toLowerCase() === key || template.slug.toLowerCase() === key);
+}
+
+export function routineFromMarketplaceTemplate(
+  template: RoutineTemplate,
+  options: { id?: string; name?: string; now?: Date } = {}
+): Routine {
+  const normalized = normalizeRoutineTemplate(template);
+  const nowIso = (options.now ?? new Date()).toISOString();
+  return {
+    id: options.id ?? `routine-template-${cryptoSafeId()}`,
+    name: options.name?.trim() || normalized.name,
+    daysPerWeek: normalized.daysPerWeek,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    days: normalized.days.map((day) => ({
+      id: `${day.id}-${cryptoSafeId()}`,
+      name: day.name,
+      day: day.day,
+      order: day.order,
+      exercises: day.exercises.map((slot) => ({
+        id: `${slot.id}-${cryptoSafeId()}`,
+        definitionId: slot.exerciseId,
+        order: slot.order,
+        name: slot.name,
+        muscleGroup: slot.muscleGroup,
+        targetSets: slot.targetSets,
+        targetRepsMin: slot.targetRepsMin,
+        targetRepsMax: slot.targetRepsMax,
+        targetWeightKg: slot.targetWeightKg,
+        restSeconds: slot.restSeconds,
+        lastSession: `Template ${normalized.name} v${normalized.version}`
+      }))
+    }))
+  };
+}
+
+export function previewRoutineTemplateApply(
+  template: RoutineTemplate,
+  profile: RoutineTemplateProfile = {},
+  options: { routineName?: string; now?: Date } = {}
+): RoutineTemplatePreview {
+  const normalized = normalizeRoutineTemplate(template);
+  const compatibility = routineTemplateCompatibility(normalized, profile);
+  const routine = routineFromMarketplaceTemplate(normalized, { name: options.routineName, now: options.now });
+  return {
+    template: normalized,
+    routine,
+    compatibility,
+    warnings: compatibility.warnings,
+    rationale: [
+      `${normalized.daysPerWeek} days/week, about ${normalized.minutesPerSession} minutes/session.`,
+      `Goal ${normalized.targetGoal}, ${normalized.experienceLevel} level.`,
+      `${normalized.days.reduce((sum, day) => sum + day.exercises.length, 0)} exercise slots will be copied into a user-owned routine.`
+    ]
+  };
 }
 
 export function createCustomExerciseDefinitionLegacy(input: {

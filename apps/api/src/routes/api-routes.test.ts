@@ -133,6 +133,35 @@ describe("Fastify API contract", () => {
       url: "/api/exercises/marketplace/single-arm-dumbbell-row/add-to-routine",
       payload: { workoutDayId: defaultRoutineDayId }
     })).json()).toMatchObject({ ok: true, data: { exercise: { definitionId: "market-single-arm-db-row" } } });
+
+    const routineTemplates = (await app.inject("/api/routine-templates?goal=strength&equipment=barbell&sort=compatibility")).json();
+    expect(routineTemplates).toMatchObject({ ok: true, data: { items: expect.any(Array), total: expect.any(Number) } });
+    expect(routineTemplates.data.items.some((item: { slug: string }) => item.slug === "upper-lower-strength-4d")).toBe(true);
+    expect((await app.inject("/api/routine-templates/upper-lower-strength-4d")).json()).toMatchObject({
+      ok: true,
+      data: { slug: "upper-lower-strength-4d", compatibility: { score: expect.any(Number) } }
+    });
+    expect((await app.inject({
+      method: "POST",
+      url: "/api/routine-templates/upper-lower-strength-4d/preview",
+      payload: { routineName: "API Strength Preview" }
+    })).json()).toMatchObject({ ok: true, data: { routine: { name: "API Strength Preview", daysPerWeek: 4 } } });
+    const appliedTemplate = (await app.inject({
+      method: "POST",
+      url: "/api/routine-templates/upper-lower-strength-4d/apply",
+      payload: { routineName: "API Strength", idempotencyKey: "api-contract-template" }
+    })).json();
+    expect(appliedTemplate).toMatchObject({ ok: true, data: { applied: true, routine: { name: "API Strength", daysPerWeek: 4 } } });
+    expect((await app.inject({
+      method: "POST",
+      url: "/api/routine-templates/upper-lower-strength-4d/apply",
+      payload: { routineName: "API Strength retry", idempotencyKey: "api-contract-template" }
+    })).json()).toMatchObject({ ok: true, data: { applied: false, idempotent: true, routine: { id: appliedTemplate.data.routine.id } } });
+    expect((await app.inject({
+      method: "POST",
+      url: "/api/routine-templates/upper-lower-strength-4d/feedback",
+      payload: { decision: "accepted", favorite: true, feedback: "works" }
+    })).json()).toMatchObject({ ok: true, data: { templateId: "template-upper-lower-strength-4d", favorite: true } });
     expect((await app.inject({ method: "PATCH", url: "/api/exercises/marketplace/single-arm-dumbbell-row", payload: { notes: "bad" } })).statusCode).toBe(404);
     expect((await app.inject({ method: "DELETE", url: `/api/exercises/${exercise.data.id}` })).json()).toMatchObject({ ok: true });
     expect((await app.inject({ method: "DELETE", url: `/api/routines/${routine.data.id}` })).json()).toMatchObject({ ok: true });

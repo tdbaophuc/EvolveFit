@@ -5,6 +5,7 @@ import {
   defaultDrinkModules,
   defaultPlateSettings,
   migrateWorkoutExercisesToRoutine,
+  routineMarketplaceTemplates,
   type BodyMetric,
   type DrinkModule,
   type EquipmentType,
@@ -16,6 +17,7 @@ import {
   type PlateSettings,
   type ReminderMode,
   type Routine,
+  type RoutineTemplate,
   type RecommendationDecision,
   type RecommendationHistoryItem,
   type SharedPost,
@@ -88,6 +90,7 @@ export type AppState = {
   activeRoutineId: string;
   selectedWorkoutDayId: string;
   exerciseLibrary: ExerciseDefinition[];
+  routineTemplatesMarketplace: RoutineTemplate[];
   workoutExercises: WorkoutExercise[];
   workoutSessions: WorkoutSession[];
   activeWorkoutSessionId?: string;
@@ -303,6 +306,7 @@ export const initialState: AppState = {
   activeRoutineId: defaultRoutine.id,
   selectedWorkoutDayId: defaultRoutine.days[0].id,
   exerciseLibrary: defaultExerciseCatalog,
+  routineTemplatesMarketplace: routineMarketplaceTemplates,
   workoutExercises: routineTemplates.ppl,
   workoutSessions: [],
   activeWorkoutSessionId: undefined,

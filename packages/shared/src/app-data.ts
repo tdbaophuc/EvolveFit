@@ -9,6 +9,7 @@ import {
   normalizeHealthIntegrationSettings,
   normalizePlateInventory,
   normalizeWorkoutSessionQueue,
+  routineMarketplaceTemplates,
   routineExercisesToWorkoutExercises,
   selectedWorkoutDay
 } from "./core";
@@ -121,6 +122,7 @@ export function applySelectiveRestore(current: AppState, imported: AppState, sec
     activeRoutineId: selected.has("workouts") ? imported.activeRoutineId : current.activeRoutineId,
     selectedWorkoutDayId: selected.has("workouts") ? imported.selectedWorkoutDayId : current.selectedWorkoutDayId,
     exerciseLibrary: selected.has("workouts") ? imported.exerciseLibrary : current.exerciseLibrary,
+    routineTemplatesMarketplace: current.routineTemplatesMarketplace,
     workoutExercises: selected.has("workouts") ? imported.workoutExercises : current.workoutExercises,
     workoutSessions: selected.has("workouts") ? imported.workoutSessions : current.workoutSessions,
     activeWorkoutSessionId: selected.has("workouts") ? imported.activeWorkoutSessionId : current.activeWorkoutSessionId,
@@ -225,6 +227,7 @@ export function mergeLocalDataIntoCloud(local: AppState, cloud: AppState): AppSt
     workoutSets: mergeById(cloud.workoutSets, local.workoutSets, "completedAt"),
     workoutSessions: mergeById(cloud.workoutSessions, local.workoutSessions, "startedAt"),
     routines: mergeById(cloud.routines, local.routines, "updatedAt"),
+    routineTemplatesMarketplace: routineMarketplaceTemplates,
     exerciseLibrary: [
       ...defaultExerciseCatalog,
       ...mergeById(
@@ -318,6 +321,7 @@ function normalizeImportedState(parsed: Partial<AppState>): AppState {
       ...defaultExerciseCatalog,
       ...((parsed.exerciseLibrary ?? initialState.exerciseLibrary).filter(isUserOwnedExercise))
     ],
+    routineTemplatesMarketplace: routineMarketplaceTemplates,
     workoutExercises,
     workoutSessions: migratedSessions.map(normalizeWorkoutSessionQueue),
     activeWorkoutSessionId: parsed.activeWorkoutSessionId,

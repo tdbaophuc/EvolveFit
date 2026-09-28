@@ -13,11 +13,16 @@ import {
   isPublicCatalogExercise,
   isUserOwnedExercise,
   listMarketplaceExercises,
+  listRoutineTemplates,
   normalizeDrinkModules,
   normalizeExerciseDefinition,
+  previewRoutineTemplateApply,
   pauseWorkoutSession,
   progressiveOverloadRecommendation,
   resumeWorkoutSession,
+  routineFromMarketplaceTemplate,
+  routineTemplateDetail,
+  routineTemplateCompatibility,
   shouldSendCreatineReminder,
   shouldSendHydrationReminder,
   suggestExerciseSubstitutions,
@@ -31,6 +36,8 @@ import {
   type RecommendationDecision,
   type RecommendationHistoryItem,
   type Routine,
+  type RoutineTemplate,
+  type RoutineTemplateGoal,
   type SessionExerciseQueueItem,
   type SupplementLog,
   type SocialPrivacySettings,
@@ -406,6 +413,103 @@ export function addMarketplaceExerciseToRoutine(idOrSlug: string, input: { routi
   routine.updatedAt = nextUpdatedAt(routine.updatedAt);
   recordResourceMutation({ type: "routine.upsert", routine });
   return ok({ routine, workoutDay: day, exercise: routineExercise });
+}
+
+function templateCatalog(): RoutineTemplate[] {
+  return serverState().routineTemplatesMarketplace ?? [];
+}
+
+function profileForRoutineTemplates() {
+  return {
+    trainingGoal: serverState().profile.trainingGoal as RoutineTemplateGoal | undefined,
+    experienceLevel: serverState().profile.experienceLevel,
+    availableEquipment: serverState().profile.availableEquipment
+  };
+}
+
+function stableTemplateRoutineId(templateId: string, idempotencyKey?: string): string | undefined {
+  if (!idempotencyKey?.trim()) return undefined;
+  const safe = idempotencyKey.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-").slice(0, 80);
+  return `routine-template-${templateId}-${safe}`;
+}
+
+export function listRoutineTemplateCatalog(filters: {
+  query?: string;
+  goal?: RoutineTemplateGoal | "all";
+  daysPerWeek?: number | string;
+  equipment?: EquipmentType | "all";
+  experienceLevel?: "beginner" | "intermediate" | "advanced" | "all";
+  tag?: string;
+  sort?: "name" | "goal" | "days" | "compatibility";
+  page?: number | string;
+  pageSize?: number | string;
+} = {}) {
+  const daysPerWeek = filters.daysPerWeek === undefined || filters.daysPerWeek === "all" ? "all" : Number(filters.daysPerWeek);
+  const all = listRoutineTemplates(templateCatalog(), {
+    ...filters,
+    daysPerWeek: Number.isFinite(daysPerWeek) ? Number(daysPerWeek) : "all",
+    status: "published",
+    profile: profileForRoutineTemplates()
+  });
+  const page = Math.max(1, Math.floor(Number(filters.page ?? 1) || 1));
+  const pageSize = Math.min(50, Math.max(1, Math.floor(Number(filters.pageSize ?? 12) || 12)));
+  const start = (page - 1) * pageSize;
+  return ok({
+    items: all.slice(start, start + pageSize).map((template) => ({
+      ...template,
+      compatibility: routineTemplateCompatibility(template, profileForRoutineTemplates())
+    })),
+    page,
+    pageSize,
+    total: all.length
+  });
+}
+
+export function getRoutineTemplate(idOrSlug: string) {
+  const template = routineTemplateDetail(templateCatalog(), idOrSlug);
+  if (!template || template.status !== "published") return fail("routine template not found");
+  return ok({ ...template, compatibility: routineTemplateCompatibility(template, profileForRoutineTemplates()) });
+}
+
+export function previewRoutineTemplate(idOrSlug: string, input: { routineName?: string } = {}) {
+  const template = routineTemplateDetail(templateCatalog(), idOrSlug);
+  if (!template || template.status !== "published") return fail("routine template not found");
+  return ok(previewRoutineTemplateApply(template, profileForRoutineTemplates(), { routineName: input.routineName }));
+}
+
+export function applyRoutineTemplate(idOrSlug: string, input: { routineName?: string; idempotencyKey?: string } = {}) {
+  const template = routineTemplateDetail(templateCatalog(), idOrSlug);
+  if (!template || template.status !== "published") return fail("routine template not found");
+  const routineId = stableTemplateRoutineId(template.id, input.idempotencyKey);
+  const existing = routineId ? serverState().routines.find((routine) => routine.id === routineId) : undefined;
+  if (existing) return ok({ routine: existing, template, applied: false, idempotent: true });
+
+  const routine = routineFromMarketplaceTemplate(template, { id: routineId, name: input.routineName });
+  serverState().routines.push(routine);
+  serverState().activeRoutineId = routine.id;
+  serverState().selectedWorkoutDayId = routine.days[0]?.id ?? "";
+  serverState().workoutExercises = routine.days[0]?.exercises ?? [];
+  recordResourceMutation({ type: "routine.upsert", routine });
+  return ok({ routine, template, applied: true, idempotent: Boolean(routineId) });
+}
+
+export function cloneRoutineTemplatePreview(idOrSlug: string, input: { routineName?: string } = {}) {
+  const template = routineTemplateDetail(templateCatalog(), idOrSlug);
+  if (!template || template.status !== "published") return fail("routine template not found");
+  return ok({ routine: routineFromMarketplaceTemplate(template, { name: input.routineName }), template });
+}
+
+export function recordRoutineTemplateFeedback(idOrSlug: string, input: { decision: "accepted" | "rejected"; feedback?: string; favorite?: boolean }) {
+  const template = routineTemplateDetail(templateCatalog(), idOrSlug);
+  if (!template || template.status !== "published") return fail("routine template not found");
+  return ok({
+    id: cryptoSafeId(),
+    templateId: template.id,
+    decision: input.decision,
+    favorite: Boolean(input.favorite),
+    feedback: input.feedback?.trim(),
+    decidedAt: new Date().toISOString()
+  });
 }
 
 export function startWorkoutSession(input: {

@@ -1136,6 +1136,148 @@
         }
       }
     },
+    "/api/routine-templates": {
+      "get": {
+        "summary": "Search published routine marketplace templates with filters, compatibility and pagination.",
+        "parameters": [
+          { "name": "query", "in": "query", "schema": { "type": "string" } },
+          { "name": "goal", "in": "query", "schema": { "type": "string", "enum": ["all", "strength", "muscle", "fat-loss", "health"] } },
+          { "name": "daysPerWeek", "in": "query", "schema": { "oneOf": [{ "type": "integer", "minimum": 1, "maximum": 7 }, { "type": "string", "const": "all" }] } },
+          { "name": "equipment", "in": "query", "schema": { "type": "string" } },
+          { "name": "experienceLevel", "in": "query", "schema": { "type": "string", "enum": ["all", "beginner", "intermediate", "advanced"] } },
+          { "name": "tag", "in": "query", "schema": { "type": "string" } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["name", "goal", "days", "compatibility"] } },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 50 } }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/routine-templates/{id}": {
+      "get": {
+        "summary": "Get routine template detail by id or slug.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/routine-templates/{id}/preview": {
+      "post": {
+        "summary": "Preview applying a published routine template to a user-owned routine.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/routine-templates/{id}/apply": {
+      "post": {
+        "summary": "Apply a published routine template by copying it into a user-owned routine.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/routine-templates/{id}/clone": {
+      "post": {
+        "summary": "Create a routine draft from a published template without persisting it.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/routine-templates/{id}/feedback": {
+      "post": {
+        "summary": "Record accepted/rejected feedback and bookmark signal for a routine template.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Ok"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/exercises/{id}": {
       "patch": {
         "summary": "Update exercise definition",

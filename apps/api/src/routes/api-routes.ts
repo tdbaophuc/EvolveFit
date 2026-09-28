@@ -18,11 +18,15 @@ import {
   getHydrationToday,
   getMarketplaceExercise,
   getMarketplaceExerciseSubstitutions,
+  getRoutineTemplate,
   getWorkoutToday,
   addMarketplaceExerciseToRoutine,
+  applyRoutineTemplate,
   cloneMarketplaceExercise,
+  cloneRoutineTemplatePreview,
   listExercises,
   listMarketplaceExerciseCatalog,
+  listRoutineTemplateCatalog,
   listRoutines,
   listSupplements,
   logHydration,
@@ -31,9 +35,11 @@ import {
   notificationStatus,
   patchHydrationLog,
   pauseWorkoutSessionById,
+  previewRoutineTemplate,
   previewWorkoutPlanner,
   recalculateAchievements,
   recalculateProgression,
+  recordRoutineTemplateFeedback,
   reorderWorkoutSession,
   resumeWorkoutSessionById,
   runScheduledCronJob,
@@ -361,6 +367,21 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
   app.patch<{ Params: IdParams }>("/api/exercises/:id", (request, reply) => withDataContext(request, reply, () => updateExercise(request.params.id, bodyAs(request)), { errorStatus: 400, persist: true }));
   app.delete<{ Params: IdParams }>("/api/exercises/:id", (request, reply) => withDataContext(request, reply, () => deleteExercise(request.params.id), { errorStatus: 404, persist: true }));
 
+  app.get("/api/routine-templates", (request, reply) => withDataContext(request, reply, () => listRoutineTemplateCatalog(request.query as Record<string, never>)));
+  app.get<{ Params: IdParams }>("/api/routine-templates/:id", (request, reply) => withDataContext(request, reply, () => getRoutineTemplate(request.params.id), { errorStatus: 404 }));
+  app.post<{ Params: IdParams }>("/api/routine-templates/:id/preview", (request, reply) =>
+    withDataContext(request, reply, () => previewRoutineTemplate(request.params.id, bodyAs(request)), { errorStatus: 404 })
+  );
+  app.post<{ Params: IdParams }>("/api/routine-templates/:id/apply", (request, reply) =>
+    withDataContext(request, reply, () => applyRoutineTemplate(request.params.id, bodyAs(request)), { errorStatus: 404, persist: true })
+  );
+  app.post<{ Params: IdParams }>("/api/routine-templates/:id/clone", (request, reply) =>
+    withDataContext(request, reply, () => cloneRoutineTemplatePreview(request.params.id, bodyAs(request)), { errorStatus: 404 })
+  );
+  app.post<{ Params: IdParams }>("/api/routine-templates/:id/feedback", (request, reply) =>
+    withDataContext(request, reply, () => recordRoutineTemplateFeedback(request.params.id, bodyAs(request)), { errorStatus: 404 })
+  );
+
   app.get("/api/workouts/today", (request, reply) => withDataContext(request, reply, () => getWorkoutToday()));
   app.post("/api/workouts/planner/preview", (request, reply) => withDataContext(request, reply, () => previewWorkoutPlanner(bodyAs(request)), { errorStatus: 400 }));
   app.post("/api/workouts/sessions", (request, reply) => withDataContext(request, reply, () => startWorkoutSession(bodyAs(request)), { errorStatus: 400, persist: true }));
@@ -634,6 +655,33 @@ function validateRouteRequest(request: FastifyRequest): ValidationIssue[] {
   if (path === "/api/exercises/marketplace/:id/substitutions" && method === "GET") {
     optionalText(query.equipment, "query.equipment", issues, { max: 200 });
     optionalInteger(query.limit === undefined ? undefined : Number(query.limit), "query.limit", issues, { min: 1, max: 20 });
+    return issues;
+  }
+  if (path === "/api/routine-templates" && method === "GET") {
+    optionalText(query.query, "query.query", issues, { max: 160 });
+    optionalEnum(query.goal, "query.goal", ["all", "strength", "muscle", "fat-loss", "health"], issues);
+    optionalEnum(query.equipment, "query.equipment", ["all", "barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "other"], issues);
+    optionalEnum(query.experienceLevel, "query.experienceLevel", ["all", "beginner", "intermediate", "advanced"], issues);
+    optionalText(query.tag, "query.tag", issues, { max: 80 });
+    optionalEnum(query.sort, "query.sort", ["name", "goal", "days", "compatibility"], issues);
+    optionalInteger(query.daysPerWeek === undefined || query.daysPerWeek === "all" ? undefined : Number(query.daysPerWeek), "query.daysPerWeek", issues, { min: 1, max: 7 });
+    optionalInteger(query.page === undefined ? undefined : Number(query.page), "query.page", issues, { min: 1, max: 10000 });
+    optionalInteger(query.pageSize === undefined ? undefined : Number(query.pageSize), "query.pageSize", issues, { min: 1, max: 50 });
+    return issues;
+  }
+  if (path === "/api/routine-templates/:id/preview" || path === "/api/routine-templates/:id/clone") {
+    optionalText(body.routineName, "body.routineName", issues, { min: 1, max: 160 });
+    return issues;
+  }
+  if (path === "/api/routine-templates/:id/apply") {
+    optionalText(body.routineName, "body.routineName", issues, { min: 1, max: 160 });
+    optionalText(body.idempotencyKey, "body.idempotencyKey", issues, { min: 1, max: 160 });
+    return issues;
+  }
+  if (path === "/api/routine-templates/:id/feedback") {
+    requireEnum(body.decision, "body.decision", ["accepted", "rejected"], issues);
+    optionalBoolean(body.favorite, "body.favorite", issues);
+    optionalText(body.feedback, "body.feedback", issues, { max: 1000 });
     return issues;
   }
 
