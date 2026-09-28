@@ -1,7 +1,8 @@
 import {
-  builtInExerciseDefinitions,
+  defaultExerciseCatalog,
   defaultHealthIntegrationSettings,
   defaultSocialPrivacySettings,
+  isUserOwnedExercise,
   migrateLegacyWorkoutSession,
   migrateWorkoutExercisesToRoutine,
   normalizeDrinkModules,
@@ -187,7 +188,7 @@ export function buildCloudMergePreview(local: AppState, cloud?: AppState): Cloud
     workoutSets: local.workoutSets.length,
     workoutSessions: local.workoutSessions.length,
     routines: local.routines.length,
-    exercises: local.exerciseLibrary.filter((exercise) => !exercise.builtIn).length,
+    exercises: local.exerciseLibrary.filter(isUserOwnedExercise).length,
     bodyMetrics: local.bodyMetrics.length,
     conflicts
   };
@@ -225,10 +226,10 @@ export function mergeLocalDataIntoCloud(local: AppState, cloud: AppState): AppSt
     workoutSessions: mergeById(cloud.workoutSessions, local.workoutSessions, "startedAt"),
     routines: mergeById(cloud.routines, local.routines, "updatedAt"),
     exerciseLibrary: [
-      ...builtInExerciseDefinitions,
+      ...defaultExerciseCatalog,
       ...mergeById(
-        cloud.exerciseLibrary.filter((exercise) => !exercise.builtIn),
-        local.exerciseLibrary.filter((exercise) => !exercise.builtIn),
+        cloud.exerciseLibrary.filter(isUserOwnedExercise),
+        local.exerciseLibrary.filter(isUserOwnedExercise),
         "id"
       )
     ],
@@ -254,7 +255,7 @@ export function buildLocalToCloudSyncItems(state: AppState, idempotencyPrefix = 
     ...state.workoutSessions.map((session) => item("workout.session.start", session.id, session)),
     ...state.workoutSets.map((set) => item("workout.set.create", set.id, set)),
     ...state.routines.map((routine) => item("routine.create", routine.id, routine)),
-    ...state.exerciseLibrary.filter((exercise) => !exercise.builtIn).map((exercise) => item("exercise.create", exercise.id, exercise)),
+    ...state.exerciseLibrary.filter(isUserOwnedExercise).map((exercise) => item("exercise.create", exercise.id, exercise)),
     ...state.bodyMetrics.map((metric) => item("bodyMetric.upsert", metric.id, metric))
   ];
 }
@@ -314,8 +315,8 @@ function normalizeImportedState(parsed: Partial<AppState>): AppState {
     activeRoutineId,
     selectedWorkoutDayId: selectedDay?.id ?? initialState.selectedWorkoutDayId,
     exerciseLibrary: [
-      ...builtInExerciseDefinitions,
-      ...((parsed.exerciseLibrary ?? initialState.exerciseLibrary).filter((exercise) => !exercise.builtIn))
+      ...defaultExerciseCatalog,
+      ...((parsed.exerciseLibrary ?? initialState.exerciseLibrary).filter(isUserOwnedExercise))
     ],
     workoutExercises,
     workoutSessions: migratedSessions.map(normalizeWorkoutSessionQueue),

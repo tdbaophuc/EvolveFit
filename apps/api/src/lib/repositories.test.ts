@@ -99,11 +99,55 @@ describe("backend repository boundary", () => {
           updatedAt: "2026-09-04T00:01:00.000Z",
           days: [{ id: "d1", name: "Push Day", day: "Mon", order: 0, exercises: [] }]
         }
+      },
+      {
+        type: "exercise.upsert",
+        exercise: {
+          id: "custom-row",
+          name: "Single-arm Row Custom",
+          muscleGroup: "Lưng",
+          equipment: "dumbbell",
+          movementPattern: "pull",
+          builtIn: false,
+          slug: "single-arm-row-custom",
+          catalogSource: "custom",
+          status: "published",
+          primaryMuscles: ["Lats"],
+          secondaryMuscles: ["Biceps"],
+          cues: ["Pull elbow to hip"],
+          commonMistakes: ["Twisting too far"],
+          substitutions: ["market-single-arm-db-row"],
+          difficulty: "beginner",
+          unilateral: true,
+          equipmentAlternatives: ["cable"],
+          forceType: "pull",
+          contraindications: ["Stop if shoulder pain appears"],
+          tags: ["back", "custom"],
+          source: "market-single-arm-db-row",
+          license: "Custom copy from marketplace",
+          version: 1
+        }
       }
     ]);
 
     expect(calls.some((call) => call.method === "POST" && call.url.includes("hydration_logs"))).toBe(true);
     expect(calls.some((call) => call.method === "POST" && call.url.includes("routines"))).toBe(true);
+    const exerciseUpsert = calls.find((call) => call.method === "POST" && call.url.includes("exercise_library"));
+    expect(exerciseUpsert?.body).toEqual([
+      expect.objectContaining({
+        id: "custom-row",
+        user_id: "user-a",
+        catalog_source: "custom",
+        status: "published",
+        slug: "single-arm-row-custom",
+        primary_muscles: ["Lats"],
+        force_type: "pull",
+        contraindications: ["Stop if shoulder pain appears"],
+        source: "market-single-arm-db-row",
+        license: "Custom copy from marketplace",
+        version: 1
+      })
+    ]);
     expect(calls.some((call) => call.method === "DELETE" && call.url.includes("workout_days") && call.url.includes("routine_id=eq.r1"))).toBe(true);
     expect(calls.some((call) => call.method === "DELETE" && call.url.includes("hydration_logs?user_id=eq.user-a") && !call.url.includes("id=eq."))).toBe(false);
     expect(calls.every((call) => !call.url.includes("routine_exercises?user_id=eq.user-a") || call.url.includes("id=eq.") || call.method !== "DELETE")).toBe(true);

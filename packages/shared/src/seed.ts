@@ -1,5 +1,5 @@
 import {
-  builtInExerciseDefinitions,
+  defaultExerciseCatalog,
   defaultHealthIntegrationSettings,
   defaultSocialPrivacySettings,
   defaultDrinkModules,
@@ -302,7 +302,7 @@ export const initialState: AppState = {
   routines: [defaultRoutine],
   activeRoutineId: defaultRoutine.id,
   selectedWorkoutDayId: defaultRoutine.days[0].id,
-  exerciseLibrary: builtInExerciseDefinitions,
+  exerciseLibrary: defaultExerciseCatalog,
   workoutExercises: routineTemplates.ppl,
   workoutSessions: [],
   activeWorkoutSessionId: undefined,

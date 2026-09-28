@@ -16,8 +16,13 @@ import {
   finishWorkoutSessionById,
   getAchievementsAndLeaderboard,
   getHydrationToday,
+  getMarketplaceExercise,
+  getMarketplaceExerciseSubstitutions,
   getWorkoutToday,
+  addMarketplaceExerciseToRoutine,
+  cloneMarketplaceExercise,
   listExercises,
+  listMarketplaceExerciseCatalog,
   listRoutines,
   listSupplements,
   logHydration,
@@ -341,6 +346,17 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
   app.delete<{ Params: IdParams }>("/api/routines/:id", (request, reply) => withDataContext(request, reply, () => deleteRoutine(request.params.id), { errorStatus: 404, persist: true }));
 
   app.get("/api/exercises", (request, reply) => withDataContext(request, reply, () => listExercises()));
+  app.get("/api/exercises/marketplace", (request, reply) => withDataContext(request, reply, () => listMarketplaceExerciseCatalog(request.query as Record<string, never>)));
+  app.get<{ Params: IdParams }>("/api/exercises/marketplace/:id", (request, reply) => withDataContext(request, reply, () => getMarketplaceExercise(request.params.id), { errorStatus: 404 }));
+  app.get<{ Params: IdParams }>("/api/exercises/marketplace/:id/substitutions", (request, reply) =>
+    withDataContext(request, reply, () => getMarketplaceExerciseSubstitutions(request.params.id, request.query as Record<string, never>), { errorStatus: 404 })
+  );
+  app.post<{ Params: IdParams }>("/api/exercises/marketplace/:id/clone", (request, reply) =>
+    withDataContext(request, reply, () => cloneMarketplaceExercise(request.params.id, bodyAs(request)), { errorStatus: 404, persist: true })
+  );
+  app.post<{ Params: IdParams }>("/api/exercises/marketplace/:id/add-to-routine", (request, reply) =>
+    withDataContext(request, reply, () => addMarketplaceExerciseToRoutine(request.params.id, bodyAs(request)), { errorStatus: 404, persist: true })
+  );
   app.post("/api/exercises", (request, reply) => withDataContext(request, reply, () => createExercise(bodyAs(request)), { errorStatus: 400, persist: true }));
   app.patch<{ Params: IdParams }>("/api/exercises/:id", (request, reply) => withDataContext(request, reply, () => updateExercise(request.params.id, bodyAs(request)), { errorStatus: 400, persist: true }));
   app.delete<{ Params: IdParams }>("/api/exercises/:id", (request, reply) => withDataContext(request, reply, () => deleteExercise(request.params.id), { errorStatus: 404, persist: true }));
@@ -603,6 +619,23 @@ function validateRouteRequest(request: FastifyRequest): ValidationIssue[] {
     optionalText(query.localProfileId, "query.localProfileId", issues, { max: 320 });
     return issues;
   }
+  if (path === "/api/exercises/marketplace" && method === "GET") {
+    optionalText(query.query, "query.query", issues, { max: 160 });
+    optionalText(query.muscleGroup, "query.muscleGroup", issues, { max: 120 });
+    optionalEnum(query.equipment, "query.equipment", ["all", "barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "other"], issues);
+    optionalEnum(query.movementPattern, "query.movementPattern", ["all", "push", "pull", "squat", "hinge", "lunge", "carry", "isolation", "core"], issues);
+    optionalEnum(query.difficulty, "query.difficulty", ["all", "beginner", "intermediate", "advanced"], issues);
+    optionalText(query.tag, "query.tag", issues, { max: 80 });
+    optionalEnum(query.sort, "query.sort", ["name", "muscle", "difficulty"], issues);
+    optionalInteger(query.page === undefined ? undefined : Number(query.page), "query.page", issues, { min: 1, max: 10000 });
+    optionalInteger(query.pageSize === undefined ? undefined : Number(query.pageSize), "query.pageSize", issues, { min: 1, max: 50 });
+    return issues;
+  }
+  if (path === "/api/exercises/marketplace/:id/substitutions" && method === "GET") {
+    optionalText(query.equipment, "query.equipment", issues, { max: 200 });
+    optionalInteger(query.limit === undefined ? undefined : Number(query.limit), "query.limit", issues, { min: 1, max: 20 });
+    return issues;
+  }
 
   if (path === "/api/auth/sign-in") {
     optionalEmail(body.email, "body.email", issues);
@@ -680,20 +713,22 @@ function validateRouteRequest(request: FastifyRequest): ValidationIssue[] {
   }
   if (path === "/api/exercises" && method === "POST") {
     requireText(body.name, "body.name", issues, { min: 1, max: 160 });
-    optionalText(body.muscleGroup, "body.muscleGroup", issues, { max: 120 });
-    optionalEnum(body.equipment, "body.equipment", ["barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "other"], issues);
-    optionalEnum(body.movementPattern, "body.movementPattern", ["push", "pull", "squat", "hinge", "lunge", "carry", "isolation", "core"], issues);
-    optionalBoolean(body.builtIn, "body.builtIn", issues);
-    optionalText(body.notes, "body.notes", issues, { max: 1000 });
+    validateExerciseBody(body, issues);
     return issues;
   }
   if (path === "/api/exercises/:id" && method === "PATCH") {
     optionalText(body.name, "body.name", issues, { min: 1, max: 160 });
-    optionalText(body.muscleGroup, "body.muscleGroup", issues, { max: 120 });
-    optionalEnum(body.equipment, "body.equipment", ["barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "other"], issues);
-    optionalEnum(body.movementPattern, "body.movementPattern", ["push", "pull", "squat", "hinge", "lunge", "carry", "isolation", "core"], issues);
-    optionalBoolean(body.builtIn, "body.builtIn", issues);
-    optionalText(body.notes, "body.notes", issues, { max: 1000 });
+    validateExerciseBody(body, issues);
+    return issues;
+  }
+  if (path === "/api/exercises/marketplace/:id/clone") {
+    optionalText(body.name, "body.name", issues, { min: 1, max: 160 });
+    validateExerciseBody(body, issues);
+    return issues;
+  }
+  if (path === "/api/exercises/marketplace/:id/add-to-routine") {
+    optionalText(body.routineId, "body.routineId", issues, { max: 200 });
+    optionalText(body.workoutDayId, "body.workoutDayId", issues, { max: 200 });
     return issues;
   }
   if (path === "/api/workouts/sessions") {
@@ -759,6 +794,28 @@ function validateRouteRequest(request: FastifyRequest): ValidationIssue[] {
     optionalText(body.path, "body.path", issues, { max: 500 });
     optionalText(body.userAgent, "body.userAgent", issues, { max: 500 });
   }
+  return issues;
+}
+
+function validateExerciseBody(body: Record<string, unknown>, issues: ValidationIssue[]): ValidationIssue[] {
+  optionalText(body.muscleGroup, "body.muscleGroup", issues, { max: 120 });
+  optionalEnum(body.equipment, "body.equipment", ["barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "other"], issues);
+  optionalEnum(body.movementPattern, "body.movementPattern", ["push", "pull", "squat", "hinge", "lunge", "carry", "isolation", "core"], issues);
+  optionalText(body.notes, "body.notes", issues, { max: 1000 });
+  optionalStringArray(body.primaryMuscles, "body.primaryMuscles", issues);
+  optionalStringArray(body.secondaryMuscles, "body.secondaryMuscles", issues);
+  optionalStringArray(body.cues, "body.cues", issues);
+  optionalStringArray(body.commonMistakes, "body.commonMistakes", issues);
+  optionalStringArray(body.substitutions, "body.substitutions", issues);
+  optionalStringArray(body.contraindications, "body.contraindications", issues);
+  optionalStringArray(body.equipmentAlternatives, "body.equipmentAlternatives", issues);
+  optionalStringArray(body.tags, "body.tags", issues);
+  optionalText(body.mediaUrl, "body.mediaUrl", issues, { max: 2048 });
+  optionalEnum(body.difficulty, "body.difficulty", ["beginner", "intermediate", "advanced"], issues);
+  optionalEnum(body.forceType, "body.forceType", ["push", "pull", "static", "mixed"], issues);
+  optionalBoolean(body.unilateral, "body.unilateral", issues);
+  optionalText(body.source, "body.source", issues, { max: 240 });
+  optionalText(body.license, "body.license", issues, { max: 240 });
   return issues;
 }
 

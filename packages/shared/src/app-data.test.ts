@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  cloneMarketplaceExerciseToCustom,
+  marketplaceExerciseDefinitions,
+  type ExerciseDefinition
+} from "./core";
+import {
   applySelectiveRestore,
   buildCloudMergePreview,
   buildLocalToCloudSyncItems,
@@ -142,6 +147,29 @@ describe("app data import/export", () => {
     expect(preview.conflicts[0]).toContain("lịch tập");
     expect(items.some((item) => item.type === "hydration.log" && item.idempotencyKey === "merge-test:hydration.log:water-local")).toBe(true);
     expect(items.some((item) => item.type === "workout.set.create" && item.idempotencyKey === "merge-test:workout.set.create:set-local")).toBe(true);
+  });
+
+  it("treats marketplace catalog as public read-only and syncs only custom exercise copies", () => {
+    const marketplace = marketplaceExerciseDefinitions[0];
+    const custom = cloneMarketplaceExerciseToCustom(marketplace, { id: "custom-goblet", name: "Goblet Squat của tôi" });
+    const local = {
+      ...initialState,
+      exerciseLibrary: [...initialState.exerciseLibrary, marketplace, custom]
+    };
+    const cloud = {
+      ...initialState,
+      exerciseLibrary: initialState.exerciseLibrary.filter((exercise: ExerciseDefinition) => exercise.id !== custom.id)
+    };
+
+    const preview = buildCloudMergePreview(local, cloud);
+    const merged = mergeLocalDataIntoCloud(local, cloud);
+    const items = buildLocalToCloudSyncItems(local, "marketplace-test");
+
+    expect(preview.exercises).toBe(1);
+    expect(merged.exerciseLibrary.some((exercise) => exercise.id === marketplace.id && exercise.catalogSource === "marketplace")).toBe(true);
+    expect(merged.exerciseLibrary.some((exercise) => exercise.id === custom.id && exercise.catalogSource === "custom")).toBe(true);
+    expect(items.some((item) => item.type === "exercise.create" && item.id === custom.id)).toBe(true);
+    expect(items.some((item) => item.type === "exercise.create" && item.id === marketplace.id)).toBe(false);
   });
 
   it("merges local data into cloud state using newer records by id", () => {

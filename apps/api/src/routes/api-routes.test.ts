@@ -99,6 +99,23 @@ describe("Fastify API contract", () => {
       payload: { name: "API Curl", primaryMuscles: ["Biceps"], cues: ["Elbows quiet"], tags: ["arms"] }
     })).json();
     expect((await app.inject("/api/exercises")).json()).toMatchObject({ ok: true });
+    const marketplace = (await app.inject("/api/exercises/marketplace?query=row&equipment=dumbbell&pageSize=5")).json();
+    expect(marketplace).toMatchObject({ ok: true, data: { page: 1, pageSize: 5, total: expect.any(Number) } });
+    expect(marketplace.data.items.some((item: { id: string }) => item.id === "market-single-arm-db-row")).toBe(true);
+    expect((await app.inject("/api/exercises/marketplace/single-arm-dumbbell-row")).json()).toMatchObject({
+      ok: true,
+      data: { id: "market-single-arm-db-row", catalogSource: "marketplace", status: "published" }
+    });
+    expect((await app.inject("/api/exercises/marketplace/single-arm-dumbbell-row/substitutions?equipment=dumbbell")).json()).toMatchObject({
+      ok: true,
+      data: { substitutions: expect.any(Array) }
+    });
+    const cloned = (await app.inject({
+      method: "POST",
+      url: "/api/exercises/marketplace/single-arm-dumbbell-row/clone",
+      payload: { name: "API Row Custom" }
+    })).json();
+    expect(cloned).toMatchObject({ ok: true, data: { name: "API Row Custom", catalogSource: "custom", builtIn: false } });
     expect((await app.inject({ method: "PATCH", url: `/api/exercises/${exercise.data.id}`, payload: { notes: "ported" } })).json()).toMatchObject({
       ok: true,
       data: { notes: "ported", primaryMuscles: ["Biceps"] }
@@ -110,6 +127,13 @@ describe("Fastify API contract", () => {
       ok: true,
       data: { name: "API Routine 2" }
     });
+    const defaultRoutineDayId = (await app.inject("/api/routines")).json().data[0].days[0].id;
+    expect((await app.inject({
+      method: "POST",
+      url: "/api/exercises/marketplace/single-arm-dumbbell-row/add-to-routine",
+      payload: { workoutDayId: defaultRoutineDayId }
+    })).json()).toMatchObject({ ok: true, data: { exercise: { definitionId: "market-single-arm-db-row" } } });
+    expect((await app.inject({ method: "PATCH", url: "/api/exercises/marketplace/single-arm-dumbbell-row", payload: { notes: "bad" } })).statusCode).toBe(404);
     expect((await app.inject({ method: "DELETE", url: `/api/exercises/${exercise.data.id}` })).json()).toMatchObject({ ok: true });
     expect((await app.inject({ method: "DELETE", url: `/api/routines/${routine.data.id}` })).json()).toMatchObject({ ok: true });
   });

@@ -664,6 +664,9 @@ type ExerciseLibraryRow = {
   equipment: ExerciseDefinition["equipment"];
   movement_pattern: ExerciseDefinition["movementPattern"];
   built_in: boolean;
+  slug?: string | null;
+  catalog_source?: ExerciseDefinition["catalogSource"] | null;
+  status?: ExerciseDefinition["status"] | null;
   notes?: string | null;
   primary_muscles?: string[] | null;
   secondary_muscles?: string[] | null;
@@ -674,6 +677,14 @@ type ExerciseLibraryRow = {
   difficulty?: ExerciseDefinition["difficulty"] | null;
   unilateral?: boolean | null;
   equipment_alternatives?: ExerciseDefinition["equipmentAlternatives"] | null;
+  force_type?: ExerciseDefinition["forceType"] | null;
+  contraindications?: string[] | null;
+  source?: string | null;
+  license?: string | null;
+  created_by?: string | null;
+  reviewed_by?: string | null;
+  published_at?: string | null;
+  version?: number | null;
   tags?: string[] | null;
 };
 type RoutineRow = { id: string; user_id: string; name: string; days_per_week: number; created_at: string; updated_at?: string };
@@ -764,6 +775,9 @@ function exerciseFromRow(row: ExerciseLibraryRow): ExerciseDefinition {
     equipment: row.equipment,
     movementPattern: row.movement_pattern,
     builtIn: row.built_in,
+    slug: row.slug ?? undefined,
+    catalogSource: row.catalog_source ?? undefined,
+    status: row.status ?? undefined,
     notes: row.notes ?? undefined,
     primaryMuscles: row.primary_muscles ?? undefined,
     secondaryMuscles: row.secondary_muscles ?? undefined,
@@ -774,6 +788,14 @@ function exerciseFromRow(row: ExerciseLibraryRow): ExerciseDefinition {
     difficulty: row.difficulty ?? undefined,
     unilateral: row.unilateral ?? undefined,
     equipmentAlternatives: row.equipment_alternatives ?? undefined,
+    forceType: row.force_type ?? undefined,
+    contraindications: row.contraindications ?? undefined,
+    source: row.source ?? undefined,
+    license: row.license ?? undefined,
+    createdBy: row.created_by ?? undefined,
+    reviewedBy: row.reviewed_by ?? undefined,
+    publishedAt: row.published_at ?? undefined,
+    version: row.version ?? undefined,
     tags: row.tags ?? undefined
   };
 }
@@ -787,6 +809,9 @@ function exerciseToRow(userId: string, item: ExerciseDefinition) {
     equipment: item.equipment,
     movement_pattern: item.movementPattern,
     built_in: item.builtIn,
+    slug: item.slug ?? null,
+    catalog_source: item.catalogSource ?? (item.builtIn ? "built-in" : "custom"),
+    status: item.status ?? "published",
     notes: item.notes ?? null,
     primary_muscles: item.primaryMuscles ?? [],
     secondary_muscles: item.secondaryMuscles ?? [],
@@ -797,6 +822,14 @@ function exerciseToRow(userId: string, item: ExerciseDefinition) {
     difficulty: item.difficulty ?? null,
     unilateral: item.unilateral ?? false,
     equipment_alternatives: item.equipmentAlternatives ?? [],
+    force_type: item.forceType ?? null,
+    contraindications: item.contraindications ?? [],
+    source: item.source ?? null,
+    license: item.license ?? null,
+    created_by: item.createdBy ?? null,
+    reviewed_by: item.reviewedBy ?? null,
+    published_at: item.publishedAt ?? null,
+    version: item.version ?? 1,
     tags: item.tags ?? []
   };
 }

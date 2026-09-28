@@ -26,9 +26,14 @@ import {
   hydrationPercent,
   hydrationTotal,
   canSyncHealthData,
+  cloneMarketplaceExerciseToCustom,
   healthIntegrationPrivacyCopy,
+  isPublicCatalogExercise,
+  isUserOwnedExercise,
   isWorkingVolumeSet,
   isDrinkModuleActive,
+  listMarketplaceExercises,
+  marketplaceExerciseDefinitions,
   monthlyAchievements,
   latestBodyMetric,
   kgToLb,
@@ -41,6 +46,7 @@ import {
   publishSharePreview,
   requestHealthIntegrationPermission,
   filterExerciseLibrary,
+  suggestExerciseSubstitutions,
   migrateWorkoutExercisesToRoutine,
   migrateLegacyWorkoutSession,
   nextSupersetExerciseIndex,
@@ -360,6 +366,37 @@ describe("routine model and exercise library", () => {
       primaryMuscles: ["Quads"],
       builtIn: false
     });
+  });
+
+  it("keeps marketplace exercises public, searchable and separate from user-owned custom exercises", () => {
+    const archived = normalizeExerciseDefinition({
+      ...marketplaceExerciseDefinitions[0],
+      id: "market-archived",
+      slug: "archived-marketplace",
+      status: "archived"
+    });
+    const marketplace = listMarketplaceExercises([...marketplaceExerciseDefinitions, archived], {
+      query: "unilateral",
+      equipment: "dumbbell"
+    });
+
+    expect(marketplace.map((exercise) => exercise.id)).toContain("market-single-arm-db-row");
+    expect(marketplace.map((exercise) => exercise.id)).not.toContain("market-archived");
+    expect(marketplace.every(isPublicCatalogExercise)).toBe(true);
+
+    const customCopy = cloneMarketplaceExerciseToCustom(marketplaceExerciseDefinitions[0], { name: "Goblet Squat của Phúc" });
+    expect(customCopy).toMatchObject({ builtIn: false, catalogSource: "custom", status: "published", source: "market-goblet-squat" });
+    expect(isUserOwnedExercise(customCopy)).toBe(true);
+  });
+
+  it("suggests marketplace substitutions that match available equipment", () => {
+    const substitutes = suggestExerciseSubstitutions(marketplaceExerciseDefinitions[2], marketplaceExerciseDefinitions, {
+      equipment: ["dumbbell"],
+      limit: 3
+    });
+
+    expect(substitutes.length).toBeGreaterThan(0);
+    expect(substitutes.every((exercise) => exercise.equipment === "dumbbell" || exercise.equipmentAlternatives?.includes("dumbbell"))).toBe(true);
   });
 
   it("builds a planner preview from goal, equipment and weekly frequency", () => {

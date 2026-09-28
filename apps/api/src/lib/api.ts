@@ -1,18 +1,26 @@
 import {
   buildProgressReports,
   buildWorkoutPlannerPreview,
+  cloneMarketplaceExerciseToCustom,
   coachV2Recommendation,
   createCustomExerciseDefinition,
   createWorkoutSession,
   cryptoSafeId,
+  exerciseCatalogDetail,
   finishWorkoutSession,
+  filterExerciseLibrary,
   hydrationTotal,
+  isPublicCatalogExercise,
+  isUserOwnedExercise,
+  listMarketplaceExercises,
   normalizeDrinkModules,
+  normalizeExerciseDefinition,
   pauseWorkoutSession,
   progressiveOverloadRecommendation,
   resumeWorkoutSession,
   shouldSendCreatineReminder,
   shouldSendHydrationReminder,
+  suggestExerciseSubstitutions,
   expectedHydrationByNow,
   isWorkingVolumeSet,
   type HydrationLog,
@@ -241,7 +249,7 @@ export function deleteRoutine(id: string): ApiResult<{ id: string }> {
 }
 
 export function listExercises() {
-  return ok(serverState().exerciseLibrary);
+  return ok(filterExerciseLibrary(serverState().exerciseLibrary, { includeArchived: true }));
 }
 
 export function createExercise(input: Partial<ExerciseDefinition>): ApiResult<ExerciseDefinition> {
@@ -262,11 +270,17 @@ export function createExercise(input: Partial<ExerciseDefinition>): ApiResult<Ex
       difficulty: input.difficulty,
       unilateral: input.unilateral,
       equipmentAlternatives: input.equipmentAlternatives,
+      forceType: input.forceType,
+      contraindications: input.contraindications,
+      source: input.source,
+      license: input.license,
       tags: input.tags
     }),
     id: input.id ?? cryptoSafeId(),
     name: input.name.trim(),
-    builtIn: input.builtIn ?? false
+    builtIn: false,
+    catalogSource: "custom",
+    status: "published"
   };
   serverState().exerciseLibrary.push(exercise);
   recordResourceMutation({ type: "exercise.upsert", exercise });
@@ -276,13 +290,13 @@ export function createExercise(input: Partial<ExerciseDefinition>): ApiResult<Ex
 export function updateExercise(id: string, input: Partial<ExerciseDefinition>): ApiResult<ExerciseDefinition> {
   const exercise = serverState().exerciseLibrary.find((item) => item.id === id);
   if (!exercise) return fail("exercise not found");
+  if (!isUserOwnedExercise(exercise)) return fail("public marketplace exercises are read-only");
   if (input.name !== undefined && !input.name.trim()) return fail("name is required");
   Object.assign(exercise, {
     ...(input.name !== undefined ? { name: input.name.trim() } : {}),
     ...(input.muscleGroup !== undefined ? { muscleGroup: input.muscleGroup.trim() || exercise.muscleGroup } : {}),
     ...(input.equipment !== undefined ? { equipment: input.equipment } : {}),
     ...(input.movementPattern !== undefined ? { movementPattern: input.movementPattern } : {}),
-    ...(input.builtIn !== undefined ? { builtIn: input.builtIn } : {}),
     ...(input.notes !== undefined ? { notes: input.notes } : {}),
     ...(input.primaryMuscles !== undefined ? { primaryMuscles: input.primaryMuscles } : {}),
     ...(input.secondaryMuscles !== undefined ? { secondaryMuscles: input.secondaryMuscles } : {}),
@@ -293,6 +307,14 @@ export function updateExercise(id: string, input: Partial<ExerciseDefinition>): 
     ...(input.difficulty !== undefined ? { difficulty: input.difficulty } : {}),
     ...(input.unilateral !== undefined ? { unilateral: input.unilateral } : {}),
     ...(input.equipmentAlternatives !== undefined ? { equipmentAlternatives: input.equipmentAlternatives } : {}),
+    ...(input.forceType !== undefined ? { forceType: input.forceType } : {}),
+    ...(input.contraindications !== undefined ? { contraindications: input.contraindications } : {}),
+    ...(input.source !== undefined ? { source: input.source } : {}),
+    ...(input.license !== undefined ? { license: input.license } : {}),
+    catalogSource: "custom",
+    builtIn: false,
+    status: "published",
+    updatedAt: new Date().toISOString(),
     ...(input.tags !== undefined ? { tags: input.tags } : {})
   });
   recordResourceMutation({ type: "exercise.upsert", exercise });
@@ -302,9 +324,88 @@ export function updateExercise(id: string, input: Partial<ExerciseDefinition>): 
 export function deleteExercise(id: string): ApiResult<{ id: string }> {
   const index = serverState().exerciseLibrary.findIndex((item) => item.id === id);
   if (index < 0) return fail("exercise not found");
+  if (!isUserOwnedExercise(serverState().exerciseLibrary[index])) return fail("public marketplace exercises are read-only");
   serverState().exerciseLibrary.splice(index, 1);
   recordResourceMutation({ type: "exercise.delete", id });
   return ok({ id });
+}
+
+export function listMarketplaceExerciseCatalog(filters: {
+  query?: string;
+  muscleGroup?: string;
+  equipment?: string;
+  movementPattern?: string;
+  difficulty?: string;
+  tag?: string;
+  sort?: string;
+  page?: number | string;
+  pageSize?: number | string;
+} = {}) {
+  const all = listMarketplaceExercises(serverState().exerciseLibrary, filters);
+  const sorted = [...all].sort((a, b) => {
+    if (filters.sort === "name") return a.name.localeCompare(b.name);
+    if (filters.sort === "muscle") return a.muscleGroup.localeCompare(b.muscleGroup) || a.name.localeCompare(b.name);
+    if (filters.sort === "difficulty") return String(a.difficulty ?? "").localeCompare(String(b.difficulty ?? "")) || a.name.localeCompare(b.name);
+    return 0;
+  });
+  const page = Math.max(1, Math.floor(Number(filters.page ?? 1) || 1));
+  const pageSize = Math.min(50, Math.max(1, Math.floor(Number(filters.pageSize ?? 20) || 20)));
+  const start = (page - 1) * pageSize;
+  return ok({
+    items: sorted.slice(start, start + pageSize),
+    page,
+    pageSize,
+    total: sorted.length
+  });
+}
+
+export function getMarketplaceExercise(idOrSlug: string) {
+  const exercise = exerciseCatalogDetail(serverState().exerciseLibrary, idOrSlug);
+  if (!exercise || !isPublicCatalogExercise(exercise) || normalizeExerciseDefinition(exercise).status !== "published") return fail("exercise not found");
+  return ok(normalizeExerciseDefinition(exercise));
+}
+
+export function getMarketplaceExerciseSubstitutions(idOrSlug: string, input: { equipment?: EquipmentType[] | EquipmentType | string; limit?: number | string } = {}) {
+  const exercise = exerciseCatalogDetail(serverState().exerciseLibrary, idOrSlug);
+  if (!exercise || !isPublicCatalogExercise(exercise) || normalizeExerciseDefinition(exercise).status === "archived") return fail("exercise not found");
+  const equipment = Array.isArray(input.equipment) ? input.equipment : typeof input.equipment === "string" ? input.equipment.split(",").filter(Boolean) as EquipmentType[] : undefined;
+  return ok({ exercise: normalizeExerciseDefinition(exercise), substitutions: suggestExerciseSubstitutions(exercise, serverState().exerciseLibrary, { equipment, limit: Number(input.limit ?? 5) || 5 }) });
+}
+
+export function cloneMarketplaceExercise(idOrSlug: string, input: Partial<ExerciseDefinition> = {}) {
+  const exercise = exerciseCatalogDetail(serverState().exerciseLibrary, idOrSlug);
+  if (!exercise || !isPublicCatalogExercise(exercise) || normalizeExerciseDefinition(exercise).status === "archived") return fail("exercise not found");
+  const custom = cloneMarketplaceExerciseToCustom(exercise, input);
+  serverState().exerciseLibrary.push(custom);
+  recordResourceMutation({ type: "exercise.upsert", exercise: custom });
+  return ok(custom);
+}
+
+export function addMarketplaceExerciseToRoutine(idOrSlug: string, input: { routineId?: string; workoutDayId?: string } = {}) {
+  const exercise = exerciseCatalogDetail(serverState().exerciseLibrary, idOrSlug);
+  if (!exercise || normalizeExerciseDefinition(exercise).status === "archived") return fail("exercise not found");
+  const routine = serverState().routines.find((item) => item.id === input.routineId) ?? serverState().routines.find((item) => item.id === serverState().activeRoutineId) ?? serverState().routines[0];
+  const day = routine?.days.find((item) => item.id === input.workoutDayId) ?? routine?.days.find((item) => item.id === serverState().selectedWorkoutDayId) ?? routine?.days[0];
+  if (!routine || !day) return fail("routine day not found");
+  const normalized = normalizeExerciseDefinition(exercise);
+  const routineExercise: Routine["days"][number]["exercises"][number] = {
+    id: cryptoSafeId(),
+    definitionId: normalized.id,
+    name: normalized.name,
+    muscleGroup: normalized.muscleGroup,
+    order: day.exercises.length,
+    targetSets: normalized.movementPattern === "core" ? 2 : 3,
+    targetRepsMin: normalized.movementPattern === "core" ? 30 : 8,
+    targetRepsMax: normalized.movementPattern === "core" ? 60 : 12,
+    targetWeightKg: normalized.equipment === "bodyweight" ? 0 : 20,
+    restSeconds: normalized.movementPattern === "isolation" || normalized.movementPattern === "core" ? 60 : 90,
+    lastSession: normalized.catalogSource === "marketplace" ? "Thêm từ marketplace" : "Thêm từ thư viện"
+  };
+  day.exercises.push(routineExercise);
+  routine.daysPerWeek = routine.days.length;
+  routine.updatedAt = nextUpdatedAt(routine.updatedAt);
+  recordResourceMutation({ type: "routine.upsert", routine });
+  return ok({ routine, workoutDay: day, exercise: routineExercise });
 }
 
 export function startWorkoutSession(input: {

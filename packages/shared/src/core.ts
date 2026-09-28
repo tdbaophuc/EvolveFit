@@ -146,6 +146,9 @@ export type WorkoutExercise = {
 
 export type EquipmentType = "barbell" | "dumbbell" | "cable" | "machine" | "bodyweight" | "kettlebell" | "other";
 export type ExerciseDifficulty = "beginner" | "intermediate" | "advanced";
+export type ExerciseCatalogSource = "built-in" | "marketplace" | "custom";
+export type ExerciseCatalogStatus = "draft" | "published" | "archived" | "pending-review";
+export type ExerciseForceType = "push" | "pull" | "static" | "mixed";
 
 export type MovementPattern =
   | "push"
@@ -164,6 +167,9 @@ export type ExerciseDefinition = {
   equipment: EquipmentType;
   movementPattern: MovementPattern;
   builtIn: boolean;
+  slug?: string;
+  catalogSource?: ExerciseCatalogSource;
+  status?: ExerciseCatalogStatus;
   notes?: string;
   primaryMuscles?: string[];
   secondaryMuscles?: string[];
@@ -174,6 +180,15 @@ export type ExerciseDefinition = {
   difficulty?: ExerciseDifficulty;
   unilateral?: boolean;
   equipmentAlternatives?: EquipmentType[];
+  forceType?: ExerciseForceType;
+  contraindications?: string[];
+  source?: string;
+  license?: string;
+  createdBy?: string;
+  reviewedBy?: string;
+  publishedAt?: string;
+  updatedAt?: string;
+  version?: number;
   tags?: string[];
 };
 
@@ -463,6 +478,110 @@ export const builtInExerciseDefinitions: ExerciseDefinition[] = [
   { id: "lib-cable-crunch", name: "Cable Crunch", muscleGroup: "Core", equipment: "cable", movementPattern: "core", builtIn: true }
 ];
 
+export const marketplaceExerciseDefinitions: ExerciseDefinition[] = [
+  {
+    id: "market-goblet-squat",
+    slug: "goblet-squat",
+    name: "Goblet Squat",
+    muscleGroup: "Chân",
+    equipment: "kettlebell",
+    movementPattern: "squat",
+    builtIn: true,
+    catalogSource: "marketplace",
+    status: "published",
+    primaryMuscles: ["Quads", "Glutes"],
+    secondaryMuscles: ["Core", "Adductors"],
+    cues: ["Giữ tạ sát ngực", "Gối đi theo hướng mũi chân", "Đứng lên qua giữa bàn chân"],
+    commonMistakes: ["Cúi lưng dưới", "Để gối sụp vào trong"],
+    substitutions: ["lib-squat", "lib-leg-press"],
+    difficulty: "beginner",
+    equipmentAlternatives: ["dumbbell"],
+    forceType: "push",
+    tags: ["marketplace", "lower", "home-friendly"],
+    source: "EvolveFit curated",
+    license: "EvolveFit original",
+    publishedAt: "2026-09-27T00:00:00.000Z",
+    version: 1
+  },
+  {
+    id: "market-single-arm-db-row",
+    slug: "single-arm-dumbbell-row",
+    name: "Single-arm Dumbbell Row",
+    muscleGroup: "Lưng",
+    equipment: "dumbbell",
+    movementPattern: "pull",
+    builtIn: true,
+    catalogSource: "marketplace",
+    status: "published",
+    primaryMuscles: ["Lats", "Upper back"],
+    secondaryMuscles: ["Biceps", "Rear delts", "Core"],
+    cues: ["Kéo khuỷu tay về hông", "Giữ vai thấp", "Dừng một nhịp ở đỉnh"],
+    commonMistakes: ["Xoay thân quá nhiều", "Kéo bằng tay thay vì lưng"],
+    substitutions: ["lib-row", "lib-lat-pulldown"],
+    difficulty: "beginner",
+    unilateral: true,
+    equipmentAlternatives: ["cable", "machine"],
+    forceType: "pull",
+    tags: ["marketplace", "back", "unilateral"],
+    source: "EvolveFit curated",
+    license: "EvolveFit original",
+    publishedAt: "2026-09-27T00:00:00.000Z",
+    version: 1
+  },
+  {
+    id: "market-hip-thrust",
+    slug: "barbell-hip-thrust",
+    name: "Barbell Hip Thrust",
+    muscleGroup: "Chân",
+    equipment: "barbell",
+    movementPattern: "hinge",
+    builtIn: true,
+    catalogSource: "marketplace",
+    status: "published",
+    primaryMuscles: ["Glutes"],
+    secondaryMuscles: ["Hamstrings", "Core"],
+    cues: ["Cằm hơi thu", "Đẩy hông lên bằng mông", "Dừng ở đỉnh khi xương sườn không bật lên"],
+    commonMistakes: ["Ưỡn lưng dưới", "Đặt chân quá xa thân"],
+    substitutions: ["lib-rdl", "lib-leg-press"],
+    difficulty: "intermediate",
+    equipmentAlternatives: ["dumbbell", "machine"],
+    forceType: "push",
+    tags: ["marketplace", "glutes", "posterior chain"],
+    source: "EvolveFit curated",
+    license: "EvolveFit original",
+    publishedAt: "2026-09-27T00:00:00.000Z",
+    version: 1
+  },
+  {
+    id: "market-dead-bug",
+    slug: "dead-bug",
+    name: "Dead Bug",
+    muscleGroup: "Core",
+    equipment: "bodyweight",
+    movementPattern: "core",
+    builtIn: true,
+    catalogSource: "marketplace",
+    status: "published",
+    primaryMuscles: ["Abs", "Deep core"],
+    secondaryMuscles: ["Hip flexors"],
+    cues: ["Ép lưng dưới nhẹ xuống sàn", "Di chuyển chậm", "Thở ra khi duỗi tay chân"],
+    commonMistakes: ["Cong lưng dưới", "Làm quá nhanh"],
+    substitutions: ["lib-plank", "lib-cable-crunch"],
+    difficulty: "beginner",
+    forceType: "static",
+    tags: ["marketplace", "core", "bodyweight", "warmup"],
+    source: "EvolveFit curated",
+    license: "EvolveFit original",
+    publishedAt: "2026-09-27T00:00:00.000Z",
+    version: 1
+  }
+];
+
+export const defaultExerciseCatalog: ExerciseDefinition[] = [
+  ...builtInExerciseDefinitions,
+  ...marketplaceExerciseDefinitions
+];
+
 const exerciseIntelligenceDefaults: Record<string, Partial<ExerciseDefinition>> = {
   "lib-bench-press": {
     primaryMuscles: ["Chest"],
@@ -590,12 +709,27 @@ const exerciseIntelligenceDefaults: Record<string, Partial<ExerciseDefinition>> 
   }
 };
 
+function slugifyExerciseName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
 export function normalizeExerciseDefinition(exercise: ExerciseDefinition): ExerciseDefinition {
   const defaults = exerciseIntelligenceDefaults[exercise.id] ?? {};
   const primaryMuscles = exercise.primaryMuscles?.length ? exercise.primaryMuscles : defaults.primaryMuscles ?? [exercise.muscleGroup];
+  const catalogSource = exercise.catalogSource ?? defaults.catalogSource ?? (exercise.builtIn ? "built-in" : "custom");
+  const status = exercise.status ?? defaults.status ?? (catalogSource === "custom" ? "published" : "published");
   return {
     ...defaults,
     ...exercise,
+    slug: exercise.slug ?? defaults.slug ?? slugifyExerciseName(exercise.name),
+    catalogSource,
+    status,
     primaryMuscles,
     secondaryMuscles: exercise.secondaryMuscles ?? defaults.secondaryMuscles ?? [],
     cues: exercise.cues ?? defaults.cues ?? [],
@@ -604,6 +738,15 @@ export function normalizeExerciseDefinition(exercise: ExerciseDefinition): Exerc
     difficulty: exercise.difficulty ?? defaults.difficulty ?? "beginner",
     unilateral: exercise.unilateral ?? defaults.unilateral ?? false,
     equipmentAlternatives: exercise.equipmentAlternatives ?? defaults.equipmentAlternatives ?? [],
+    forceType: exercise.forceType ?? defaults.forceType,
+    contraindications: exercise.contraindications ?? defaults.contraindications ?? [],
+    source: exercise.source ?? defaults.source,
+    license: exercise.license ?? defaults.license,
+    createdBy: exercise.createdBy ?? defaults.createdBy,
+    reviewedBy: exercise.reviewedBy ?? defaults.reviewedBy,
+    publishedAt: exercise.publishedAt ?? defaults.publishedAt,
+    updatedAt: exercise.updatedAt ?? defaults.updatedAt,
+    version: exercise.version ?? defaults.version ?? 1,
     tags: exercise.tags ?? defaults.tags ?? []
   };
 }
@@ -980,21 +1123,40 @@ function normalizeMuscleGroupForFilter(group: string): string {
 
 export function filterExerciseLibrary(
   exercises: ExerciseDefinition[],
-  filters: { query?: string; muscleGroup?: string; equipment?: string; movementPattern?: string }
+  filters: {
+    query?: string;
+    muscleGroup?: string;
+    equipment?: string;
+    movementPattern?: string;
+    difficulty?: string;
+    tag?: string;
+    catalogSource?: ExerciseCatalogSource | "all";
+    status?: ExerciseCatalogStatus | "all";
+    includeArchived?: boolean;
+  }
 ): ExerciseDefinition[] {
   const query = filters.query?.trim().toLowerCase() ?? "";
   const muscleGroup = filters.muscleGroup ? normalizeMuscleGroupForFilter(filters.muscleGroup) : undefined;
+  const tag = filters.tag?.trim().toLowerCase();
   return exercises
     .map(normalizeExerciseDefinition)
+    .filter((exercise) => filters.includeArchived || exercise.status !== "archived")
+    .filter((exercise) => !filters.catalogSource || filters.catalogSource === "all" || exercise.catalogSource === filters.catalogSource)
+    .filter((exercise) => !filters.status || filters.status === "all" || exercise.status === filters.status)
     .filter((exercise) => {
       if (!query) return true;
       const haystack = [
         exercise.name,
+        exercise.slug,
         exercise.muscleGroup,
         ...(exercise.primaryMuscles ?? []),
         ...(exercise.secondaryMuscles ?? []),
         ...(exercise.tags ?? []),
-        ...(exercise.cues ?? [])
+        ...(exercise.cues ?? []),
+        ...(exercise.commonMistakes ?? []),
+        ...(exercise.contraindications ?? []),
+        exercise.source,
+        exercise.license
       ].join(" ").toLowerCase();
       return haystack.includes(query);
     })
@@ -1004,9 +1166,46 @@ export function filterExerciseLibrary(
         .map(normalizeMuscleGroupForFilter)
         .includes(muscleGroup);
     })
-    .filter((exercise) => !filters.equipment || filters.equipment === "all" || exercise.equipment === filters.equipment)
+    .filter((exercise) => !filters.equipment || filters.equipment === "all" || exercise.equipment === filters.equipment || exercise.equipmentAlternatives?.includes(filters.equipment as EquipmentType))
     .filter((exercise) => !filters.movementPattern || filters.movementPattern === "all" || exercise.movementPattern === filters.movementPattern)
-    .sort((a, b) => Number(b.builtIn) - Number(a.builtIn) || a.muscleGroup.localeCompare(b.muscleGroup) || a.name.localeCompare(b.name));
+    .filter((exercise) => !filters.difficulty || filters.difficulty === "all" || exercise.difficulty === filters.difficulty)
+    .filter((exercise) => !tag || tag === "all" || exercise.tags?.some((item) => item.toLowerCase() === tag))
+    .sort((a, b) => {
+      const sourceRank = (source?: ExerciseCatalogSource) => (source === "marketplace" ? 3 : source === "built-in" ? 2 : 1);
+      return sourceRank(b.catalogSource) - sourceRank(a.catalogSource) || a.muscleGroup.localeCompare(b.muscleGroup) || a.name.localeCompare(b.name);
+    });
+}
+
+export function listMarketplaceExercises(
+  exercises: ExerciseDefinition[] = defaultExerciseCatalog,
+  filters: Parameters<typeof filterExerciseLibrary>[1] = {}
+): ExerciseDefinition[] {
+  return filterExerciseLibrary(exercises, {
+    ...filters,
+    catalogSource: filters.catalogSource ?? "marketplace",
+    status: filters.status ?? "published"
+  });
+}
+
+export function exerciseCatalogDetail(exercises: ExerciseDefinition[], idOrSlug: string): ExerciseDefinition | undefined {
+  const key = idOrSlug.trim().toLowerCase();
+  return exercises.map(normalizeExerciseDefinition).find((exercise) => exercise.id.toLowerCase() === key || exercise.slug?.toLowerCase() === key);
+}
+
+export function suggestExerciseSubstitutions(
+  exercise: ExerciseDefinition,
+  library: ExerciseDefinition[] = defaultExerciseCatalog,
+  options: { equipment?: EquipmentType[]; limit?: number } = {}
+): ExerciseDefinition[] {
+  const normalized = normalizeExerciseDefinition(exercise);
+  const equipment = options.equipment ?? [];
+  const substitutions = new Set(normalized.substitutions ?? []);
+  return library
+    .map(normalizeExerciseDefinition)
+    .filter((candidate) => candidate.id !== normalized.id && candidate.status !== "archived")
+    .filter((candidate) => substitutions.has(candidate.id) || candidate.movementPattern === normalized.movementPattern || candidate.primaryMuscles?.some((muscle) => normalized.primaryMuscles?.includes(muscle)))
+    .filter((candidate) => !equipment.length || equipment.includes(candidate.equipment) || candidate.equipmentAlternatives?.some((item) => equipment.includes(item)))
+    .slice(0, options.limit ?? 5);
 }
 
 export function createCustomExerciseDefinition(input: {
@@ -1024,6 +1223,10 @@ export function createCustomExerciseDefinition(input: {
   difficulty?: ExerciseDifficulty;
   unilateral?: boolean;
   equipmentAlternatives?: EquipmentType[];
+  forceType?: ExerciseForceType;
+  contraindications?: string[];
+  source?: string;
+  license?: string;
   tags?: string[];
 }): ExerciseDefinition {
   return normalizeExerciseDefinition({
@@ -1042,9 +1245,66 @@ export function createCustomExerciseDefinition(input: {
     difficulty: input.difficulty,
     unilateral: input.unilateral,
     equipmentAlternatives: input.equipmentAlternatives,
+    forceType: input.forceType,
+    contraindications: input.contraindications,
+    source: input.source,
+    license: input.license,
+    catalogSource: "custom",
+    status: "published",
+    version: 1,
     tags: input.tags,
     builtIn: false
   });
+}
+
+export function cloneMarketplaceExerciseToCustom(exercise: ExerciseDefinition, overrides: Partial<ExerciseDefinition> = {}): ExerciseDefinition {
+  const normalized = normalizeExerciseDefinition(exercise);
+  return normalizeExerciseDefinition({
+    ...normalized,
+    ...overrides,
+    id: overrides.id ?? cryptoSafeId(),
+    name: overrides.name ?? `${normalized.name} (của tôi)`,
+    builtIn: false,
+    catalogSource: "custom",
+    status: "published",
+    createdBy: overrides.createdBy,
+    reviewedBy: undefined,
+    publishedAt: undefined,
+    updatedAt: new Date().toISOString(),
+    source: normalized.id,
+    license: "Custom copy from marketplace",
+    version: 1
+  });
+}
+
+export function isUserOwnedExercise(exercise: ExerciseDefinition): boolean {
+  const normalized = normalizeExerciseDefinition(exercise);
+  return !normalized.builtIn || normalized.catalogSource === "custom";
+}
+
+export function isPublicCatalogExercise(exercise: ExerciseDefinition): boolean {
+  const normalized = normalizeExerciseDefinition(exercise);
+  return normalized.catalogSource === "built-in" || normalized.catalogSource === "marketplace";
+}
+
+export function createCustomExerciseDefinitionLegacy(input: {
+  name: string;
+  muscleGroup: string;
+  equipment: EquipmentType;
+  movementPattern: MovementPattern;
+  notes?: string;
+  primaryMuscles?: string[];
+  secondaryMuscles?: string[];
+  cues?: string[];
+  commonMistakes?: string[];
+  substitutions?: string[];
+  mediaUrl?: string;
+  difficulty?: ExerciseDifficulty;
+  unilateral?: boolean;
+  equipmentAlternatives?: EquipmentType[];
+  tags?: string[];
+}): ExerciseDefinition {
+  return createCustomExerciseDefinition(input);
 }
 
 export function workoutSessionDurationSeconds(session: Pick<WorkoutSession, "startedAt" | "endedAt">, now = new Date()): number {

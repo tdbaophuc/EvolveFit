@@ -22,6 +22,7 @@ import {
 import React, { useEffect, useMemo, useState } from "react";
 import {
   createCustomExerciseDefinition,
+  cloneMarketplaceExerciseToCustom,
   createWorkoutSession,
   cryptoSafeId,
   completeSessionExercise,
@@ -48,7 +49,10 @@ import {
   inputWeightToKg,
   isWorkingVolumeSet,
   isDrinkModuleActive,
+  isUserOwnedExercise,
+  listMarketplaceExercises,
   normalizeDrinkModules,
+  normalizeExerciseDefinition,
   normalizePlateInventory,
   normalizeWorkoutSessionQueue,
   nextSupersetExerciseIndex,
@@ -351,6 +355,9 @@ export default function AppPage() {
   const [librarySearch, setLibrarySearch] = useState("");
   const [libraryMuscleFilter, setLibraryMuscleFilter] = useState("all");
   const [libraryEquipmentFilter, setLibraryEquipmentFilter] = useState("all");
+  const [libraryDifficultyFilter, setLibraryDifficultyFilter] = useState("all");
+  const [libraryTagFilter, setLibraryTagFilter] = useState("all");
+  const [selectedMarketplaceExerciseId, setSelectedMarketplaceExerciseId] = useState<string | null>(null);
   const [newLibraryExerciseName, setNewLibraryExerciseName] = useState("Cable Fly");
   const [newLibraryMuscleGroup, setNewLibraryMuscleGroup] = useState("Ngực");
   const [newLibraryEquipment, setNewLibraryEquipment] = useState<EquipmentType>("cable");
@@ -650,8 +657,22 @@ export default function AppPage() {
   const filteredExerciseLibrary = filterExerciseLibrary(state.exerciseLibrary, {
     query: librarySearch,
     muscleGroup: libraryMuscleFilter,
-    equipment: libraryEquipmentFilter
+    equipment: libraryEquipmentFilter,
+    difficulty: libraryDifficultyFilter,
+    tag: libraryTagFilter,
+    includeArchived: false
   });
+  const marketplaceExercises = listMarketplaceExercises(state.exerciseLibrary, {
+    query: librarySearch,
+    muscleGroup: libraryMuscleFilter,
+    equipment: libraryEquipmentFilter,
+    difficulty: libraryDifficultyFilter,
+    tag: libraryTagFilter
+  });
+  const customExerciseLibrary = filteredExerciseLibrary.filter(isUserOwnedExercise);
+  const selectedMarketplaceExercise = selectedMarketplaceExerciseId
+    ? marketplaceExercises.find((exercise) => exercise.id === selectedMarketplaceExerciseId) ?? null
+    : marketplaceExercises[0] ?? null;
   const activeQueueItem = activeSessionQueue[state.activeExerciseIndex] ?? activeSessionQueue.find((item) => item.status !== "completed") ?? activeSessionQueue[0];
   const activeExercise =
     (activeWorkoutSession && activeQueueItem
@@ -1281,23 +1302,34 @@ export default function AppPage() {
   }
 
   function addExerciseFromLibrary(definition: ExerciseDefinition) {
+    const normalized = normalizeExerciseDefinition(definition);
     const exercise: WorkoutExercise = {
       id: cryptoSafeId(),
-      name: definition.name,
-      muscleGroup: definition.muscleGroup,
+      name: normalized.name,
+      muscleGroup: normalized.muscleGroup,
       targetSets: 3,
-      targetRepsMin: definition.movementPattern === "core" ? 30 : 8,
-      targetRepsMax: definition.movementPattern === "core" ? 60 : 12,
-      targetWeightKg: definition.equipment === "bodyweight" ? 0 : 20,
-      restSeconds: definition.movementPattern === "isolation" ? 60 : 90,
-      lastSession: definition.builtIn ? "Sao chép từ thư viện có sẵn" : "Bài tập tùy chỉnh trong thư viện"
+      targetRepsMin: normalized.movementPattern === "core" ? 30 : 8,
+      targetRepsMax: normalized.movementPattern === "core" ? 60 : 12,
+      targetWeightKg: normalized.equipment === "bodyweight" ? 0 : 20,
+      restSeconds: normalized.movementPattern === "isolation" || normalized.movementPattern === "core" ? 60 : 90,
+      lastSession: normalized.catalogSource === "marketplace" ? "Thêm từ marketplace" : normalized.builtIn ? "Sao chép từ thư viện có sẵn" : "Bài tập tùy chỉnh trong thư viện"
     };
     updateActiveWorkoutDay(
       (day) => ({
         ...day,
-        exercises: [...day.exercises, routineExerciseFromWorkout(exercise, day.exercises.length, definition.id)]
+        exercises: [...day.exercises, routineExerciseFromWorkout(exercise, day.exercises.length, normalized.id)]
       }),
-      `�?ã thêm ${definition.name}`
+      `�?ã thêm ${normalized.name}`
+    );
+  }
+
+  function cloneExerciseFromMarketplace(definition: ExerciseDefinition) {
+    const custom = cloneMarketplaceExerciseToCustom(definition);
+    commitSynced(
+      { ...state, exerciseLibrary: [...state.exerciseLibrary, custom] },
+      "exercise.create",
+      custom,
+      `�?ã tạo bản tùy chỉnh ${custom.name}`
     );
   }
 
@@ -1318,9 +1350,9 @@ export default function AppPage() {
 
   function updateExerciseDefinition(id: string, patch: Partial<ExerciseDefinition>) {
     const target = state.exerciseLibrary.find((exercise) => exercise.id === id);
-    if (!target || target.builtIn) return;
+    if (!target || !isUserOwnedExercise(target)) return;
     commitSynced(
-      { ...state, exerciseLibrary: state.exerciseLibrary.map((exercise) => (exercise.id === id ? { ...exercise, ...patch, builtIn: false } : exercise)) },
+      { ...state, exerciseLibrary: state.exerciseLibrary.map((exercise) => (exercise.id === id ? { ...exercise, ...patch, builtIn: false, catalogSource: "custom" } : exercise)) },
       "exercise.update",
       { id, patch },
       "�?ã cập nhật bài tùy chỉnh"
@@ -1329,7 +1361,7 @@ export default function AppPage() {
 
   function deleteExerciseDefinition(id: string) {
     const target = state.exerciseLibrary.find((exercise) => exercise.id === id);
-    if (!target || target.builtIn) return;
+    if (!target || !isUserOwnedExercise(target)) return;
     commitSynced(
       { ...state, exerciseLibrary: state.exerciseLibrary.filter((exercise) => exercise.id !== id) },
       "exercise.delete",
@@ -2344,6 +2376,10 @@ export default function AppPage() {
             sessionQueue={activeSessionQueue}
             currentSessionSets={currentSessionSets}
             filteredExerciseLibrary={filteredExerciseLibrary}
+            marketplaceExercises={marketplaceExercises}
+            customExerciseLibrary={customExerciseLibrary}
+            selectedMarketplaceExercise={selectedMarketplaceExercise}
+            selectMarketplaceExercise={setSelectedMarketplaceExerciseId}
             activeExercise={activeExercise}
             completedSets={completedSetsForActive}
             allSetsForActive={allSetsForActive}
@@ -2379,6 +2415,10 @@ export default function AppPage() {
             setLibraryMuscleFilter={setLibraryMuscleFilter}
             libraryEquipmentFilter={libraryEquipmentFilter}
             setLibraryEquipmentFilter={setLibraryEquipmentFilter}
+            libraryDifficultyFilter={libraryDifficultyFilter}
+            setLibraryDifficultyFilter={setLibraryDifficultyFilter}
+            libraryTagFilter={libraryTagFilter}
+            setLibraryTagFilter={setLibraryTagFilter}
             newLibraryExerciseName={newLibraryExerciseName}
             setNewLibraryExerciseName={setNewLibraryExerciseName}
             newLibraryMuscleGroup={newLibraryMuscleGroup}
@@ -2411,6 +2451,7 @@ export default function AppPage() {
             addWorkoutDay={addWorkoutDay}
             deleteWorkoutDay={deleteWorkoutDay}
             addExerciseFromLibrary={addExerciseFromLibrary}
+            cloneExerciseFromMarketplace={cloneExerciseFromMarketplace}
             addCustomExerciseDefinition={addCustomExerciseDefinition}
             updateExerciseDefinition={updateExerciseDefinition}
             deleteExerciseDefinition={deleteExerciseDefinition}
@@ -3186,6 +3227,10 @@ function WorkoutView(props: {
   sessionQueue: SessionExerciseQueueItem[];
   currentSessionSets: WorkoutSet[];
   filteredExerciseLibrary: ExerciseDefinition[];
+  marketplaceExercises: ExerciseDefinition[];
+  customExerciseLibrary: ExerciseDefinition[];
+  selectedMarketplaceExercise: ExerciseDefinition | null;
+  selectMarketplaceExercise: (id: string) => void;
   activeExercise: AppState["workoutExercises"][number];
   completedSets: WorkoutSet[];
   allSetsForActive: WorkoutSet[];
@@ -3221,6 +3266,10 @@ function WorkoutView(props: {
   setLibraryMuscleFilter: (value: string) => void;
   libraryEquipmentFilter: string;
   setLibraryEquipmentFilter: (value: string) => void;
+  libraryDifficultyFilter: string;
+  setLibraryDifficultyFilter: (value: string) => void;
+  libraryTagFilter: string;
+  setLibraryTagFilter: (value: string) => void;
   newLibraryExerciseName: string;
   setNewLibraryExerciseName: (value: string) => void;
   newLibraryMuscleGroup: string;
@@ -3253,6 +3302,7 @@ function WorkoutView(props: {
   addWorkoutDay: () => void;
   deleteWorkoutDay: (id: string) => void;
   addExerciseFromLibrary: (definition: ExerciseDefinition) => void;
+  cloneExerciseFromMarketplace: (definition: ExerciseDefinition) => void;
   addCustomExerciseDefinition: () => void;
   updateExerciseDefinition: (id: string, patch: Partial<ExerciseDefinition>) => void;
   deleteExerciseDefinition: (id: string) => void;
@@ -3278,6 +3328,9 @@ function WorkoutView(props: {
     drop: "Drop",
     failure: "Thất bại"
   };
+
+  const selectedMarketplaceExercise = props.selectedMarketplaceExercise ? normalizeExerciseDefinition(props.selectedMarketplaceExercise) : null;
+  const marketplaceTags = Array.from(new Set(props.marketplaceExercises.flatMap((exercise) => normalizeExerciseDefinition(exercise).tags ?? []))).slice(0, 12);
 
   if (props.mode === "finished") {
     return (
@@ -3466,21 +3519,77 @@ function WorkoutView(props: {
                 {["all", "barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "other"].map((item) => <option key={item} value={item}>{equipmentLabels[item] ?? item}</option>)}
               </select>
             </label>
+            <label>
+              <span>Độ khó</span>
+              <select value={props.libraryDifficultyFilter} onChange={(event) => props.setLibraryDifficultyFilter(event.target.value)}>
+                {["all", "beginner", "intermediate", "advanced"].map((item) => <option key={item} value={item}>{item === "all" ? "Tất cả" : item}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>Tag</span>
+              <select value={props.libraryTagFilter} onChange={(event) => props.setLibraryTagFilter(event.target.value)}>
+                {["all", ...marketplaceTags].map((item) => <option key={item} value={item}>{item === "all" ? "Tất cả" : item}</option>)}
+              </select>
+            </label>
           </div>
           <div className="exercise-library plan-list">
-            {props.filteredExerciseLibrary.slice(0, 10).map((exercise) => (
+            {props.marketplaceExercises.slice(0, 12).map((exercise) => {
+              const normalized = normalizeExerciseDefinition(exercise);
+              return (
               <div key={exercise.id}>
-                <span>{exercise.builtIn ? "Có sẵn" : "Tùy chỉnh"}</span>
+                <span>{normalized.catalogSource === "marketplace" ? "Marketplace" : "Có sẵn"}</span>
+                <button className="exercise-select" onClick={() => props.addExerciseFromLibrary(exercise)}>
+                  <strong>{normalized.name}</strong>
+                  <em>{muscleGroupLabel(normalized.muscleGroup)} - {equipmentLabels[normalized.equipment] ?? normalized.equipment} - {movementPatternLabels[normalized.movementPattern] ?? normalized.movementPattern}</em>
+                </button>
+                <div className="row-actions">
+                  <button onClick={() => props.selectMarketplaceExercise(exercise.id)}>Chi tiết</button>
+                  <button onClick={() => props.cloneExerciseFromMarketplace(exercise)}>Tạo bản riêng</button>
+                </div>
+              </div>
+            );})}
+            {!props.marketplaceExercises.length && <div><span>Trống</span><strong>Không có bài marketplace phù hợp</strong><em>Thử bỏ bớt filter hoặc tìm theo nhóm cơ khác.</em></div>}
+          </div>
+          {selectedMarketplaceExercise && (
+            <div className="import-preview">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Chi tiết marketplace</p>
+                  <h2>{selectedMarketplaceExercise.name}</h2>
+                </div>
+                <span className="sync-pill">{selectedMarketplaceExercise.version ?? 1}</span>
+              </div>
+              <p>{muscleGroupLabel(selectedMarketplaceExercise.muscleGroup)} - {equipmentLabels[selectedMarketplaceExercise.equipment] ?? selectedMarketplaceExercise.equipment} - {selectedMarketplaceExercise.difficulty}</p>
+              <div className="chip-row">
+                {(selectedMarketplaceExercise.primaryMuscles ?? []).map((item) => <span key={item} className="tiny-chip">{item}</span>)}
+                {(selectedMarketplaceExercise.tags ?? []).slice(0, 4).map((item) => <span key={item} className="tiny-chip">{item}</span>)}
+              </div>
+              <div className="import-table">
+                {(selectedMarketplaceExercise.cues ?? []).slice(0, 3).map((cue) => (
+                  <div key={cue}><span>Cue</span><strong>{cue}</strong><em>Áp dụng khi thêm vào lịch cá nhân.</em></div>
+                ))}
+                {(selectedMarketplaceExercise.commonMistakes ?? []).slice(0, 2).map((mistake) => (
+                  <div key={mistake}><span>Lỗi thường gặp</span><strong>{mistake}</strong><em>Dùng để nhắc kỹ thuật trước set.</em></div>
+                ))}
+              </div>
+              <div className="split-actions">
+                <button className="secondary-button" onClick={() => props.cloneExerciseFromMarketplace(selectedMarketplaceExercise)}>Tạo bản riêng</button>
+                <button className="primary-button training-bg" onClick={() => props.addExerciseFromLibrary(selectedMarketplaceExercise)}>Thêm vào ngày tập</button>
+              </div>
+            </div>
+          )}
+          <div className="exercise-library plan-list">
+            {props.customExerciseLibrary.slice(0, 6).map((exercise) => (
+              <div key={exercise.id}>
+                <span>Tùy chỉnh</span>
                 <button className="exercise-select" onClick={() => props.addExerciseFromLibrary(exercise)}>
                   <strong>{exercise.name}</strong>
-                  <em>{muscleGroupLabel(exercise.muscleGroup)} - {equipmentLabels[exercise.equipment] ?? exercise.equipment} - {movementPatternLabels[exercise.movementPattern] ?? exercise.movementPattern}</em>
+                  <em>{muscleGroupLabel(exercise.muscleGroup)} - {equipmentLabels[exercise.equipment] ?? exercise.equipment}</em>
                 </button>
-                {!exercise.builtIn && (
-                  <div className="row-actions">
-                    <button onClick={() => props.updateExerciseDefinition(exercise.id, { name: `${exercise.name}*` })}>Sửa</button>
-                    <button onClick={() => props.deleteExerciseDefinition(exercise.id)}><Trash2 size={14} /></button>
-                  </div>
-                )}
+                <div className="row-actions">
+                  <button onClick={() => props.updateExerciseDefinition(exercise.id, { name: `${exercise.name}*` })}>Sửa</button>
+                  <button onClick={() => props.deleteExerciseDefinition(exercise.id)}><Trash2 size={14} /></button>
+                </div>
               </div>
             ))}
           </div>

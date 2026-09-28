@@ -165,6 +165,45 @@ export class EvolveFitApiClient {
     return this.get("/api/exercises");
   }
 
+  async marketplaceExercises(input: {
+    query?: string;
+    muscleGroup?: string;
+    equipment?: string;
+    movementPattern?: string;
+    difficulty?: string;
+    tag?: string;
+    sort?: "name" | "muscle" | "difficulty";
+    page?: number;
+    pageSize?: number;
+  } = {}): Promise<ApiResult<{ items: ExerciseDefinition[]; page: number; pageSize: number; total: number }>> {
+    const params = new URLSearchParams();
+    Object.entries(input).forEach(([key, value]) => {
+      if (value !== undefined && value !== "" && value !== "all") params.set(key, String(value));
+    });
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return this.get(`/api/exercises/marketplace${suffix}`);
+  }
+
+  async marketplaceExercise(idOrSlug: string): Promise<ApiResult<ExerciseDefinition>> {
+    return this.get(`/api/exercises/marketplace/${idOrSlug}`);
+  }
+
+  async marketplaceExerciseSubstitutions(idOrSlug: string, input: { equipment?: string[]; limit?: number } = {}): Promise<ApiResult<{ exercise: ExerciseDefinition; substitutions: ExerciseDefinition[] }>> {
+    const params = new URLSearchParams();
+    if (input.equipment?.length) params.set("equipment", input.equipment.join(","));
+    if (input.limit) params.set("limit", String(input.limit));
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return this.get(`/api/exercises/marketplace/${idOrSlug}/substitutions${suffix}`);
+  }
+
+  async cloneMarketplaceExercise(idOrSlug: string, input: Partial<ExerciseDefinition> = {}): Promise<ApiResult<ExerciseDefinition>> {
+    return this.post(`/api/exercises/marketplace/${idOrSlug}/clone`, input);
+  }
+
+  async addMarketplaceExerciseToRoutine(idOrSlug: string, input: { routineId?: string; workoutDayId?: string } = {}): Promise<ApiResult<{ routine: Routine; workoutDay: Routine["days"][number]; exercise: Routine["days"][number]["exercises"][number] }>> {
+    return this.post(`/api/exercises/marketplace/${idOrSlug}/add-to-routine`, input);
+  }
+
   async createExercise(input: Partial<ExerciseDefinition>): Promise<ApiResult<ExerciseDefinition>> {
     return this.post("/api/exercises", input);
   }

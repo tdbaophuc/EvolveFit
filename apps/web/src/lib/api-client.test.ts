@@ -128,6 +128,11 @@ describe("EvolveFitApiClient", () => {
     await client.updateRoutine("routine-1", { name: "Routine 2", baseUpdatedAt: "2026-08-23T00:00:00.000Z" });
     await client.deleteRoutine("routine-1");
     await client.createExercise({ name: "Curl", muscleGroup: "Arms", equipment: "dumbbell", movementPattern: "isolation" });
+    await client.marketplaceExercises({ query: "row", equipment: "dumbbell", pageSize: 12 });
+    await client.marketplaceExercise("single-arm-dumbbell-row");
+    await client.marketplaceExerciseSubstitutions("single-arm-dumbbell-row", { equipment: ["dumbbell"], limit: 3 });
+    await client.cloneMarketplaceExercise("single-arm-dumbbell-row", { name: "Row của tôi" });
+    await client.addMarketplaceExerciseToRoutine("single-arm-dumbbell-row", { routineId: "routine-1", workoutDayId: "day-1" });
     await client.updateExercise("exercise-1", { notes: "strict" });
     await client.deleteExercise("exercise-1");
     await client.startWorkoutSession({ routineId: "routine-1", workoutDayId: "day-1", sessionExerciseOrder: ["ex1"] });
@@ -143,6 +148,11 @@ describe("EvolveFitApiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/routines/routine-1", expect.objectContaining({ method: "PATCH" }));
     expect(fetchMock).toHaveBeenCalledWith("/api/routines/routine-1", expect.objectContaining({ method: "DELETE" }));
     expect(fetchMock).toHaveBeenCalledWith("/api/exercises", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/exercises/marketplace?query=row&equipment=dumbbell&pageSize=12", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/exercises/marketplace/single-arm-dumbbell-row", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/exercises/marketplace/single-arm-dumbbell-row/substitutions?equipment=dumbbell&limit=3", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/exercises/marketplace/single-arm-dumbbell-row/clone", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/exercises/marketplace/single-arm-dumbbell-row/add-to-routine", expect.objectContaining({ method: "POST" }));
     expect(fetchMock).toHaveBeenCalledWith("/api/workouts/sessions/session-1/reorder", expect.objectContaining({ method: "POST" }));
     expect(fetchMock).toHaveBeenCalledWith("/api/workouts/sets/set-1", expect.objectContaining({ method: "PATCH" }));
     expect(fetchMock).toHaveBeenCalledWith("/api/sync/batch", expect.objectContaining({ method: "POST" }));
