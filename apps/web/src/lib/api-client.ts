@@ -50,6 +50,52 @@ export type SyncBatchResult = {
   error?: string;
   conflict?: { kind: "routine"; local: unknown; remote: unknown; message: string };
 };
+export type AdminRole = "super-admin" | "content-admin" | "support";
+export type AdminPermission = "admin:dashboard" | "content:read" | "content:write" | "support:read" | "audit:read" | "roles:write";
+export type AdminActor = {
+  email: string;
+  roles: AdminRole[];
+  permissions: AdminPermission[];
+};
+export type AdminDashboardSummary = {
+  marketplaceExercises: number;
+  publishedExercises: number;
+  routineTemplates: number;
+  publishedRoutineTemplates: number;
+  auditLogs: number;
+  pendingReports: number;
+  syncEventsVisibleToAdmin: number;
+};
+export type AdminPaginated<T> = {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+};
+export type AdminAuditLog = {
+  id: string;
+  actorUserId: string;
+  actorEmail: string;
+  action: string;
+  resourceType: string;
+  resourceId?: string;
+  requestId: string;
+  ip?: string;
+  userAgent?: string;
+  createdAt: string;
+};
+export type AdminUserLookup = {
+  id: string;
+  email: string;
+  mode: string;
+};
+export type AdminRoleAssignment = {
+  email: string;
+  role: AdminRole;
+  grantedBy: string;
+  grantedAt: string;
+  revokedAt?: string;
+};
 
 export function evolveFitApiBaseUrl(envValue = process.env.NEXT_PUBLIC_API_BASE_URL): string {
   return (envValue ?? "").replace(/\/+$/, "");
@@ -363,6 +409,62 @@ export class EvolveFitApiClient {
     return this.post("/api/client-errors", input);
   }
 
+  async adminDashboard(): Promise<ApiResult<{ actor: AdminActor; summary: AdminDashboardSummary }>> {
+    return this.get("/api/admin/dashboard");
+  }
+
+  async adminGovernanceHealth(): Promise<ApiResult<{ actor: AdminActor; mode: string; bootstrapConfigured: boolean; checkedAt: string }>> {
+    return this.get("/api/admin/governance/health");
+  }
+
+  async adminRoles(): Promise<ApiResult<{ items: AdminRoleAssignment[]; total: number }>> {
+    return this.get("/api/admin/roles");
+  }
+
+  async adminWriteRole(input: { email: string; role: AdminRole; revoke?: boolean }): Promise<ApiResult<AdminRoleAssignment | { email: string; role: AdminRole; revoked: boolean }>> {
+    return this.post("/api/admin/roles", input);
+  }
+
+  async adminExercises(input: { query?: string; status?: string; page?: number; pageSize?: number } = {}): Promise<ApiResult<AdminPaginated<ExerciseDefinition>>> {
+    const suffix = querySuffix(input);
+    return this.get(`/api/admin/exercises${suffix}`);
+  }
+
+  async adminCreateExercise(input: Partial<ExerciseDefinition>): Promise<ApiResult<ExerciseDefinition>> {
+    return this.post("/api/admin/exercises", input);
+  }
+
+  async adminUpdateExercise(id: string, input: Partial<ExerciseDefinition>): Promise<ApiResult<ExerciseDefinition>> {
+    return this.patch(`/api/admin/exercises/${id}`, input);
+  }
+
+  async adminRoutineTemplates(input: { query?: string; status?: string; page?: number; pageSize?: number } = {}): Promise<ApiResult<AdminPaginated<RoutineTemplate>>> {
+    const suffix = querySuffix(input);
+    return this.get(`/api/admin/routine-templates${suffix}`);
+  }
+
+  async adminCreateRoutineTemplate(input: Partial<RoutineTemplate>): Promise<ApiResult<RoutineTemplate>> {
+    return this.post("/api/admin/routine-templates", input);
+  }
+
+  async adminUpdateRoutineTemplate(id: string, input: Partial<RoutineTemplate>): Promise<ApiResult<RoutineTemplate>> {
+    return this.patch(`/api/admin/routine-templates/${id}`, input);
+  }
+
+  async adminFeedback(): Promise<ApiResult<{ items: unknown[]; total: number; redacted: boolean }>> {
+    return this.get("/api/admin/feedback");
+  }
+
+  async adminUsers(query = ""): Promise<ApiResult<{ items: AdminUserLookup[]; redacted: boolean }>> {
+    const suffix = query ? `?query=${encodeURIComponent(query)}` : "";
+    return this.get(`/api/admin/users${suffix}`);
+  }
+
+  async adminAuditLogs(input: { action?: string; resourceType?: string; page?: number; pageSize?: number } = {}): Promise<ApiResult<AdminPaginated<AdminAuditLog>>> {
+    const suffix = querySuffix(input);
+    return this.get(`/api/admin/audit-logs${suffix}`);
+  }
+
   googleOAuthUrl(): string {
     return `${this.baseUrl}/api/auth/oauth/google`;
   }
@@ -401,3 +503,12 @@ export class EvolveFitApiClient {
 }
 
 export const evolveFitApiClient = new EvolveFitApiClient(evolveFitApiBaseUrl());
+
+function querySuffix(input: Record<string, unknown>): string {
+  const params = new URLSearchParams();
+  Object.entries(input).forEach(([key, value]) => {
+    if (value !== undefined && value !== "" && value !== "all") params.set(key, String(value));
+  });
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}

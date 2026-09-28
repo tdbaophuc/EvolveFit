@@ -158,4 +158,39 @@ describe("EvolveFitApiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/sync/batch", expect.objectContaining({ method: "POST" }));
     vi.unstubAllGlobals();
   });
+
+  it("calls admin operations endpoints with query filters and mutation bodies", async () => {
+    const fetchMock = vi.fn(async () => Response.json({ ok: true, data: {} }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new EvolveFitApiClient();
+
+    await client.adminDashboard();
+    await client.adminGovernanceHealth();
+    await client.adminRoles();
+    await client.adminWriteRole({ email: "support@example.com", role: "support" });
+    await client.adminExercises({ query: "press", status: "published", pageSize: 25 });
+    await client.adminCreateExercise({ name: "Press", muscleGroup: "Chest", equipment: "dumbbell", movementPattern: "push" });
+    await client.adminUpdateExercise("exercise-1", { status: "archived" });
+    await client.adminRoutineTemplates({ query: "strength", status: "draft", page: 2 });
+    await client.adminCreateRoutineTemplate({ name: "Starter", targetGoal: "strength", daysPerWeek: 3 });
+    await client.adminUpdateRoutineTemplate("template-1", { status: "published" });
+    await client.adminFeedback();
+    await client.adminUsers("support@example.com");
+    await client.adminAuditLogs({ resourceType: "exercise", pageSize: 10 });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/dashboard", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/governance/health", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/roles", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/roles", expect.objectContaining({ method: "POST", body: JSON.stringify({ email: "support@example.com", role: "support" }) }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/exercises?query=press&status=published&pageSize=25", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/exercises", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/exercises/exercise-1", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ status: "archived" }) }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/routine-templates?query=strength&status=draft&page=2", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/routine-templates", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/routine-templates/template-1", expect.objectContaining({ method: "PATCH" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/feedback", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/users?query=support%40example.com", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/audit-logs?resourceType=exercise&pageSize=10", expect.objectContaining({ method: "GET" }));
+    vi.unstubAllGlobals();
+  });
 });

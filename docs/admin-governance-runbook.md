@@ -20,6 +20,22 @@ Only server-side env can bootstrap an admin. Never expose service-role keys or r
 
 Admin API must be reached through `/api/admin/*`; frontend admin dashboards should call these endpoints only.
 
+## Admin Operations Dashboard
+
+The production admin UI lives at `/admin` in the web app. It is a separate operations dashboard, not a marketplace-only screen.
+
+Expected sections:
+
+- Overview: production content/support/audit metrics from `GET /api/admin/dashboard`.
+- Marketplace exercises: search/filter, create draft, publish/archive and preview governance fields.
+- Routine templates: list/filter, create draft, publish/archive and review days/session metadata.
+- Support: redacted user lookup and feedback/report queue summary.
+- Roles: grant/revoke roles, available to `super-admin` only.
+- Audit: search audit events by resource and request id.
+- Governance: API repository mode, bootstrap env status and runbook shortcuts.
+
+The UI must never render service-role keys, OAuth secrets, bearer tokens, refresh tokens or raw support-sensitive user data. Any action must go through the admin API so server-side authorization, validation, rate limits and audit logging stay authoritative.
+
 ## Revoke Access
 
 1. Sign in as a `super-admin`.
@@ -47,3 +63,9 @@ Admin API must be reached through `/api/admin/*`; frontend admin dashboards shou
    - `GET /api/admin/audit-logs`
 4. Grant `content-admin` and verify content write works but role write returns `403`.
 5. Grant `support` and verify user lookup is redacted and content write returns `403`.
+6. Open `/admin` in the staging web app and verify:
+   - Normal users see the guarded admin sign-in/forbidden state.
+   - `super-admin` sees Overview, Exercises, Templates, Support, Roles, Audit and Governance.
+   - `content-admin` sees content governance but not role management.
+   - `support` sees support/audit views and redacted user data only.
+   - Publish/archive actions create audit log entries with a request id.

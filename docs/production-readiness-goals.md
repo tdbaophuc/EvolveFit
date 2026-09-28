@@ -23,7 +23,7 @@ Quy tac chung:
 7. Goal 7 - Marketplace bai tap production va catalog governance.
 8. Goal 8 - Marketplace lich tap/template va routine builder.
 9. Goal 9 - Admin role, admin API va governance backend.
-10. Goal 10 - Admin dashboard rieng cho quan tri marketplace.
+10. Goal 10 - Admin operations dashboard tong the.
 11. Goal 11 - Progress photos va privacy/data controls.
 12. Goal 12 - Nutrition tracking nhe.
 13. Goal 13 - Observability, CI/CD, staging smoke va deploy runbook.
@@ -207,25 +207,26 @@ Hardening security admin: deny-by-default, rate limit rieng, CORS/cookie/session
 Bo sung tests API/repository cho authorization matrix, audit log created, forbidden user thuong, content-admin chi sua content, super-admin revoke role, archived/published resources va OpenAPI admin specs. Cap nhat docs admin runbook: tao admin dau tien, revoke, incident response, audit review va staging smoke. Chay lint/test/build/openapi; commit/push rieng sau khi pass.
 ```
 
-## Goal 10 - Admin dashboard rieng cho quan tri marketplace
+## Goal 10 - Admin operations dashboard tong the
 
 Can thao tac thu cong:
 
 - Chot admin URL/path production va nguoi nao duoc cap quyen truy cap.
+- Chot nhung module nao admin dashboard V1 bat buoc co: content governance, user support, feedback/report moderation, audit, app config, observability.
 - Neu muon rich media upload cho bai tap/template, cau hinh storage provider va policy truoc khi bat upload that.
 
 ```text
-/goal Xay dung frontend admin dashboard rieng cho EvolveFit de quan tri marketplace bai tap, lich tap, feedback va audit mot cach an toan.
+/goal Xay dung frontend admin operations dashboard rieng cho EvolveFit de quan ly tat ca nhung gi can van hanh trong production mot cach an toan.
 
 Audit frontend architecture sau Goal 5, auth state, route protection, API client, component patterns, CSS, test setup va admin API Goal 9. Quyet dinh cau truc `/admin` trong Next app: layout rieng, guard server/client, navigation, empty/loading/error states, forbidden state va logout/re-auth khi session het han.
 
-Implement admin shell va role-aware navigation: overview metrics, marketplace exercise management, routine template management, feedback/report queue, user support lookup redacted, audit log viewer va app config neu API ho tro. Dashboard phai uu tien UI tac nghiep: bang co search/filter/sort/pagination, bulk archive/publish khi an toan, form create/edit co validation, preview truoc publish, diff/audit summary truoc thao tac nhay cam.
+Implement admin shell va role-aware navigation theo permission tu Goal 9: overview operations metrics, role/user access visibility, marketplace exercise management, routine template management, feedback/report moderation, user support lookup redacted, audit log viewer, app config flags, governance health va observability shortcuts. Dashboard phai uu tien UI tac nghiep: bang co search/filter/sort/pagination, thao tac batch chi khi an toan, form create/edit co validation, preview truoc publish, diff/audit summary truoc thao tac nhay cam.
 
-Xay dung man hinh quan ly marketplace exercises: list/filter theo status/nhom co/equipment/difficulty/tags, create/edit exercise metadata, media URL/license fields, cues/common mistakes/substitutions, publish/archive, duplicate, preview nhu user thay va validation tieng Viet. Them optimistic UI co rollback hoac refetch ro rang, toast khong che controls quan trong.
+Xay dung cac man hinh content governance: marketplace exercises list/filter theo status/nhom co/equipment/difficulty/tags, create/edit exercise metadata, media URL/license fields, cues/common mistakes/substitutions, publish/archive, duplicate, preview nhu user thay va validation tieng Viet; routine templates weekly builder, keo/chon exercise tu marketplace, set/rep/rest/duration editor, compatibility tags, source/license, status draft/published, preview mobile-friendly va publish checklist.
 
-Xay dung man hinh quan ly routine templates: weekly builder, keo/chon exercise tu marketplace, set/rep/rest/duration editor, compatibility tags, source/license, status draft/published, preview mobile-friendly va publish checklist. Dam bao admin co the tao template full-body, upper/lower, PPL, home/bodyweight va celebrity-inspired neu co license.
+Xay dung cac man hinh operations/support: user lookup co redaction, feedback/report queue, moderation status, audit log search/detail theo actor/action/resource/requestId, app config flags neu API ho tro, governance health, va lien ket nhanh den runbook incident/revoke/admin bootstrap. Tuyet doi khong hien secret/token/service-role key trong UI; moi thao tac admin phai goi API admin server-side da co authorization.
 
-Bo sung frontend tests cho route guard, forbidden user, admin list/edit/publish/archive, validation errors, audit viewer va template builder happy path. Cap nhat docs UI/admin ops, chay lint/test/build va smoke admin voi account staging neu co. Commit/push rieng sau khi pass.
+Bo sung frontend tests cho route guard, forbidden user, role-aware navigation, content list/edit/publish/archive, routine template builder, support lookup redaction, feedback moderation, validation errors, audit viewer, app config guard va governance health. Cap nhat docs UI/admin ops, chay lint/test/build va smoke admin voi account staging neu co. Commit/push rieng sau khi pass.
 ```
 
 ## Goal 11 - Progress photos va privacy/data controls

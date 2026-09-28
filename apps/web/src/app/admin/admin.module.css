@@ -1,0 +1,298 @@
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  background: #f6f8f7;
+  color: #1f2a24;
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px 16px;
+  border-right: 1px solid #d7e0db;
+  background: #ffffff;
+}
+
+.brand {
+  display: grid;
+  gap: 4px;
+}
+
+.brand strong {
+  font-size: 18px;
+}
+
+.brand span,
+.muted {
+  color: #64736b;
+  font-size: 12px;
+}
+
+.nav {
+  display: grid;
+  gap: 6px;
+}
+
+.nav button,
+.secondaryButton,
+.primaryButton,
+.dangerButton,
+.ghostButton {
+  min-height: 38px;
+  border: 1px solid #cfd9d3;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1f2a24;
+  font-weight: 700;
+}
+
+.nav button {
+  text-align: left;
+  padding: 0 12px;
+}
+
+.nav button.active,
+.active {
+  background: #e7f5ed;
+  border-color: #63b77d;
+  color: #176133;
+}
+
+.main {
+  min-width: 0;
+  padding: 22px;
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.topbar,
+.card {
+  border: 1px solid #d7e0db;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(31, 42, 36, 0.06);
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 16px;
+}
+
+.topbar h1,
+.card h2,
+.card h3,
+.card p {
+  margin: 0;
+}
+
+.topbar h1 {
+  font-size: 22px;
+}
+
+.roleRow,
+.toolbar,
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid #cfd9d3;
+  background: #f7faf8;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metric {
+  padding: 14px;
+  border: 1px solid #d7e0db;
+  border-radius: 8px;
+  background: #fbfdfc;
+}
+
+.metric span {
+  color: #64736b;
+  font-size: 12px;
+}
+
+.metric strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 24px;
+}
+
+.card {
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.toolbar {
+  justify-content: space-between;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filters input,
+.filters select,
+.field input,
+.field select,
+.field textarea {
+  min-height: 38px;
+  border: 1px solid #cfd9d3;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #ffffff;
+  color: #1f2a24;
+}
+
+.field textarea {
+  min-height: 76px;
+  padding-top: 9px;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid #d7e0db;
+  border-radius: 8px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+.table th,
+.table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #edf1ef;
+  text-align: left;
+  vertical-align: top;
+  font-size: 13px;
+}
+
+.table th {
+  color: #64736b;
+  font-size: 12px;
+  background: #f7faf8;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.field {
+  display: grid;
+  gap: 5px;
+}
+
+.field span {
+  color: #64736b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.wide {
+  grid-column: span 2;
+}
+
+.full {
+  grid-column: 1 / -1;
+}
+
+.primaryButton {
+  background: #247242;
+  border-color: #247242;
+  color: #ffffff;
+  padding: 0 12px;
+}
+
+.secondaryButton,
+.dangerButton,
+.ghostButton {
+  padding: 0 12px;
+}
+
+.dangerButton {
+  color: #b42318;
+  border-color: #f3b9b4;
+  background: #fff7f6;
+}
+
+.ghostButton {
+  background: transparent;
+}
+
+.state {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.stateCard {
+  width: min(480px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid #d7e0db;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.error {
+  color: #b42318;
+  background: #fff7f6;
+  border: 1px solid #f3b9b4;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+@media (max-width: 920px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+    height: auto;
+  }
+
+  .grid,
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .wide {
+    grid-column: auto;
+  }
+}
