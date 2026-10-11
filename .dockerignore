@@ -9,6 +9,8 @@ packages/shared/dist
 .git
 .env
 .env.*
+**/.env
+**/.env.*
 !.env.example
 !apps/*/.env.example
 !packages/*/.env.example

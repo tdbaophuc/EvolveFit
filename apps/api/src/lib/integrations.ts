@@ -86,7 +86,9 @@ export async function verifySupabaseProduction(
     "leaderboard_profiles",
     "push_subscriptions",
     "notification_events",
-    "sync_events"
+    "sync_events",
+    "user_roles",
+    "admin_audit_logs"
   ];
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
     return { ok: false, mode: "missing-env", checks: tables.map((table) => ({ table, ok: false })) };

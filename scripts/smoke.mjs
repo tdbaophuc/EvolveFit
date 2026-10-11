@@ -16,7 +16,6 @@ const routes = [
   "/api/ready",
   "/api/integrations/status",
   "/api/docs/openapi",
-  "/api/observability/logs",
   "/api/notifications/config",
   "/api/auth/session",
   "/api/hydration/today"
@@ -71,16 +70,21 @@ try {
     }
     console.log(`${route} => ${response.status}`);
   }
+  for (const route of ["/api/observability/logs", "/api/supabase/verify"]) {
+    const response = await fetch(`${baseUrl}${route}`);
+    if (response.status !== 401) throw new Error(`${route} must require admin auth, got ${response.status}`);
+    console.log(`${route} => ${response.status} (protected)`);
+  }
   const errorResponse = await fetch(`${baseUrl}/api/client-errors`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-EvolveFit-Client": "smoke" },
     body: JSON.stringify({ requestId: "req_smoke", message: "Smoke client error", path: "/smoke" })
   });
   if (!errorResponse.ok) throw new Error(`/api/client-errors returned ${errorResponse.status}`);
   console.log(`/api/client-errors => ${errorResponse.status}`);
   const coachResponse = await fetch(`${baseUrl}/api/coach/recommend`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-EvolveFit-Client": "smoke" },
     body: JSON.stringify({})
   });
   if (!coachResponse.ok) throw new Error(`/api/coach/recommend returned ${coachResponse.status}`);

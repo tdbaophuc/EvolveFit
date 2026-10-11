@@ -16,13 +16,20 @@ RUN npm run build -w @evolvefit/shared && npm run build -w @evolvefit/api
 FROM node:22.13-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+ENV APP_ENV=production
+ENV API_DATA_MODE=supabase
 ENV PORT=4000
 
-COPY --from=build /app/package.json /app/package-lock.json ./
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/apps/api ./apps/api
-COPY --from=build /app/packages/shared ./packages/shared
-COPY --from=build /app/docs/api-v1.openapi.json ./docs/api-v1.openapi.json
+COPY --from=build --chown=node:node /app/package.json /app/package-lock.json ./
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/apps/api ./apps/api
+COPY --from=build --chown=node:node /app/packages/shared ./packages/shared
+COPY --from=build --chown=node:node /app/docs/api-v1.openapi.json ./docs/api-v1.openapi.json
+# Never bake local secrets into the image; configure them at deploy time.
+RUN rm -f ./apps/api/.env
 
+USER node
 EXPOSE 4000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget -qO- "http://127.0.0.1:${PORT}/api/health" >/dev/null || exit 1
 CMD ["npm", "run", "start:api"]

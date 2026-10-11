@@ -8,16 +8,18 @@ import {
   type ExerciseDefinition,
   type RoutineTemplate
 } from "@evolvefit/shared";
+import type { AdminAuditLog, AdminRole, AdminRoleAssignment, AdminStore, AuditFilters } from "./admin-store";
 import type { ApiUser } from "./repositories";
 
-export type AdminRole = "super-admin" | "content-admin" | "support";
+export type { AdminAuditLog, AdminRole, AdminRoleAssignment } from "./admin-store";
 export type AdminPermission =
   | "admin:dashboard"
   | "content:read"
   | "content:write"
   | "support:read"
   | "audit:read"
-  | "roles:write";
+  | "roles:write"
+  | "ops:read";
 
 export type AdminActor = {
   user: ApiUser;
@@ -25,45 +27,20 @@ export type AdminActor = {
   permissions: AdminPermission[];
 };
 
-export type AdminAuditLog = {
-  id: string;
-  actorUserId: string;
-  actorEmail: string;
-  action: string;
-  resourceType: string;
-  resourceId?: string;
-  before?: unknown;
-  after?: unknown;
-  requestId: string;
-  ip?: string;
-  userAgent?: string;
-  createdAt: string;
-};
-
-export type AdminRoleAssignment = {
-  email: string;
-  role: AdminRole;
-  grantedBy: string;
-  grantedAt: string;
-  revokedAt?: string;
-};
-
-const roleAssignments = new Map<string, AdminRoleAssignment>();
-const auditLogs: AdminAuditLog[] = [];
-
 const rolePermissions: Record<AdminRole, AdminPermission[]> = {
-  "super-admin": ["admin:dashboard", "content:read", "content:write", "support:read", "audit:read", "roles:write"],
+  "super-admin": ["admin:dashboard", "content:read", "content:write", "support:read", "audit:read", "roles:write", "ops:read"],
   "content-admin": ["admin:dashboard", "content:read", "content:write", "audit:read"],
   support: ["admin:dashboard", "support:read", "audit:read"]
 };
 
-export function resolveAdminActor(user: ApiUser, env: NodeJS.ProcessEnv): AdminActor | undefined {
-  const roles = adminRolesForEmail(user.email, env);
-  if (!roles.length) return undefined;
+export async function resolveAdminActor(user: ApiUser, env: NodeJS.ProcessEnv, store: AdminStore): Promise<AdminActor | undefined> {
+  const roles = new Set<AdminRole>(await store.rolesForUser(user));
+  if (bootstrapEmails(env).includes(user.email.toLowerCase())) roles.add("super-admin");
+  if (!roles.size) return undefined;
   return {
     user,
-    roles,
-    permissions: [...new Set(roles.flatMap((role) => rolePermissions[role]))]
+    roles: [...roles],
+    permissions: [...new Set([...roles].flatMap((role) => rolePermissions[role]))]
   };
 }
 
@@ -73,13 +50,13 @@ export function requireAdminPermission(actor: AdminActor | undefined, permission
   return { ok: true, actor };
 }
 
-export function adminDashboardSummary(state: AppState) {
+export function adminDashboardSummary(state: AppState, auditLogCount: number) {
   return {
     marketplaceExercises: state.exerciseLibrary.filter((exercise) => normalizeExerciseDefinition(exercise).catalogSource === "marketplace").length,
     publishedExercises: state.exerciseLibrary.filter((exercise) => normalizeExerciseDefinition(exercise).catalogSource === "marketplace" && normalizeExerciseDefinition(exercise).status === "published").length,
     routineTemplates: state.routineTemplatesMarketplace.length,
     publishedRoutineTemplates: state.routineTemplatesMarketplace.filter((template) => template.status === "published").length,
-    auditLogs: auditLogs.length,
+    auditLogs: auditLogCount,
     pendingReports: 0,
     syncEventsVisibleToAdmin: state.syncQueue.length
   };
@@ -211,71 +188,33 @@ export function adminSupportUserLookup(users: ApiUser[], query = "") {
     }));
 }
 
-export function listAdminAuditLogs(filters: { action?: string; resourceType?: string; page?: number | string; pageSize?: number | string } = {}) {
-  const items = auditLogs
-    .filter((log) => !filters.action || log.action === filters.action)
-    .filter((log) => !filters.resourceType || log.resourceType === filters.resourceType)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  return paginate(items, filters);
+export function listAdminAuditLogs(store: AdminStore, filters: AuditFilters = {}) {
+  return store.listAudit(filters);
 }
 
-export function recordAdminAuditLog(input: Omit<AdminAuditLog, "id" | "createdAt">): AdminAuditLog {
-  const log: AdminAuditLog = {
+export function recordAdminAuditLog(store: AdminStore, input: Omit<AdminAuditLog, "id" | "createdAt">): Promise<AdminAuditLog> {
+  return store.recordAudit({
     ...input,
-    id: cryptoSafeId(),
     actorEmail: redactEmail(input.actorEmail),
     before: redactSensitive(input.before),
-    after: redactSensitive(input.after),
-    createdAt: new Date().toISOString()
-  };
-  auditLogs.push(log);
-  return log;
+    after: redactSensitive(input.after)
+  });
 }
 
-export function grantAdminRole(input: { email: string; role: AdminRole; grantedBy: string }): AdminRoleAssignment {
-  const assignment: AdminRoleAssignment = {
-    email: input.email.toLowerCase(),
-    role: input.role,
-    grantedBy: input.grantedBy,
-    grantedAt: new Date().toISOString()
-  };
-  roleAssignments.set(`${assignment.email}:${assignment.role}`, assignment);
-  return assignment;
-}
-
-export function revokeAdminRole(input: { email: string; role: AdminRole }): AdminRoleAssignment | undefined {
-  const key = `${input.email.toLowerCase()}:${input.role}`;
-  const existing = roleAssignments.get(key);
-  if (!existing) return undefined;
-  const revoked = { ...existing, revokedAt: new Date().toISOString() };
-  roleAssignments.set(key, revoked);
-  return revoked;
-}
-
-export function listAdminRoles(env: NodeJS.ProcessEnv): AdminRoleAssignment[] {
+export async function listAdminRoles(env: NodeJS.ProcessEnv, store: AdminStore): Promise<AdminRoleAssignment[]> {
   const bootstrap: AdminRoleAssignment[] = bootstrapEmails(env).map((email) => ({
-    email: email.toLowerCase(),
+    email,
     role: "super-admin" as const,
     grantedBy: "env:ADMIN_BOOTSTRAP_EMAILS",
     grantedAt: "bootstrap"
   }));
-  return [...bootstrap, ...roleAssignments.values()].filter((assignment) => !assignment.revokedAt);
+  return [...bootstrap, ...(await store.listRoles())];
 }
 
 export function redactEmail(email: string): string {
   const [name, domain] = email.split("@");
   if (!domain) return "redacted";
   return `${name.slice(0, 2)}***@${domain}`;
-}
-
-function adminRolesForEmail(email: string, env: NodeJS.ProcessEnv): AdminRole[] {
-  const normalized = email.toLowerCase();
-  const roles = new Set<AdminRole>();
-  if (bootstrapEmails(env).includes(normalized)) roles.add("super-admin");
-  for (const assignment of roleAssignments.values()) {
-    if (!assignment.revokedAt && assignment.email === normalized) roles.add(assignment.role);
-  }
-  return [...roles];
 }
 
 function bootstrapEmails(env: NodeJS.ProcessEnv): string[] {

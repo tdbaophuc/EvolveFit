@@ -1,38 +1,36 @@
-const siteUrlEnvKeys = ["NEXT_PUBLIC_SITE_URL", "SITE_URL", "NEXT_PUBLIC_APP_URL", "APP_URL"] as const;
+import { configuredSiteOrigin, isProductionLike, trustedOrigins } from "./config";
 
 export function createAppUrl(path: string, requestUrl: string, env: NodeJS.ProcessEnv = process.env): URL {
   return new URL(path, appOrigin(requestUrl, env));
 }
 
-function appOrigin(requestUrl: string, env: NodeJS.ProcessEnv): string {
-  const configuredUrl = configuredSiteUrl(env);
-  if (configuredUrl) return configuredUrl;
-  return new URL(requestUrl).origin;
-}
-
-function configuredSiteUrl(env: NodeJS.ProcessEnv): string | undefined {
-  for (const key of siteUrlEnvKeys) {
-    const value = env[key]?.trim();
-    if (value) return normalizeHttpOrigin(value, key);
+export class RedirectNotAllowedError extends Error {
+  constructor() {
+    super("redirectTo is not an allowed application URL");
   }
-
-  const vercelUrl = env.VERCEL_URL?.trim();
-  if (vercelUrl) return normalizeHttpOrigin(vercelUrl.includes("://") ? vercelUrl : `https://${vercelUrl}`, "VERCEL_URL");
-
-  return undefined;
 }
 
-function normalizeHttpOrigin(value: string, key: string): string {
+/**
+ * Resolves the URL Supabase should send users back to after email confirmation / recovery.
+ * Client-supplied values are only honoured when their origin is in the trusted allowlist.
+ */
+export function resolveAuthRedirect(requested: string | undefined, requestUrl: string, env: NodeJS.ProcessEnv = process.env): string {
+  const fallback = createAppUrl("/", requestUrl, env).toString();
+  if (!requested) return fallback;
   let url: URL;
   try {
-    url = new URL(value);
+    url = new URL(requested);
   } catch {
-    throw new Error(`${key} must be a valid absolute URL`);
+    throw new RedirectNotAllowedError();
   }
+  if (url.username || url.password || !trustedOrigins(env).includes(url.origin)) throw new RedirectNotAllowedError();
+  return url.toString();
+}
 
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new Error(`${key} must use http or https`);
-  }
-
-  return url.origin;
+function appOrigin(requestUrl: string, env: NodeJS.ProcessEnv): string {
+  const configured = configuredSiteOrigin(env);
+  if (configured) return configured;
+  // Never derive redirect targets from Host / X-Forwarded-* headers outside local development.
+  if (isProductionLike(env)) throw new Error("APP_BASE_URL is required in production");
+  return new URL(requestUrl).origin;
 }

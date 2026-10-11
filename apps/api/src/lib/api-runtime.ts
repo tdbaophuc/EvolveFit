@@ -10,6 +10,7 @@ export type ApiRuntime = {
   repository: AppRepository;
   state: AppState;
   mutations: ResourceMutation[];
+  env?: NodeJS.ProcessEnv;
 };
 
 const runtimeStorage = new AsyncLocalStorage<ApiRuntime>();

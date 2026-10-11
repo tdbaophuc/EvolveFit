@@ -1,3 +1,5 @@
+import { sessionSecrets } from "./config";
+import { sealJson, unsealJson } from "./session-crypto";
 import { normalizeSupabaseProjectUrl } from "./supabase-url";
 
 export type AuthMode = "local" | "email" | "google";
@@ -17,19 +19,46 @@ export const authCookieName = "evolvefit_session";
 export const oauthCodeVerifierCookieName = "evolvefit_oauth_verifier";
 export const oauthStateCookieName = "evolvefit_oauth_state";
 
-let localSession: AuthSession = {
-  mode: "local",
-  email: "phuc@example.com"
-};
+export const defaultSessionMaxAgeSeconds = 60 * 60 * 24 * 7;
+const anonymousEmail = "local@evolvefit.app";
 
+/** Auth failures whose message is safe to show to clients (no upstream details). */
+export class AuthError extends Error {
+  constructor(
+    message: string,
+    readonly status = 401
+  ) {
+    super(message);
+  }
+}
+
+type SealedSession = AuthSession & { iat: number; exp: number };
+
+/** Anonymous placeholder session. Never carries tokens and is never shared between requests. */
 export function getAuthSession(): AuthSession {
-  return localSession;
+  return { mode: "local", email: anonymousEmail };
+}
+
+/** Strips tokens before a session is sent to browser JavaScript (the cookie itself stays httpOnly). */
+export function publicSession(session: AuthSession, exposeTokens = false): AuthSession & { authenticated: boolean } {
+  const authenticated = Boolean(session.accessToken) || (session.mode === "local" && session.email !== anonymousEmail);
+  if (exposeTokens) return { ...session, authenticated };
+  return {
+    mode: session.mode,
+    email: session.email,
+    expiresAt: session.expiresAt,
+    oauthUrl: session.oauthUrl,
+    emailVerified: session.emailVerified,
+    needsEmailVerification: session.needsEmailVerification,
+    authenticated
+  };
 }
 
 export async function signIn(input: {
   email: string;
   password?: string;
   mode?: AuthMode;
+  oauthStartUrl?: string;
   env?: NodeJS.ProcessEnv;
   fetchImpl?: typeof fetch;
 }): Promise<AuthSession> {
@@ -38,12 +67,11 @@ export async function signIn(input: {
   const mode = input.mode ?? "email";
 
   if (mode === "google") {
-    const oauthUrl = createSupabaseOAuthUrl("google", input.email, env);
-    localSession = { mode: "google", email: input.email, oauthUrl };
-    return localSession;
+    return { mode: "google", email: input.email, oauthUrl: input.oauthStartUrl };
   }
 
-  if (env.NEXT_PUBLIC_SUPABASE_URL && env.NEXT_PUBLIC_SUPABASE_ANON_KEY && input.password) {
+  if (env.NEXT_PUBLIC_SUPABASE_URL && env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    if (!input.password) throw new AuthError("Invalid email or password");
     const supabaseUrl = normalizeSupabaseProjectUrl(env.NEXT_PUBLIC_SUPABASE_URL);
     const response = await fetchImpl(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
       method: "POST",
@@ -55,15 +83,15 @@ export async function signIn(input: {
     });
 
     if (!response.ok) {
-      throw new Error(`Supabase sign-in failed with status ${response.status}`);
+      if (response.status === 429) throw new AuthError("Too many sign-in attempts", 429);
+      throw new AuthError("Invalid email or password");
     }
 
-    localSession = sessionFromSupabaseAuthPayload(await response.json(), input.email, "email");
-    return localSession;
+    return sessionFromSupabaseAuthPayload(await response.json(), input.email, "email");
   }
 
-  localSession = { mode, email: input.email };
-  return localSession;
+  // Local demo mode (memory repository only; production refuses to start without Supabase).
+  return { mode, email: input.email };
 }
 
 export async function signUp(input: {
@@ -76,8 +104,7 @@ export async function signUp(input: {
   const env = input.env ?? process.env;
   const fetchImpl = input.fetchImpl ?? fetch;
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    localSession = { mode: "email", email: input.email };
-    return localSession;
+    return { mode: "email", email: input.email };
   }
 
   const supabaseUrl = normalizeSupabaseProjectUrl(env.NEXT_PUBLIC_SUPABASE_URL);
@@ -95,23 +122,25 @@ export async function signUp(input: {
   });
 
   if (!response.ok) {
-    throw new Error(`Supabase sign-up failed with status ${response.status}`);
+    if (response.status === 429) throw new AuthError("Too many sign-up attempts", 429);
+    throw new AuthError("Sign-up failed", 400);
   }
 
-  localSession = sessionFromSupabaseAuthPayload(await response.json(), input.email, "email");
-  return localSession;
+  return sessionFromSupabaseAuthPayload(await response.json(), input.email, "email");
 }
 
 export async function refreshSession(input: {
   refreshToken: string;
+  previous?: AuthSession;
   env?: NodeJS.ProcessEnv;
   fetchImpl?: typeof fetch;
 }): Promise<AuthSession> {
   const env = input.env ?? process.env;
   const fetchImpl = input.fetchImpl ?? fetch;
+  if (!input.refreshToken) throw new AuthError("refresh token is required");
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    if (!input.refreshToken) throw new Error("refresh token is required");
-    return localSession;
+    if (!input.previous) throw new AuthError("No session to refresh");
+    return input.previous;
   }
   const supabaseUrl = normalizeSupabaseProjectUrl(env.NEXT_PUBLIC_SUPABASE_URL);
   const response = await fetchImpl(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
@@ -122,8 +151,8 @@ export async function refreshSession(input: {
     },
     body: JSON.stringify({ refresh_token: input.refreshToken })
   });
-  if (!response.ok) throw new Error(`Supabase refresh failed with status ${response.status}`);
-  return sessionFromSupabaseAuthPayload(await response.json(), localSession.email, localSession.mode === "google" ? "google" : "email");
+  if (!response.ok) throw new AuthError("Session refresh failed");
+  return sessionFromSupabaseAuthPayload(await response.json(), input.previous?.email ?? "user@evolvefit.app", input.previous?.mode === "google" ? "google" : "email");
 }
 
 export async function requestPasswordReset(input: {
@@ -147,7 +176,10 @@ export async function requestPasswordReset(input: {
     },
     body: JSON.stringify({ email: input.email, redirect_to: input.redirectTo })
   });
-  if (!response.ok) throw new Error(`Supabase password reset request failed with status ${response.status}`);
+  if (!response.ok) {
+    if (response.status === 429) throw new AuthError("Too many password reset requests", 429);
+    throw new AuthError("Password reset request failed", 400);
+  }
   return { email: input.email, sent: true, mode: "supabase" };
 }
 
@@ -172,41 +204,65 @@ export async function resetPassword(input: {
     },
     body: JSON.stringify({ password: input.password })
   });
-  if (!response.ok) throw new Error(`Supabase password reset failed with status ${response.status}`);
+  if (!response.ok) throw new AuthError("Password reset failed", 400);
   return { updated: true };
 }
 
 export function signOut(): AuthSession {
-  localSession = { mode: "local", email: "local@evolvefit.app" };
-  return localSession;
+  return getAuthSession();
 }
 
-export function createSessionCookieValue(session: AuthSession): string {
-  return Buffer.from(JSON.stringify(session), "utf8").toString("base64url");
+/** Session cookies are AES-256-GCM sealed with SESSION_SECRET: clients can neither read nor forge them. */
+export function createSessionCookieValue(
+  session: AuthSession,
+  env: NodeJS.ProcessEnv = process.env,
+  maxAgeSeconds = sessionMaxAgeSeconds(env),
+  now = Date.now()
+): string {
+  const iat = Math.floor(now / 1000);
+  const sealed: SealedSession = {
+    mode: session.mode,
+    email: session.email,
+    accessToken: session.accessToken,
+    refreshToken: session.refreshToken,
+    expiresAt: session.expiresAt,
+    emailVerified: session.emailVerified,
+    iat,
+    exp: iat + maxAgeSeconds
+  };
+  return sealJson(sealed, sessionSecrets(env));
 }
 
-export function parseSessionCookieValue(value: string | undefined): AuthSession | undefined {
+export function parseSessionCookieValue(value: string | undefined, env: NodeJS.ProcessEnv = process.env, now = Date.now()): AuthSession | undefined {
   if (!value) return undefined;
   try {
-    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Partial<AuthSession>;
-    if (!parsed.email || !parsed.mode) return undefined;
+    const parsed = unsealJson<Partial<SealedSession>>(value, sessionSecrets(env));
+    if (!parsed || typeof parsed.email !== "string" || !isAuthMode(parsed.mode)) return undefined;
+    if (typeof parsed.exp !== "number" || parsed.exp <= Math.floor(now / 1000)) return undefined;
     return {
       mode: parsed.mode,
       email: parsed.email,
       accessToken: parsed.accessToken,
       refreshToken: parsed.refreshToken,
       expiresAt: parsed.expiresAt,
-      oauthUrl: parsed.oauthUrl,
-      emailVerified: parsed.emailVerified,
-      needsEmailVerification: parsed.needsEmailVerification
+      emailVerified: parsed.emailVerified
     };
   } catch {
     return undefined;
   }
 }
 
+export function sessionMaxAgeSeconds(env: NodeJS.ProcessEnv = process.env): number {
+  const configured = Number(env.SESSION_MAX_AGE_SECONDS);
+  return Number.isInteger(configured) && configured > 0 ? configured : defaultSessionMaxAgeSeconds;
+}
+
+function isAuthMode(value: unknown): value is AuthMode {
+  return value === "local" || value === "email" || value === "google";
+}
+
 export function bearerTokenFromAuthorization(value: string | undefined): string | undefined {
-  const match = value?.match(/^Bearer\s+(.+)$/i);
+  const match = value?.match(/^Bearer\s+([A-Za-z0-9._~+/=-]{1,4096})$/i);
   return match?.[1];
 }
 
@@ -243,7 +299,7 @@ export async function deleteSupabaseUser(input: {
   const fetchImpl = input.fetchImpl ?? fetch;
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return { deleted: false, mode: "missing-env" };
   const supabaseUrl = normalizeSupabaseProjectUrl(env.NEXT_PUBLIC_SUPABASE_URL);
-  const response = await fetchImpl(`${supabaseUrl}/auth/v1/admin/users/${input.userId}`, {
+  const response = await fetchImpl(`${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(input.userId)}`, {
     method: "DELETE",
     headers: {
       apikey: env.SUPABASE_SERVICE_ROLE_KEY,
@@ -263,7 +319,7 @@ export function sessionFromSupabaseTokens(input: {
   emailVerified?: boolean;
   needsEmailVerification?: boolean;
 }): AuthSession {
-  localSession = {
+  return {
     mode: input.mode ?? "google",
     email: input.email ?? "user@evolvefit.app",
     accessToken: input.accessToken,
@@ -272,7 +328,6 @@ export function sessionFromSupabaseTokens(input: {
     emailVerified: input.emailVerified,
     needsEmailVerification: input.needsEmailVerification
   };
-  return localSession;
 }
 
 function sessionFromSupabaseAuthPayload(payload: unknown, fallbackEmail: string, mode: AuthMode): AuthSession {
@@ -353,7 +408,7 @@ export async function exchangeSupabaseOAuthCode(input: {
     body: JSON.stringify({ auth_code: input.code, code_verifier: input.codeVerifier, redirect_to: input.redirectTo })
   });
   if (!response.ok) {
-    throw new Error(`Supabase OAuth exchange failed with status ${response.status}`);
+    throw new AuthError("OAuth sign-in failed", 400);
   }
   return sessionFromSupabaseAuthPayload(await response.json(), "user@evolvefit.app", "google");
 }

@@ -45,7 +45,8 @@ import {
   type WorkoutSession,
   type WorkoutSet
 } from "@evolvefit/shared";
-import { getVapidPublicKey, isWebPushConfigured, sendWebPush, type PushPayload } from "./push";
+import { getVapidPublicKey, isWebPushConfigured, sendWebPush, validatePushSubscriptionInput, type PushPayload } from "./push";
+import { validateSyncPayload } from "./sync-validation";
 import { currentApiRuntime, currentApiState, drainResourceMutations, recordResourceMutation, resourceMutationCheckpoint } from "./api-runtime";
 
 type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -675,7 +676,9 @@ function syncResultFromApiResult(item: SyncBatchItem, result: ApiResult<unknown>
 }
 
 function applySyncItem(item: SyncBatchItem): ApiResult<unknown> {
-  const payload = item.payload as Record<string, unknown>;
+  const validated = validateSyncPayload(item.type, item.payload);
+  if (!validated.ok) return fail(validated.error);
+  const payload = validated.payload;
   if (item.type === "hydration.log") return upsertHydrationLog(payload as HydrationLog);
   if (item.type === "hydration.patch") {
     if (payload.amountMl !== undefined) return upsertHydrationLog(payload as HydrationLog);
@@ -995,6 +998,8 @@ export async function subscribeNotifications(input: {
   const auth = input.auth ?? input.keys?.auth;
   if (!input.endpoint || !p256dh || !auth) return fail("endpoint, p256dh, and auth are required");
   const runtime = currentApiRuntime();
+  const invalid = validatePushSubscriptionInput({ endpoint: input.endpoint, p256dh, auth }, runtime.env);
+  if (invalid) return fail(invalid);
   const subscription = {
     endpoint: input.endpoint,
     p256dh,
@@ -1039,7 +1044,8 @@ async function sendToSubscriptions(payload: PushPayload, filter: { endpoint?: st
           endpoint: subscription.endpoint,
           keys: { p256dh: subscription.p256dh, auth: subscription.auth }
         },
-        payload
+        payload,
+        runtime.env
       );
       if (result === "sent") sent += 1;
       if (result === "missing-env") missingEnv += 1;

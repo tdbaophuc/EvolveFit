@@ -51,7 +51,7 @@ export type SyncBatchResult = {
   conflict?: { kind: "routine"; local: unknown; remote: unknown; message: string };
 };
 export type AdminRole = "super-admin" | "content-admin" | "support";
-export type AdminPermission = "admin:dashboard" | "content:read" | "content:write" | "support:read" | "audit:read" | "roles:write";
+export type AdminPermission = "admin:dashboard" | "content:read" | "content:write" | "support:read" | "audit:read" | "roles:write" | "ops:read";
 export type AdminActor = {
   email: string;
   roles: AdminRole[];
@@ -495,6 +495,8 @@ export class EvolveFitApiClient {
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
+        // Required by the API's CSRF protection for cookie-authenticated requests.
+        "X-EvolveFit-Client": "web",
         ...(init.headers ?? {})
       }
     });

@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -58,13 +59,14 @@ import {
   updateSupplementReminder,
   updateWorkoutSet
 } from "../lib/api";
-import { createAppUrl } from "../lib/app-url";
+import { createAppUrl, RedirectNotAllowedError, resolveAuthRedirect } from "../lib/app-url";
+import { isProductionLike } from "../lib/config";
+import { validateSyncItemEnvelope, validateSyncPayload } from "../lib/sync-validation";
 import {
   adminDashboardSummary,
   adminSupportUserLookup,
   createAdminMarketplaceExercise,
   createAdminRoutineTemplate,
-  grantAdminRole,
   listAdminAuditLogs,
   listAdminMarketplaceExercises,
   listAdminRoles,
@@ -72,13 +74,15 @@ import {
   recordAdminAuditLog,
   requireAdminPermission,
   resolveAdminActor,
-  revokeAdminRole,
   updateAdminMarketplaceExercise,
   updateAdminRoutineTemplate,
+  type AdminActor,
   type AdminPermission,
   type AdminRole
 } from "../lib/admin";
+import { AdminStoreError } from "../lib/admin-store";
 import {
+  AuthError,
   authCookieName,
   createCodeChallenge,
   createCodeVerifier,
@@ -92,19 +96,21 @@ import {
   oauthCodeVerifierCookieName,
   oauthStateCookieName,
   parseSessionCookieValue,
+  publicSession,
   refreshSession,
   requestPasswordReset,
   resetPassword,
-  sessionFromSupabaseTokens,
+  sessionMaxAgeSeconds,
   signIn,
   signOut,
   signUp,
   verifySupabaseJwt,
-  type AuthMode
+  type AuthMode,
+  type AuthSession
 } from "../lib/auth";
 import { currentApiState, runWithApiRuntime, type ApiRuntime } from "../lib/api-runtime";
 import { getIntegrationStatus, verifySupabaseProduction } from "../lib/integrations";
-import { listClientErrors, listRequestLogs, normalizeErrorCode, recordClientError, requestIdResponseHeader } from "../lib/observability";
+import { listClientErrors, listRequestLogs, normalizeErrorCode, recordClientError, requestIdResponseHeader, sanitizeRequestId } from "../lib/observability";
 import { jsonFail, jsonOk, withApiErrorHandling } from "../lib/server-response";
 import { observabilitySnapshot } from "../lib/observability";
 import type { ApiResult } from "../types";
@@ -130,8 +136,13 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
         version: env.npm_package_version ?? "0.1.0",
         runtime: "nodejs-fastify",
         checkedAt: new Date().toISOString(),
-        integrations: getIntegrationStatus(env),
-        storageAdapter: env.NEXT_PUBLIC_SUPABASE_URL && env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? "supabase-ready" : "memory-fallback"
+        // Configuration details are only exposed outside production; ops can use the admin endpoints.
+        ...(isProductionLike(env)
+          ? {}
+          : {
+              integrations: getIntegrationStatus(env),
+              storageAdapter: env.NEXT_PUBLIC_SUPABASE_URL && env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? "supabase-ready" : "memory-fallback"
+            })
       })
     )
   );
@@ -151,19 +162,21 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
   );
 
   app.get("/api/supabase/verify", (request, reply) =>
-    withApiErrorHandling({ method: "GET", path: "/api/supabase/verify", request, reply }, async () =>
-      jsonOk({ method: "GET", path: "/api/supabase/verify", request, reply }, await verifySupabaseProduction(env))
-    )
+    withAdminContext(request, reply, "ops:read", async () => verifySupabaseProduction(env), { loadState: false })
   );
 
   app.get("/api/docs/openapi", (request, reply) => {
+    if (isProductionLike(env) && env.API_PUBLIC_DOCS !== "true") return sendErrorEnvelope(reply, request, "Not found", 404);
     const spec = JSON.parse(readFileSync(openApiSpecPath, "utf8"));
     reply.header(requestIdResponseHeader(), request.requestId).header("cache-control", "public, max-age=300");
     return spec;
   });
 
   app.get("/api/admin/dashboard", (request, reply) =>
-    withAdminContext(request, reply, "admin:dashboard", ({ state, actor }) => ({ actor: adminActorPayload(actor), summary: adminDashboardSummary(state) }))
+    withAdminContext(request, reply, "admin:dashboard", async ({ state, actor }) => ({
+      actor: adminActorPayload(actor),
+      summary: adminDashboardSummary(state, await request.adminStore.countAudit())
+    }))
   );
   app.get("/api/admin/governance/health", (request, reply) =>
     withAdminContext(request, reply, "admin:dashboard", ({ actor }) => ({
@@ -174,14 +187,20 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
     }))
   );
   app.get("/api/admin/roles", (request, reply) =>
-    withAdminContext(request, reply, "audit:read", () => ({ items: listAdminRoles(env), total: listAdminRoles(env).length }))
+    withAdminContext(request, reply, "audit:read", async () => {
+      const items = await listAdminRoles(env, request.adminStore);
+      return { items, total: items.length };
+    }, { loadState: false })
   );
   app.post("/api/admin/roles", (request, reply) =>
-    withAdminContext(request, reply, "roles:write", ({ actor }) => {
+    withAdminContext(request, reply, "roles:write", async ({ actor }) => {
       const body = bodyAs<{ email: string; role: AdminRole; revoke?: boolean }>(request);
-      const result = body.revoke ? revokeAdminRole({ email: body.email, role: body.role }) : grantAdminRole({ email: body.email, role: body.role, grantedBy: actor.user.email });
+      if (body.revoke && body.email.toLowerCase() === actor.user.email.toLowerCase()) throw new AdminRouteError("cannot revoke your own role", 400);
+      const result = body.revoke
+        ? await request.adminStore.revokeRole({ email: body.email, role: body.role })
+        : await request.adminStore.grantRole({ email: body.email, role: body.role, grantedBy: actor.user });
       return result ?? { email: body.email, role: body.role, revoked: true };
-    }, { mutation: { action: "admin.role.write", resourceType: "admin_role" } })
+    }, { mutation: { action: "admin.role.write", resourceType: "admin_role" }, loadState: false })
   );
   app.get("/api/admin/exercises", (request, reply) =>
     withAdminContext(request, reply, "content:read", ({ state }) => listAdminMarketplaceExercises(state, request.query as Record<string, never>))
@@ -220,23 +239,27 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
     withAdminContext(request, reply, "support:read", ({ actor }) => ({ items: adminSupportUserLookup([actor.user], String((request.query as Record<string, unknown>).query ?? "")), redacted: true }))
   );
   app.get("/api/admin/audit-logs", (request, reply) =>
-    withAdminContext(request, reply, "audit:read", () => listAdminAuditLogs(request.query as Record<string, never>))
+    withAdminContext(request, reply, "audit:read", () => listAdminAuditLogs(request.adminStore, request.query as Record<string, never>), { loadState: false })
   );
 
   app.get("/api/auth/session", async (request, reply) => {
-    const cookie = request.cookies[authCookieName];
-    const token = bearerTokenFromAuthorization(request.headers.authorization) ?? parseSessionCookieValue(cookie)?.accessToken;
+    const cookieSession = readSessionCookie(request);
+    const token = bearerTokenFromAuthorization(request.headers.authorization) ?? cookieSession?.accessToken;
     if (token && env.NEXT_PUBLIC_SUPABASE_URL && env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
       try {
         const user = await verifySupabaseJwt({ token, env });
         reply.header(requestIdResponseHeader(), request.requestId);
-        return { ok: true, data: { mode: "email", email: user.email, accessToken: token }, requestId: request.requestId };
+        return {
+          ok: true,
+          data: publicSession({ ...(cookieSession ?? { mode: "email" }), email: user.email, accessToken: token }, exposeTokens(env)),
+          requestId: request.requestId
+        };
       } catch {
         return sendErrorEnvelope(reply, request, "Unauthorized", 401);
       }
     }
     reply.header(requestIdResponseHeader(), request.requestId);
-    return { ok: true, data: parseSessionCookieValue(cookie) ?? getAuthSession(), requestId: request.requestId };
+    return { ok: true, data: publicSession(cookieSession ?? getAuthSession(), exposeTokens(env)), requestId: request.requestId };
   });
 
   app.post("/api/auth/sign-in", async (request, reply) => {
@@ -246,13 +269,14 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
         email: body?.email ?? "local@evolvefit.app",
         password: body?.password,
         mode: body?.mode,
+        oauthStartUrl: createAppUrl("/api/auth/oauth/google", fullUrl(request), env).toString(),
         env
       });
-      setSessionCookie(reply, session);
+      setSessionCookie(reply, request, session);
       reply.header(requestIdResponseHeader(), request.requestId);
-      return { ok: true, data: session, requestId: request.requestId };
+      return { ok: true, data: publicSession(session, exposeTokens(env)), requestId: request.requestId };
     } catch (error) {
-      return sendErrorEnvelope(reply, request, error instanceof Error ? error.message : "Sign-in failed", 401);
+      return sendAuthError(reply, request, error, "Sign-in failed", 401);
     }
   });
 
@@ -262,35 +286,36 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
       return sendErrorEnvelope(reply, request, "email and password are required", 400);
     }
     try {
-      const redirectTo = body.redirectTo ?? createAppUrl("/", fullUrl(request), env).toString();
+      const redirectTo = resolveAuthRedirect(body.redirectTo, fullUrl(request), env);
       const session = await signUp({ email: body.email, password: body.password, redirectTo, env });
-      setSessionCookie(reply, session);
+      setSessionCookie(reply, request, session);
       reply.header(requestIdResponseHeader(), request.requestId);
-      return { ok: true, data: session, requestId: request.requestId };
+      return { ok: true, data: publicSession(session, exposeTokens(env)), requestId: request.requestId };
     } catch (error) {
-      return sendErrorEnvelope(reply, request, error instanceof Error ? error.message : "Sign-up failed", 400);
+      return sendAuthError(reply, request, error, "Sign-up failed", 400);
     }
   });
 
-  app.post("/api/auth/sign-out", (_request, reply) => {
-    reply.clearCookie(authCookieName, { path: "/" });
+  app.post("/api/auth/sign-out", (request, reply) => {
+    reply.clearCookie(authCookieName, sessionCookieOptions(env, 0));
+    reply.header(requestIdResponseHeader(), request.requestId);
     return { ok: true, data: signOut() };
   });
 
   app.post("/api/auth/refresh", async (request, reply) => {
-    const cookieSession = parseSessionCookieValue(request.cookies[authCookieName]);
+    const cookieSession = readSessionCookie(request);
     const body = bodyAs<{ refreshToken?: string }>(request);
     const refreshToken = body?.refreshToken ?? cookieSession?.refreshToken;
     if (!refreshToken) {
       return sendErrorEnvelope(reply, request, "refresh token is required", 401);
     }
     try {
-      const session = await refreshSession({ refreshToken, env });
-      setSessionCookie(reply, session);
+      const session = await refreshSession({ refreshToken, previous: cookieSession, env });
+      setSessionCookie(reply, request, session);
       reply.header(requestIdResponseHeader(), request.requestId);
-      return { ok: true, data: session, requestId: request.requestId };
+      return { ok: true, data: publicSession(session, exposeTokens(env)), requestId: request.requestId };
     } catch (error) {
-      return sendErrorEnvelope(reply, request, error instanceof Error ? error.message : "Refresh failed", 401);
+      return sendAuthError(reply, request, error, "Refresh failed", 401);
     }
   });
 
@@ -300,12 +325,12 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
       return sendErrorEnvelope(reply, request, "email is required", 400);
     }
     try {
-      const redirectTo = body.redirectTo ?? createAppUrl("/", fullUrl(request), env).toString();
+      const redirectTo = resolveAuthRedirect(body.redirectTo, fullUrl(request), env);
       const result = await requestPasswordReset({ email: body.email, redirectTo, env });
       reply.header(requestIdResponseHeader(), request.requestId);
       return { ok: true, data: result, requestId: request.requestId };
     } catch (error) {
-      return sendErrorEnvelope(reply, request, error instanceof Error ? error.message : "Password reset request failed", 400);
+      return sendAuthError(reply, request, error, "Password reset request failed", 400);
     }
   });
 
@@ -319,7 +344,7 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
       reply.header(requestIdResponseHeader(), request.requestId);
       return { ok: true, data: result, requestId: request.requestId };
     } catch (error) {
-      return sendErrorEnvelope(reply, request, error instanceof Error ? error.message : "Password reset failed", 400);
+      return sendAuthError(reply, request, error, "Password reset failed", 400);
     }
   });
 
@@ -330,7 +355,8 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
     const state = createOauthState();
     const oauthUrl = createSupabaseOAuthUrl("google", redirectTo, env, { codeChallenge: challenge, state });
     if (!oauthUrl) return sendErrorEnvelope(reply, request, "Supabase OAuth env is missing", 503);
-    const cookieOptions = sessionCookieOptions(60 * 10);
+    // The provider redirects back cross-site, so these short-lived cookies must not be SameSite=Strict.
+    const cookieOptions = { ...sessionCookieOptions(env, 60 * 10), sameSite: oauthSameSite(env) };
     reply.setCookie(oauthCodeVerifierCookieName, verifier, cookieOptions);
     reply.setCookie(oauthStateCookieName, state, cookieOptions);
     return reply.redirect(oauthUrl);
@@ -340,7 +366,6 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
     const url = new URL(fullUrl(request));
     const accessToken = url.searchParams.get("access_token");
     const refreshToken = url.searchParams.get("refresh_token") ?? undefined;
-    const email = url.searchParams.get("email") ?? undefined;
     const expiresAt = Number(url.searchParams.get("expires_at"));
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
@@ -348,7 +373,7 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
     if (code) {
       const verifier = request.cookies[oauthCodeVerifierCookieName];
       const expectedState = request.cookies[oauthStateCookieName];
-      if (!verifier || !expectedState || expectedState !== state) {
+      if (!verifier || !expectedState || !state || !safeEqual(expectedState, state)) {
         return sendErrorEnvelope(reply, request, "OAuth state or verifier is invalid", 400);
       }
       try {
@@ -358,24 +383,30 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
           redirectTo: createAppUrl("/api/auth/callback", fullUrl(request), env).toString(),
           env
         });
-        setSessionCookie(reply, session);
-        reply.clearCookie(oauthCodeVerifierCookieName, { path: "/" });
-        reply.clearCookie(oauthStateCookieName, { path: "/" });
+        const verified = await verifySupabaseJwt({ token: session.accessToken ?? "", env });
+        setSessionCookie(reply, request, { ...session, email: verified.email });
+        reply.clearCookie(oauthCodeVerifierCookieName, sessionCookieOptions(env, 0));
+        reply.clearCookie(oauthStateCookieName, sessionCookieOptions(env, 0));
         return reply.redirect(createAppUrl("/", fullUrl(request), env).toString());
       } catch (error) {
-        return sendErrorEnvelope(reply, request, error instanceof Error ? error.message : "OAuth callback failed", 400);
+        return sendAuthError(reply, request, error, "OAuth callback failed", 400);
       }
     }
 
     if (!accessToken) return sendErrorEnvelope(reply, request, "access_token or code is required", 400);
-    const session = sessionFromSupabaseTokens({
-      accessToken,
-      refreshToken,
-      email,
-      expiresAt: Number.isFinite(expiresAt) ? expiresAt : undefined,
-      mode: "google"
-    });
-    setSessionCookie(reply, session);
+    // Implicit-flow tokens arrive via URL: only accept them after Supabase confirms who they belong to.
+    try {
+      const verified = await verifySupabaseJwt({ token: accessToken, env });
+      setSessionCookie(reply, request, {
+        mode: "google",
+        email: verified.email,
+        accessToken,
+        refreshToken,
+        expiresAt: Number.isFinite(expiresAt) && expiresAt > 0 ? expiresAt : undefined
+      });
+    } catch {
+      return sendErrorEnvelope(reply, request, "OAuth callback failed", 400);
+    }
     return reply.redirect(createAppUrl("/", fullUrl(request), env).toString());
   });
 
@@ -390,7 +421,7 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
       const user = await resolveApiUser(request);
       const dataDeletion = await request.apiRepository.deleteUserData(user);
       const authDeletion = user.mode === "supabase" ? await deleteSupabaseUser({ userId: user.id, env }) : { deleted: true, mode: "missing-env" as const };
-      reply.clearCookie(authCookieName, { path: "/" });
+      reply.clearCookie(authCookieName, sessionCookieOptions(env, 0));
       reply.header(requestIdResponseHeader(), request.requestId);
       return {
         ok: true,
@@ -405,7 +436,7 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
       };
     } catch (error) {
       const status = error instanceof AuthRequiredError ? error.status : 500;
-      return sendErrorEnvelope(reply, request, error instanceof Error ? error.message : "Account deletion failed", status);
+      return sendErrorEnvelope(reply, request, status >= 500 ? "Account deletion failed" : error instanceof Error ? error.message : "Account deletion failed", status);
     }
   });
 
@@ -504,7 +535,14 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
   app.get("/api/notifications/status", (request, reply) =>
     withDataContext(request, reply, () => notificationStatus(String((request.query as { localProfileId?: string }).localProfileId ?? ""), env))
   );
-  app.post("/api/notifications/subscribe", (request, reply) => withDataContext(request, reply, () => subscribeNotifications(bodyAs(request)), { errorStatus: 400, persist: true }));
+  app.post("/api/notifications/subscribe", (request, reply) =>
+    withDataContext(request, reply, () => {
+      // userId always comes from the authenticated runtime, never from the request body.
+      const input = { ...bodyAs<Parameters<typeof subscribeNotifications>[0]>(request) };
+      delete input.userId;
+      return subscribeNotifications(input);
+    }, { errorStatus: 400, persist: true })
+  );
   app.post("/api/notifications/unsubscribe", (request, reply) =>
     withDataContext(request, reply, () => unsubscribeNotifications(String(bodyAs<{ endpoint?: string }>(request)?.endpoint ?? "")), { errorStatus: 400, persist: true })
   );
@@ -524,30 +562,28 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
   });
 
   app.get("/api/observability/logs", (request, reply) =>
-    withApiErrorHandling({ method: "GET", path: "/api/observability/logs", request, reply }, () => {
+    withAdminContext(request, reply, "ops:read", () => {
       const requestId = (request.query as { requestId?: string }).requestId;
-      return jsonOk(
-        { method: "GET", path: "/api/observability/logs", request, reply },
-        {
-          ...observabilitySnapshot(env),
-          requestId,
-          logs: listRequestLogs(requestId),
-          clientErrors: listClientErrors(requestId)
-        }
-      );
-    })
+      return {
+        ...observabilitySnapshot(env),
+        requestId,
+        logs: listRequestLogs(requestId),
+        clientErrors: listClientErrors(requestId)
+      };
+    }, { loadState: false })
   );
   app.post("/api/client-errors", (request, reply) =>
     withApiErrorHandling({ method: "POST", path: "/api/client-errors", request, reply }, () => {
       const body = bodyAs<{ requestId?: string; message?: string; digest?: string; stack?: string; path?: string; userAgent?: string }>(request);
       if (!body?.message?.trim()) return jsonFail({ method: "POST", path: "/api/client-errors", request, reply }, "message is required", 400);
       const report = recordClientError({
-        requestId: body.requestId ?? request.requestId,
+        requestId: sanitizeRequestId(body.requestId) ?? request.requestId,
         message: body.message.trim(),
         digest: body.digest,
-        stack: body.stack?.slice(0, 4000),
+        // Stack traces are only kept outside production; they may contain source paths and user data.
+        stack: isProductionLike(env) ? undefined : body.stack?.slice(0, 4000),
         path: body.path,
-        userAgent: body.userAgent
+        userAgent: request.headers["user-agent"]?.toString()
       });
       return jsonOk({ method: "POST", path: "/api/client-errors", request, reply }, { requestId: report.requestId, reportedAt: report.reportedAt });
     })
@@ -563,7 +599,7 @@ async function withDataContext(
   try {
     const user = await resolveApiUser(request, options.allowDemoFallback);
     const state = await request.apiRepository.loadUserState(user);
-    const runtime: ApiRuntime = { user, repository: request.apiRepository, state, mutations: [] };
+    const runtime: ApiRuntime = { user, repository: request.apiRepository, state, mutations: [], env: request.apiEnv };
     const result = await runWithApiRuntime(runtime, handler);
     if (options.persist && result.ok) {
       const mutations = runtime.mutations.splice(0);
@@ -580,26 +616,30 @@ async function withAdminContext(
   request: FastifyRequest,
   reply: FastifyReply,
   permission: AdminPermission,
-  handler: (context: { actor: NonNullable<ReturnType<typeof resolveAdminActor>>; state: ReturnType<typeof currentApiState> }) => unknown | Promise<unknown>,
-  options: { mutation?: { action: string; resourceType: string; resourceId?: string } } = {}
+  handler: (context: { actor: AdminActor; state: ReturnType<typeof currentApiState> }) => unknown | Promise<unknown>,
+  options: { mutation?: { action: string; resourceType: string; resourceId?: string }; loadState?: boolean } = {}
 ) {
   try {
     const user = await resolveApiUser(request);
-    const actor = resolveAdminActor(user, request.apiEnv);
+    const actor = await resolveAdminActor(user, request.apiEnv, request.adminStore);
     const authorized = requireAdminPermission(actor, permission);
-    if (!authorized.ok) return sendErrorEnvelope(reply, request, authorized.error, authorized.status);
+    if (!authorized.ok) {
+      recordAdminDenied(request, user, permission);
+      return sendErrorEnvelope(reply, request, authorized.error, authorized.status);
+    }
 
-    const state = await request.apiRepository.loadUserState(user);
-    const before = options.mutation ? structuredClone(state) : undefined;
-    const data = await handler({ actor: authorized.actor, state });
+    const state = options.loadState === false ? undefined : await request.apiRepository.loadUserState(user);
+    // Audit only the affected resource, never a snapshot of the admin's whole app state.
+    const before = options.mutation && state ? auditResourceSnapshot(state, options.mutation.resourceType, options.mutation.resourceId) : undefined;
+    const data = await handler({ actor: authorized.actor, state: state as ReturnType<typeof currentApiState> });
     if (options.mutation) {
-      await request.apiRepository.saveUserState(user, state);
-      recordAdminAuditLog({
+      if (state) await request.apiRepository.saveUserState(user, state);
+      await recordAdminAuditLog(request.adminStore, {
         actorUserId: user.id,
         actorEmail: user.email,
         action: options.mutation.action,
         resourceType: options.mutation.resourceType,
-        resourceId: options.mutation.resourceId,
+        resourceId: options.mutation.resourceId ?? resourceIdOf(data),
         before,
         after: data,
         requestId: request.requestId,
@@ -610,9 +650,25 @@ async function withAdminContext(
     reply.header(requestIdResponseHeader(), request.requestId);
     return { ok: true, data, requestId: request.requestId };
   } catch (error) {
-    const status = error instanceof AdminRouteError ? error.status : error instanceof AuthRequiredError ? error.status : 500;
+    const status = error instanceof AdminRouteError || error instanceof AdminStoreError ? error.status : error instanceof AuthRequiredError ? error.status : 500;
+    if (status >= 500) console.error("[api] admin request failed", { requestId: request.requestId, error: error instanceof Error ? error.message : String(error) });
     return sendErrorEnvelope(reply, request, status >= 500 ? "Unexpected API error" : error instanceof Error ? error.message : "Unexpected API error", status);
   }
+}
+
+function auditResourceSnapshot(state: ReturnType<typeof currentApiState>, resourceType: string, resourceId?: string): unknown {
+  if (!resourceId) return undefined;
+  if (resourceType === "exercise") return state.exerciseLibrary.find((item) => item.id === resourceId || (item as { slug?: string }).slug === resourceId);
+  if (resourceType === "routine_template") return state.routineTemplatesMarketplace.find((item) => item.id === resourceId || item.slug === resourceId);
+  return undefined;
+}
+
+function resourceIdOf(data: unknown): string | undefined {
+  if (!data || typeof data !== "object") return undefined;
+  const record = data as { id?: unknown; email?: unknown; role?: unknown };
+  if (typeof record.id === "string") return record.id;
+  if (typeof record.email === "string" && typeof record.role === "string") return `${record.email}:${record.role}`;
+  return undefined;
 }
 
 class AdminRouteError extends Error {
@@ -624,7 +680,7 @@ class AdminRouteError extends Error {
   }
 }
 
-function adminActorPayload(actor: NonNullable<ReturnType<typeof resolveAdminActor>>) {
+function adminActorPayload(actor: AdminActor) {
   return {
     email: actor.user.email,
     roles: actor.roles,
@@ -643,8 +699,9 @@ class AuthRequiredError extends Error {
 
 async function resolveApiUser(request: FastifyRequest, allowDemoFallback = false): Promise<ApiUser> {
   if (request.apiRepository.mode === "memory") {
-    const session = parseSessionCookieValue(request.cookies[authCookieName]);
-    return demoUser(session?.email ?? getAuthSession().email);
+    // Local demo mode only (startup refuses memory mode in production). The cookie is sealed, so the email cannot be forged.
+    const session = readSessionCookie(request);
+    return demoUser(session?.email ?? "phuc@example.com");
   }
 
   if (allowDemoFallback && isCronAuthorized(request, request.apiEnv) && request.apiEnv.CRON_USER_ID) {
@@ -656,19 +713,41 @@ async function resolveApiUser(request: FastifyRequest, allowDemoFallback = false
     };
   }
 
-  const session = parseSessionCookieValue(request.cookies[authCookieName]);
+  const session = readSessionCookie(request);
   const token = bearerTokenFromAuthorization(request.headers.authorization) ?? session?.accessToken;
-  if (!token) {
-    if (allowDemoFallback) return demoUser();
-    throw new AuthRequiredError("Unauthorized", 401);
-  }
+  if (!token) throw new AuthRequiredError("Unauthorized", 401);
   try {
     const user = await verifySupabaseJwt({ token, env: request.apiEnv });
     return { id: user.id, email: user.email, accessToken: token, mode: "supabase" };
   } catch {
-    if (allowDemoFallback) return demoUser();
     throw new AuthRequiredError("Unauthorized", 401);
   }
+}
+
+function readSessionCookie(request: FastifyRequest): AuthSession | undefined {
+  return parseSessionCookieValue(request.cookies[authCookieName], request.apiEnv);
+}
+
+function exposeTokens(env: NodeJS.ProcessEnv): boolean {
+  return env.AUTH_EXPOSE_TOKENS === "true";
+}
+
+function sendAuthError(reply: FastifyReply, request: FastifyRequest, error: unknown, fallback: string, status: number) {
+  if (error instanceof RedirectNotAllowedError) return sendErrorEnvelope(reply, request, error.message, 400);
+  if (error instanceof AuthError) return sendErrorEnvelope(reply, request, error.message, error.status);
+  // Unknown errors may carry upstream/internal details: log server-side, return a generic message.
+  console.error("[api] auth error", { requestId: request.requestId, error: error instanceof Error ? error.message : String(error) });
+  return sendErrorEnvelope(reply, request, fallback, status);
+}
+
+function recordAdminDenied(request: FastifyRequest, user: ApiUser, permission: AdminPermission) {
+  console.warn("[api] admin access denied", { requestId: request.requestId, userId: user.id, permission, path: request.url.split("?")[0] });
+}
+
+function safeEqual(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
 }
 
 function sendResult(reply: FastifyReply, result: ApiResult<unknown>, errorStatus = 200) {
@@ -696,56 +775,69 @@ function requireCronAuth(request: FastifyRequest, reply: FastifyReply, env: Node
 
 function isCronAuthorized(request: FastifyRequest, env: NodeJS.ProcessEnv) {
   const secret = env.CRON_SECRET;
-  return Boolean(secret && (request.headers.authorization === `Bearer ${secret}` || request.headers["x-cron-secret"] === secret));
+  if (!secret) return false;
+  const bearer = bearerTokenFromAuthorization(request.headers.authorization);
+  const header = request.headers["x-cron-secret"];
+  return Boolean((bearer && safeEqual(bearer, secret)) || (typeof header === "string" && safeEqual(header, secret)));
 }
 
 async function readinessStatus(env: NodeJS.ProcessEnv) {
   if (env.API_DATA_MODE !== "supabase") {
+    // Memory mode is a local demo; it is never "ready" for production traffic.
+    const ready = !isProductionLike(env);
     return {
-      ready: true,
+      ready,
       mode: "memory",
       storageAdapter: "memory",
       checkedAt: new Date().toISOString(),
-      integrations: getIntegrationStatus(env)
+      reason: ready ? "ready" : "Memory mode is not allowed in production"
     };
   }
 
-  const supabase = await verifySupabaseProduction(env);
+  const supabase = await verifySupabaseProduction(env).catch(() => ({ ok: false }));
   const ready = Boolean(env.NEXT_PUBLIC_SUPABASE_URL && env.NEXT_PUBLIC_SUPABASE_ANON_KEY && env.SUPABASE_SERVICE_ROLE_KEY && supabase.ok);
+  // Per-table details stay behind the admin-only /api/supabase/verify endpoint.
   return {
     ready,
     mode: "supabase",
     storageAdapter: "supabase",
     checkedAt: new Date().toISOString(),
-    reason: ready ? "ready" : "Supabase production dependencies are not ready",
-    integrations: getIntegrationStatus(env),
-    supabase
+    reason: ready ? "ready" : "Supabase production dependencies are not ready"
   };
 }
 
-function setSessionCookie(reply: FastifyReply, session: { accessToken?: string; expiresAt?: number }) {
-  if (!session.accessToken) return;
-  reply.setCookie(authCookieName, createSessionCookieValue(session as never), sessionCookieOptions(
-    session.expiresAt ? Math.max(0, session.expiresAt - Math.floor(Date.now() / 1000)) : 60 * 60 * 24 * 30
-  ));
+function setSessionCookie(reply: FastifyReply, request: FastifyRequest, session: AuthSession) {
+  const env = request.apiEnv;
+  // Supabase sessions need a token; local demo sessions (memory mode only) are identified by email.
+  if (!session.accessToken && request.apiRepository.mode !== "memory") return;
+  if (session.mode === "google" && !session.accessToken) return;
+  const maxAge = sessionMaxAgeSeconds(env);
+  reply.setCookie(authCookieName, createSessionCookieValue(session, env, maxAge), sessionCookieOptions(env, maxAge));
 }
 
-function sessionCookieOptions(maxAge: number) {
-  const sameSite: "none" | "strict" | "lax" = process.env.COOKIE_SAMESITE === "none" ? "none" : process.env.COOKIE_SAMESITE === "strict" ? "strict" : "lax";
+function cookieSameSite(env: NodeJS.ProcessEnv): "none" | "strict" | "lax" {
+  return env.COOKIE_SAMESITE === "none" ? "none" : env.COOKIE_SAMESITE === "strict" ? "strict" : "lax";
+}
+
+function oauthSameSite(env: NodeJS.ProcessEnv): "none" | "lax" {
+  return cookieSameSite(env) === "none" ? "none" : "lax";
+}
+
+function sessionCookieOptions(env: NodeJS.ProcessEnv, maxAge: number) {
+  const sameSite = cookieSameSite(env);
   return {
     httpOnly: true,
     sameSite,
-    secure: process.env.NODE_ENV === "production" || sameSite === "none",
-    domain: process.env.COOKIE_DOMAIN,
+    secure: isProductionLike(env) || env.COOKIE_SECURE === "true" || sameSite === "none",
+    domain: env.COOKIE_DOMAIN || undefined,
     path: "/",
     maxAge
   };
 }
 
+/** Request URL used only as a development fallback; production always uses APP_BASE_URL (see createAppUrl). */
 function fullUrl(request: FastifyRequest): string {
-  const proto = request.headers["x-forwarded-proto"]?.toString() ?? "http";
-  const host = request.headers.host ?? "localhost";
-  return `${proto}://${host}${request.url}`;
+  return `${request.protocol}://${request.host || "localhost"}${request.url}`;
 }
 
 function sendErrorEnvelope(reply: FastifyReply, request: FastifyRequest, error: string, status: number, details?: unknown) {
@@ -922,13 +1014,13 @@ function validateRouteRequest(request: FastifyRequest): ValidationIssue[] {
   if (path === "/api/routines" && method === "POST") {
     requireText(body.name, "body.name", issues, { min: 1, max: 160 });
     optionalInteger(body.daysPerWeek, "body.daysPerWeek", issues, { min: 1, max: 14 });
-    optionalArray(body.days, "body.days", issues);
+    validateRoutineDays(body.days, issues);
     return issues;
   }
   if (path === "/api/routines/:id" && method === "PATCH") {
     optionalText(body.name, "body.name", issues, { min: 1, max: 160 });
     optionalInteger(body.daysPerWeek, "body.daysPerWeek", issues, { min: 1, max: 14 });
-    optionalArray(body.days, "body.days", issues);
+    validateRoutineDays(body.days, issues);
     optionalText(body.baseUpdatedAt, "body.baseUpdatedAt", issues, { max: 80 });
     optionalEnum(body.conflictResolution, "body.conflictResolution", ["confirm"], issues);
     return issues;
@@ -982,6 +1074,15 @@ function validateRouteRequest(request: FastifyRequest): ValidationIssue[] {
   if (path === "/api/sync/batch") {
     requireArray(body.items, "body.items", issues, { max: 250 });
     optionalText(body.idempotencyKey, "body.idempotencyKey", issues, { max: 200 });
+    if (Array.isArray(body.items)) {
+      for (const [index, item] of body.items.entries()) {
+        const error = validateSyncItemEnvelope(item, index);
+        if (error) {
+          issues.push({ field: `body.items.${index}`, message: error });
+          if (issues.length >= 20) break;
+        }
+      }
+    }
     return issues;
   }
   if (path === "/api/leaderboards/visibility") {
@@ -997,6 +1098,14 @@ function validateRouteRequest(request: FastifyRequest): ValidationIssue[] {
     requireText(body.endpoint, "body.endpoint", issues, { min: 1, max: 2048 });
     if (!body.p256dh && !isPlainObject(body.keys)) issues.push({ field: "body.p256dh", message: "p256dh is required" });
     if (!body.auth && !isPlainObject(body.keys)) issues.push({ field: "body.auth", message: "auth is required" });
+    optionalText(body.p256dh, "body.p256dh", issues, { max: 200 });
+    optionalText(body.auth, "body.auth", issues, { max: 64 });
+    if (isPlainObject(body.keys)) {
+      optionalText(body.keys.p256dh, "body.keys.p256dh", issues, { max: 200 });
+      optionalText(body.keys.auth, "body.keys.auth", issues, { max: 64 });
+    }
+    optionalText(body.localProfileId, "body.localProfileId", issues, { max: 320 });
+    optionalText(body.platform, "body.platform", issues, { max: 40 });
     return issues;
   }
   if (path === "/api/notifications/unsubscribe") {
@@ -1019,6 +1128,15 @@ function validateRouteRequest(request: FastifyRequest): ValidationIssue[] {
   return issues;
 }
 
+function validateRoutineDays(value: unknown, issues: ValidationIssue[]) {
+  if (value === undefined || value === null) return;
+  requireArray(value, "body.days", issues, { max: 14 });
+  if (!Array.isArray(value)) return;
+  // Reuse the sync schema so REST and offline sync accept exactly the same routine shape.
+  const validated = validateSyncPayloadForRoutine(value);
+  if (validated) issues.push({ field: "body.days", message: validated });
+}
+
 function validateExerciseBody(body: Record<string, unknown>, issues: ValidationIssue[]): ValidationIssue[] {
   optionalText(body.muscleGroup, "body.muscleGroup", issues, { max: 120 });
   optionalEnum(body.equipment, "body.equipment", ["barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "other"], issues);
@@ -1033,6 +1151,7 @@ function validateExerciseBody(body: Record<string, unknown>, issues: ValidationI
   optionalStringArray(body.equipmentAlternatives, "body.equipmentAlternatives", issues);
   optionalStringArray(body.tags, "body.tags", issues);
   optionalText(body.mediaUrl, "body.mediaUrl", issues, { max: 2048 });
+  if (typeof body.mediaUrl === "string" && body.mediaUrl && !/^https:\/\//i.test(body.mediaUrl)) issues.push({ field: "body.mediaUrl", message: "must be an https URL" });
   optionalEnum(body.difficulty, "body.difficulty", ["beginner", "intermediate", "advanced"], issues);
   optionalEnum(body.forceType, "body.forceType", ["push", "pull", "static", "mixed"], issues);
   optionalBoolean(body.unilateral, "body.unilateral", issues);
@@ -1083,6 +1202,11 @@ function requireEmail(value: unknown, field: string, issues: ValidationIssue[]) 
 function optionalEmail(value: unknown, field: string, issues: ValidationIssue[]) {
   if (value === undefined || value === null || value === "") return;
   requireEmail(value, field, issues);
+}
+
+function validateSyncPayloadForRoutine(days: unknown[]): string | undefined {
+  const result = validateSyncPayload("routine.create", { name: "validation", days });
+  return result.ok ? undefined : result.error.replace(/^payload\./, "body.");
 }
 
 function optionalUrl(value: unknown, field: string, issues: ValidationIssue[]) {
