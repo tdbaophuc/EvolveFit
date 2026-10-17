@@ -2,8 +2,13 @@
 node_modules
 out
 dist
+apps/*/dist
 coverage
+*.tsbuildinfo
 .env
 .env.local
+.env.*
+!.env.example
 .vercel
 npm-debug.log*
+supabase/.temp/

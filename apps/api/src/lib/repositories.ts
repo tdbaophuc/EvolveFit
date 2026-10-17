@@ -1,0 +1,952 @@
+import type {
+  AppState,
+  BodyMetric,
+  DrinkModule,
+  ExerciseDefinition,
+  HydrationLog,
+  RecommendationHistoryItem,
+  Routine,
+  Supplement,
+  SupplementLog,
+  WorkoutSession,
+  WorkoutSet
+} from "@evolvefit/shared";
+import { cryptoSafeId, initialState } from "@evolvefit/shared";
+import { createSupabaseRestRequest } from "./integrations";
+
+export type ApiUser = {
+  id: string;
+  email: string;
+  accessToken?: string;
+  mode: "demo" | "supabase";
+};
+
+export type PersistedSyncResult = {
+  id: string;
+  type: string;
+  status: "synced" | "conflict" | "failed";
+  data?: unknown;
+  error?: string;
+  conflict?: { kind: "routine"; local: unknown; remote: unknown; message: string };
+};
+
+export type ResourceMutation =
+  | { type: "profile.upsert" }
+  | { type: "leaderboardProfile.upsert" }
+  | { type: "hydration.upsert"; log: HydrationLog }
+  | { type: "hydration.delete"; id: string }
+  | { type: "supplement.upsert"; supplement: Supplement }
+  | { type: "supplementLog.upsert"; log: SupplementLog }
+  | { type: "exercise.upsert"; exercise: ExerciseDefinition }
+  | { type: "exercise.delete"; id: string }
+  | { type: "routine.upsert"; routine: Routine }
+  | { type: "routine.delete"; id: string }
+  | { type: "workoutSession.upsert"; session: WorkoutSession }
+  | { type: "workoutSet.upsert"; set: WorkoutSet }
+  | { type: "workoutSet.delete"; id: string }
+  | { type: "bodyMetric.upsert"; metric: BodyMetric }
+  | { type: "recommendation.upsert"; recommendation: RecommendationHistoryItem };
+
+export type StoredNotificationSubscription = {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  userId: string;
+  localProfileId: string;
+  platform?: string;
+  createdAt: string;
+};
+
+export type CronLockResult<T> =
+  | { status: "ran"; lockKey: string; data: T }
+  | { status: "skipped"; lockKey: string; reason: "already-processed" | "locked" };
+
+export type AppRepository = {
+  readonly mode: "memory" | "supabase";
+  loadUserState(user: ApiUser): Promise<AppState>;
+  saveUserState(user: ApiUser, state: AppState): Promise<void>;
+  applyResourceMutations(user: ApiUser, mutations: ResourceMutation[], snapshot?: AppState): Promise<void>;
+  getSyncResult(user: ApiUser, key: string): Promise<PersistedSyncResult | undefined>;
+  saveSyncResult(user: ApiUser, key: string, type: string, result: PersistedSyncResult): Promise<void>;
+  deleteUserData(user: ApiUser): Promise<{ deleted: boolean; tables?: string[] }>;
+  listNotificationSubscriptions(user: ApiUser, filter?: { endpoint?: string; localProfileId?: string }): Promise<StoredNotificationSubscription[]>;
+  upsertNotificationSubscription(user: ApiUser, subscription: StoredNotificationSubscription): Promise<StoredNotificationSubscription>;
+  revokeNotificationSubscription(user: ApiUser, endpoint: string): Promise<{ endpoint: string }>;
+  runCronOnce<T>(user: ApiUser, lockKey: string, type: string, handler: () => Promise<T>): Promise<CronLockResult<T>>;
+};
+
+export class MemoryAppRepository implements AppRepository {
+  readonly mode = "memory" as const;
+  private readonly states = new Map<string, AppState>();
+  private readonly syncResults = new Map<string, PersistedSyncResult>();
+  private readonly subscriptions = new Map<string, StoredNotificationSubscription>();
+  private readonly cronLocks = new Map<string, { status: "processing" | "sent" | "failed"; lockedUntil: number }>();
+
+  async loadUserState(user: ApiUser): Promise<AppState> {
+    const existing = this.states.get(user.id);
+    if (existing) return structuredClone(existing);
+    const seeded = seededStateForUser(user);
+    this.states.set(user.id, seeded);
+    return structuredClone(seeded);
+  }
+
+  async saveUserState(user: ApiUser, state: AppState): Promise<void> {
+    this.states.set(user.id, structuredClone(state));
+  }
+
+  async applyResourceMutations(user: ApiUser, _mutations: ResourceMutation[], snapshot?: AppState): Promise<void> {
+    if (snapshot) {
+      await this.saveUserState(user, snapshot);
+      return;
+    }
+    const state = await this.loadUserState(user);
+    for (const mutation of _mutations) {
+      applyMutationToState(state, mutation);
+    }
+    await this.saveUserState(user, state);
+  }
+
+  async getSyncResult(user: ApiUser, key: string): Promise<PersistedSyncResult | undefined> {
+    const value = this.syncResults.get(syncKey(user, key));
+    return value ? structuredClone(value) : undefined;
+  }
+
+  async saveSyncResult(user: ApiUser, key: string, _type: string, result: PersistedSyncResult): Promise<void> {
+    this.syncResults.set(syncKey(user, key), structuredClone(result));
+  }
+
+  async deleteUserData(user: ApiUser): Promise<{ deleted: boolean; tables?: string[] }> {
+    this.states.delete(user.id);
+    [...this.syncResults.keys()].filter((key) => key.startsWith(`${user.id}:`)).forEach((key) => this.syncResults.delete(key));
+    [...this.subscriptions.keys()].filter((key) => key.startsWith(`${user.id}:`)).forEach((key) => this.subscriptions.delete(key));
+    [...this.cronLocks.keys()].filter((key) => key.startsWith(`${user.id}:`)).forEach((key) => this.cronLocks.delete(key));
+    return { deleted: true, tables: ["memory"] };
+  }
+
+  async listNotificationSubscriptions(user: ApiUser, filter: { endpoint?: string; localProfileId?: string } = {}): Promise<StoredNotificationSubscription[]> {
+    return [...this.subscriptions.values()].filter((subscription) => {
+      if (subscription.userId !== user.id) return false;
+      if (filter.endpoint && subscription.endpoint !== filter.endpoint) return false;
+      if (filter.localProfileId && subscription.localProfileId !== filter.localProfileId) return false;
+      return true;
+    });
+  }
+
+  async upsertNotificationSubscription(_user: ApiUser, subscription: StoredNotificationSubscription): Promise<StoredNotificationSubscription> {
+    this.subscriptions.set(syncKey({ id: subscription.userId, email: subscription.localProfileId, mode: "demo" }, subscription.endpoint), structuredClone(subscription));
+    return subscription;
+  }
+
+  async revokeNotificationSubscription(user: ApiUser, endpoint: string): Promise<{ endpoint: string }> {
+    this.subscriptions.delete(syncKey(user, endpoint));
+    return { endpoint };
+  }
+
+  async runCronOnce<T>(user: ApiUser, lockKey: string, _type: string, handler: () => Promise<T>): Promise<CronLockResult<T>> {
+    const key = syncKey(user, lockKey);
+    const existing = this.cronLocks.get(key);
+    const now = Date.now();
+    if (existing?.status === "sent") return { status: "skipped", lockKey, reason: "already-processed" };
+    if (existing?.status === "processing" && existing.lockedUntil > now) return { status: "skipped", lockKey, reason: "locked" };
+    this.cronLocks.set(key, { status: "processing", lockedUntil: now + cronLockTtlMs() });
+    try {
+      const data = await handler();
+      this.cronLocks.set(key, { status: "sent", lockedUntil: Date.now() + cronLockTtlMs() });
+      return { status: "ran", lockKey, data };
+    } catch (error) {
+      this.cronLocks.set(key, { status: "failed", lockedUntil: Date.now() });
+      throw error;
+    }
+  }
+}
+
+export class SupabaseAppRepository implements AppRepository {
+  readonly mode = "supabase" as const;
+
+  constructor(
+    private readonly env: NodeJS.ProcessEnv,
+    private readonly fetchImpl: typeof fetch = fetch
+  ) {}
+
+  async loadUserState(user: ApiUser): Promise<AppState> {
+    const [
+      profiles,
+      drinkModules,
+      hydrationLogs,
+      supplements,
+      supplementLogs,
+      exerciseLibrary,
+      routines,
+      workoutDays,
+      routineExercises,
+      workoutSessions,
+      workoutSets,
+      bodyMetrics,
+      recommendations,
+      leaderboardProfiles
+    ] = await Promise.all([
+      this.list<ProfileRow>(user, "profiles", "select=*"),
+      this.list<DrinkModuleRow>(user, "drink_modules", "select=*"),
+      this.list<HydrationLogRow>(user, "hydration_logs", "select=*&order=logged_at.asc"),
+      this.list<SupplementRow>(user, "supplements", "select=*&order=created_at.asc"),
+      this.list<SupplementLogRow>(user, "supplement_logs", "select=*&order=logged_at.asc"),
+      this.list<ExerciseLibraryRow>(user, "exercise_library", "select=*&order=created_at.asc"),
+      this.list<RoutineRow>(user, "routines", "select=*&order=created_at.asc"),
+      this.list<WorkoutDayRow>(user, "workout_days", "select=*&order=order_index.asc"),
+      this.list<RoutineExerciseRow>(user, "routine_exercises", "select=*&order=order_index.asc"),
+      this.list<WorkoutSessionRow>(user, "workout_sessions", "select=*&order=started_at.asc"),
+      this.list<WorkoutSetRow>(user, "workout_sets", "select=*&order=completed_at.asc"),
+      this.list<BodyMetricRow>(user, "body_metrics", "select=*&order=measured_at.asc"),
+      this.list<RecommendationRow>(user, "progression_recommendations", "select=*&order=created_at.desc"),
+      this.list<LeaderboardProfileRow>(user, "leaderboard_profiles", "select=*")
+    ]);
+
+    return hydrateStateFromRows(user, {
+      profile: profiles[0],
+      drinkModules,
+      hydrationLogs,
+      supplements,
+      supplementLogs,
+      exerciseLibrary,
+      routines,
+      workoutDays,
+      routineExercises,
+      workoutSessions,
+      workoutSets,
+      bodyMetrics,
+      recommendations,
+      leaderboardProfile: leaderboardProfiles[0]
+    });
+  }
+
+  async saveUserState(user: ApiUser, state: AppState): Promise<void> {
+    await this.saveSnapshotRows(user, state);
+  }
+
+  async applyResourceMutations(user: ApiUser, mutations: ResourceMutation[], snapshot?: AppState): Promise<void> {
+    const state = snapshot;
+    for (const mutation of mutations) {
+      await this.applyResourceMutation(user, mutation, state);
+    }
+  }
+
+  private async applyResourceMutation(user: ApiUser, mutation: ResourceMutation, snapshot?: AppState): Promise<void> {
+    switch (mutation.type) {
+      case "profile.upsert":
+        if (!snapshot) return;
+        await this.upsert(user, "profiles?on_conflict=user_id", [profileToRow(user.id, snapshot)]);
+        return;
+      case "leaderboardProfile.upsert":
+        if (!snapshot) return;
+        await this.upsert(user, "leaderboard_profiles?on_conflict=user_id", [leaderboardProfileToRow(user.id, snapshot)]);
+        return;
+      case "hydration.upsert":
+        await this.upsert(user, "hydration_logs", [hydrationLogToRow(user.id, mutation.log)]);
+        return;
+      case "hydration.delete":
+        await this.deleteRowById(user, "hydration_logs", mutation.id);
+        return;
+      case "supplement.upsert":
+        await this.upsert(user, "supplements", [supplementToRow(user.id, mutation.supplement)]);
+        return;
+      case "supplementLog.upsert":
+        await this.upsert(user, "supplement_logs", [supplementLogToRow(user.id, mutation.log)]);
+        return;
+      case "exercise.upsert":
+        await this.upsert(user, "exercise_library", [exerciseToRow(user.id, mutation.exercise)]);
+        return;
+      case "exercise.delete":
+        await this.deleteRowById(user, "exercise_library", mutation.id);
+        return;
+      case "routine.upsert":
+        await this.saveRoutine(user, mutation.routine);
+        return;
+      case "routine.delete":
+        await this.deleteRoutine(user, mutation.id);
+        return;
+      case "workoutSession.upsert":
+        await this.upsert(user, "workout_sessions", [workoutSessionToRow(user.id, mutation.session)]);
+        return;
+      case "workoutSet.upsert":
+        await this.upsert(user, "workout_sets", [workoutSetToRow(user.id, mutation.set)]);
+        return;
+      case "workoutSet.delete":
+        await this.deleteRowById(user, "workout_sets", mutation.id);
+        return;
+      case "bodyMetric.upsert":
+        await this.upsert(user, "body_metrics", [bodyMetricToRow(user.id, mutation.metric)]);
+        return;
+      case "recommendation.upsert":
+        await this.upsert(user, "progression_recommendations", [recommendationToRow(user.id, mutation.recommendation)]);
+        return;
+    }
+  }
+
+  private async saveSnapshotRows(user: ApiUser, state: AppState): Promise<void> {
+    await Promise.all([
+      this.upsert(user, "profiles?on_conflict=user_id", [profileToRow(user.id, state)]),
+      this.upsert(user, "drink_modules?on_conflict=user_id,drink_type", state.drinkModules.map((item) => drinkModuleToRow(user.id, item))),
+      this.upsert(user, "hydration_logs", state.hydrationLogs.map((item) => hydrationLogToRow(user.id, item))),
+      this.upsert(user, "supplements", state.supplements.map((item) => supplementToRow(user.id, item))),
+      this.upsert(user, "supplement_logs", state.supplementLogs.map((item) => supplementLogToRow(user.id, item))),
+      this.upsert(user, "exercise_library", state.exerciseLibrary.map((item) => exerciseToRow(user.id, item))),
+      Promise.all(state.routines.map((routine) => this.saveRoutine(user, routine))),
+      this.upsert(user, "workout_sessions", state.workoutSessions.map((item) => workoutSessionToRow(user.id, item))),
+      this.upsert(user, "workout_sets", state.workoutSets.map((item) => workoutSetToRow(user.id, item))),
+      this.upsert(user, "body_metrics", state.bodyMetrics.map((item) => bodyMetricToRow(user.id, item))),
+      this.upsert(user, "progression_recommendations", state.recommendationHistory.map((item) => recommendationToRow(user.id, item))),
+      this.upsert(user, "leaderboard_profiles?on_conflict=user_id", [leaderboardProfileToRow(user.id, state)])
+    ]);
+  }
+
+  async getSyncResult(user: ApiUser, key: string): Promise<PersistedSyncResult | undefined> {
+    const rows = await this.list<SyncEventRow>(user, `sync_events`, `select=*&idempotency_key=eq.${encodeURIComponent(key)}&limit=1`);
+    const row = rows[0];
+    if (!row) return undefined;
+    return syncEventToResult(row);
+  }
+
+  async saveSyncResult(user: ApiUser, key: string, type: string, result: PersistedSyncResult): Promise<void> {
+    await this.upsert(user, "sync_events?on_conflict=user_id,idempotency_key", [
+      {
+        id: cryptoSafeId(),
+        user_id: user.id,
+        idempotency_key: key,
+        event_type: type,
+        payload: result,
+        status: result.status,
+        error: result.error ?? null,
+        conflict_metadata: result.conflict ?? null,
+        processed_at: new Date().toISOString()
+      }
+    ]);
+  }
+
+  async deleteUserData(user: ApiUser): Promise<{ deleted: boolean; tables: string[] }> {
+    const tables = [
+      "drink_modules",
+      "hydration_logs",
+      "supplements",
+      "supplement_logs",
+      "routine_exercises",
+      "workout_days",
+      "routines",
+      "exercise_library",
+      "workout_sessions",
+      "workout_sets",
+      "body_metrics",
+      "achievements",
+      "leaderboard_profiles",
+      "push_subscriptions",
+      "notification_events",
+      "sync_events",
+      "progression_recommendations",
+      "profiles"
+    ];
+    for (const table of tables) {
+      await this.deleteUserRows(user, table);
+    }
+    return { deleted: true, tables };
+  }
+
+  async listNotificationSubscriptions(user: ApiUser, filter: { endpoint?: string; localProfileId?: string } = {}): Promise<StoredNotificationSubscription[]> {
+    const filters = [
+      "select=*",
+      "revoked_at=is.null",
+      filter.endpoint ? `endpoint=eq.${encodeURIComponent(filter.endpoint)}` : "",
+      filter.localProfileId ? `local_profile_id=eq.${encodeURIComponent(filter.localProfileId)}` : ""
+    ].filter(Boolean).join("&");
+    const rows = await this.list<PushSubscriptionRow>(user, "push_subscriptions", filters);
+    return rows.map(pushSubscriptionFromRow);
+  }
+
+  async upsertNotificationSubscription(user: ApiUser, subscription: StoredNotificationSubscription): Promise<StoredNotificationSubscription> {
+    await this.upsert(user, "push_subscriptions?on_conflict=user_id,endpoint", [pushSubscriptionToRow(user.id, subscription)]);
+    return subscription;
+  }
+
+  async revokeNotificationSubscription(user: ApiUser, endpoint: string): Promise<{ endpoint: string }> {
+    const response = await this.fetchImpl(
+      createSupabaseRestRequest(
+        `push_subscriptions?user_id=eq.${user.id}&endpoint=eq.${encodeURIComponent(endpoint)}`,
+        { method: "PATCH", body: JSON.stringify({ revoked_at: new Date().toISOString() }) },
+        this.env,
+        user.accessToken
+      )
+    );
+    if (!response.ok) throw new Error(`Supabase revoke push_subscriptions failed: ${response.status}`);
+    return { endpoint };
+  }
+
+  async runCronOnce<T>(user: ApiUser, lockKey: string, type: string, handler: () => Promise<T>): Promise<CronLockResult<T>> {
+    const now = new Date();
+    const lock = await this.acquireCronLock(user, lockKey, type, new Date(now.getTime() + cronLockTtlMs()).toISOString());
+    if (!lock.acquired) return { status: "skipped", lockKey, reason: lock.reason };
+
+    const eventId = lock.eventId;
+
+    try {
+      const data = await handler();
+      await this.upsert(user, "notification_events?on_conflict=user_id,lock_key", [
+        {
+          id: eventId,
+          user_id: user.id,
+          type,
+          lock_key: lockKey,
+          scheduled_for: now.toISOString(),
+          locked_at: now.toISOString(),
+          locked_until: new Date(now.getTime() + cronLockTtlMs()).toISOString(),
+          sent_at: new Date().toISOString(),
+          status: "sent",
+          payload_json: data
+        }
+      ]);
+      return { status: "ran", lockKey, data };
+    } catch (error) {
+      await this.upsert(user, "notification_events?on_conflict=user_id,lock_key", [
+        {
+          id: eventId,
+          user_id: user.id,
+          type,
+          lock_key: lockKey,
+          scheduled_for: now.toISOString(),
+          locked_at: now.toISOString(),
+          locked_until: now.toISOString(),
+          status: "failed",
+          payload_json: { error: error instanceof Error ? error.message : "Cron failed" }
+        }
+      ]);
+      throw error;
+    }
+  }
+
+  private async saveRoutine(user: ApiUser, routine: Routine): Promise<void> {
+    await this.upsert(user, "routines", [routineToRow(user.id, routine)]);
+    await this.deleteRows(user, "workout_days", `routine_id=eq.${encodeURIComponent(routine.id)}`);
+    await this.upsert(user, "workout_days", routine.days.map((day) => workoutDayToRow(user.id, routine.id, day)));
+    await this.upsert(user, "routine_exercises", routine.days.flatMap((day) => day.exercises.map((exercise) => routineExerciseToRow(user.id, day.id, exercise))));
+  }
+
+  private async deleteRoutine(user: ApiUser, id: string): Promise<void> {
+    await this.deleteRows(user, "routines", `id=eq.${encodeURIComponent(id)}`);
+  }
+
+  private async deleteRowById(user: ApiUser, table: string, id: string): Promise<void> {
+    await this.deleteRows(user, table, `id=eq.${encodeURIComponent(id)}`);
+  }
+
+  private async deleteUserRows(user: ApiUser, table: string): Promise<void> {
+    await this.deleteRows(user, table, "");
+  }
+
+  private async deleteRows(user: ApiUser, table: string, filter: string): Promise<void> {
+    const query = [`user_id=eq.${encodeURIComponent(user.id)}`, filter].filter(Boolean).join("&");
+    const response = await this.fetchImpl(createSupabaseRestRequest(`${table}?${query}`, { method: "DELETE" }, this.env, user.accessToken));
+    if (!response.ok) throw new Error(`Supabase delete ${table} failed: ${response.status}`);
+  }
+
+  private async list<T>(user: ApiUser, table: string, query: string): Promise<T[]> {
+    const response = await this.fetchImpl(createSupabaseRestRequest(`${table}?user_id=eq.${user.id}&${query}`, { method: "GET" }, this.env, user.accessToken));
+    if (!response.ok) throw new Error(`Supabase list ${table} failed: ${response.status}`);
+    return (await response.json()) as T[];
+  }
+
+  private async upsert(user: ApiUser, table: string, rows: Record<string, unknown>[]): Promise<void> {
+    if (!rows.length) return;
+    const response = await this.fetchImpl(
+      createSupabaseRestRequest(table, { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(rows) }, this.env, user.accessToken)
+    );
+    if (!response.ok) throw new Error(`Supabase upsert ${table} failed: ${response.status}`);
+  }
+
+  private async acquireCronLock(user: ApiUser, lockKey: string, type: string, lockedUntil: string): Promise<{ acquired: boolean; eventId: string; reason: "already-processed" | "locked" }> {
+    const response = await this.fetchImpl(
+      createSupabaseRestRequest(
+        "rpc/evolvefit_acquire_notification_event_lock",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            p_user_id: user.id,
+            p_lock_key: lockKey,
+            p_type: type,
+            p_locked_until: lockedUntil
+          })
+        },
+        this.env,
+        user.accessToken
+      )
+    );
+    if (!response.ok) throw new Error(`Supabase acquire cron lock failed: ${response.status}`);
+    const rows = (await response.json()) as CronLockRow[];
+    const lock = rows[0];
+    if (!lock) throw new Error("Supabase acquire cron lock returned no result");
+    return {
+      acquired: lock.acquired,
+      eventId: lock.event_id,
+      reason: lock.reason === "already-processed" ? "already-processed" : "locked"
+    };
+  }
+}
+
+export function createAppRepository(env: NodeJS.ProcessEnv = process.env, fetchImpl: typeof fetch = fetch): AppRepository {
+  return env.API_DATA_MODE === "supabase" ? new SupabaseAppRepository(env, fetchImpl) : new MemoryAppRepository();
+}
+
+export function demoUser(email = "phuc@example.com"): ApiUser {
+  return { id: `demo:${email}`, email, mode: "demo" };
+}
+
+function seededStateForUser(user: ApiUser): AppState {
+  const state = structuredClone(initialState);
+  state.profile.email = user.email;
+  state.profile.authMode = user.mode === "supabase" ? "email" : "local";
+  if (user.mode === "supabase") {
+    state.hydrationLogs = [];
+    state.supplements = [];
+    state.supplementLogs = [];
+    state.quickAmounts = [];
+    state.routines = [];
+    state.activeRoutineId = "";
+    state.selectedWorkoutDayId = "";
+    state.exerciseLibrary = [];
+    state.workoutExercises = [];
+    state.workoutSessions = [];
+    state.activeWorkoutSessionId = undefined;
+    state.workoutSets = [];
+    state.bodyMetrics = [];
+    state.recommendationHistory = [];
+    state.recommendationDecisions = [];
+    state.friends = [];
+    state.sharedPosts = [];
+    state.syncQueue = [];
+  }
+  return state;
+}
+
+function applyMutationToState(state: AppState, mutation: ResourceMutation): void {
+  switch (mutation.type) {
+    case "profile.upsert":
+    case "leaderboardProfile.upsert":
+      return;
+    case "hydration.upsert":
+      upsertById(state.hydrationLogs, mutation.log);
+      return;
+    case "hydration.delete":
+      removeById(state.hydrationLogs, mutation.id);
+      return;
+    case "supplement.upsert":
+      upsertById(state.supplements, mutation.supplement);
+      return;
+    case "supplementLog.upsert":
+      upsertById(state.supplementLogs, mutation.log);
+      return;
+    case "exercise.upsert":
+      upsertById(state.exerciseLibrary, mutation.exercise);
+      return;
+    case "exercise.delete":
+      removeById(state.exerciseLibrary, mutation.id);
+      return;
+    case "routine.upsert":
+      upsertById(state.routines, mutation.routine);
+      return;
+    case "routine.delete":
+      removeById(state.routines, mutation.id);
+      return;
+    case "workoutSession.upsert":
+      upsertById(state.workoutSessions, mutation.session);
+      return;
+    case "workoutSet.upsert":
+      upsertById(state.workoutSets, mutation.set);
+      return;
+    case "workoutSet.delete":
+      removeById(state.workoutSets, mutation.id);
+      return;
+    case "bodyMetric.upsert":
+      upsertById(state.bodyMetrics, mutation.metric);
+      return;
+    case "recommendation.upsert":
+      upsertById(state.recommendationHistory, mutation.recommendation);
+      return;
+  }
+}
+
+function upsertById<T extends { id: string }>(items: T[], next: T): void {
+  const index = items.findIndex((item) => item.id === next.id);
+  if (index < 0) items.push(structuredClone(next));
+  else items[index] = structuredClone(next);
+}
+
+function removeById<T extends { id: string }>(items: T[], id: string): void {
+  const index = items.findIndex((item) => item.id === id);
+  if (index >= 0) items.splice(index, 1);
+}
+
+function hydrateStateFromRows(
+  user: ApiUser,
+  rows: {
+    profile?: ProfileRow;
+    drinkModules: DrinkModuleRow[];
+    hydrationLogs: HydrationLogRow[];
+    supplements: SupplementRow[];
+    supplementLogs: SupplementLogRow[];
+    exerciseLibrary: ExerciseLibraryRow[];
+    routines: RoutineRow[];
+    workoutDays: WorkoutDayRow[];
+    routineExercises: RoutineExerciseRow[];
+    workoutSessions: WorkoutSessionRow[];
+    workoutSets: WorkoutSetRow[];
+    bodyMetrics: BodyMetricRow[];
+    recommendations: RecommendationRow[];
+    leaderboardProfile?: LeaderboardProfileRow;
+  }
+): AppState {
+  const state = seededStateForUser(user);
+  if (rows.profile) {
+    state.profile = {
+      ...state.profile,
+      name: rows.profile.display_name,
+      email: user.email,
+      authMode: user.mode === "supabase" ? "email" : "local",
+      timezone: rows.profile.timezone,
+      unitWeight: rows.profile.unit_weight === "lb" ? "lb" : "kg",
+      unitVolume: rows.profile.unit_volume === "oz" ? "oz" : "ml",
+      waterTargetMl: rows.profile.water_target_ml,
+      wakeHour: rows.profile.wake_hour,
+      sleepHour: rows.profile.sleep_hour,
+      creatineAmountG: Number(rows.profile.creatine_amount_g),
+      creatineHour: rows.profile.creatine_hour,
+      remindBeforeMinutes: rows.profile.remind_before_minutes,
+      leaderboardPublic: rows.profile.leaderboard_public
+    };
+  }
+  if (rows.drinkModules.length) state.drinkModules = rows.drinkModules.map(drinkModuleFromRow);
+  state.hydrationLogs = rows.hydrationLogs.map(hydrationLogFromRow);
+  state.supplements = rows.supplements.map(supplementFromRow);
+  state.supplementLogs = rows.supplementLogs.map(supplementLogFromRow);
+  if (rows.exerciseLibrary.length) state.exerciseLibrary = rows.exerciseLibrary.map(exerciseFromRow);
+  if (rows.routines.length) state.routines = rows.routines.map((routine) => routineFromRows(routine, rows.workoutDays, rows.routineExercises));
+  if (state.routines[0]) {
+    state.activeRoutineId = state.routines[0].id;
+    state.selectedWorkoutDayId = state.routines[0].days[0]?.id ?? "";
+    state.workoutExercises = state.routines[0].days[0]?.exercises ?? state.workoutExercises;
+  }
+  state.workoutSessions = rows.workoutSessions.map(workoutSessionFromRow);
+  state.workoutSets = rows.workoutSets.map(workoutSetFromRow);
+  state.bodyMetrics = rows.bodyMetrics.map(bodyMetricFromRow);
+  state.recommendationHistory = rows.recommendations.map(recommendationFromRow);
+  state.profile.leaderboardPublic = rows.leaderboardProfile?.is_public ?? state.profile.leaderboardPublic;
+  return state;
+}
+
+type ProfileRow = Record<string, never> & {
+  user_id: string;
+  display_name: string;
+  timezone: string;
+  unit_weight: string;
+  unit_volume: string;
+  water_target_ml: number;
+  wake_hour: number;
+  sleep_hour: number;
+  creatine_amount_g: number | string;
+  creatine_hour: number;
+  remind_before_minutes: number;
+  leaderboard_public: boolean;
+};
+type DrinkModuleRow = { id: string; user_id: string; drink_type: string; name: string; category: string; unit: string; active: boolean; goal: number | string; hydration_factor: number | string; reminder_enabled: boolean };
+type HydrationLogRow = { id: string; user_id: string; amount_ml: number; drink_type: HydrationLog["drinkType"]; logged_at: string };
+type SupplementRow = { id: string; user_id: string; name: string; default_amount: number | string; unit: Supplement["unit"]; reminder_time?: string | null; schedule_rule?: { hours?: number[] } | null; active: boolean };
+type SupplementLogRow = { id: string; user_id: string; supplement_id?: string | null; name: string; amount: number | string; unit: SupplementLog["unit"]; logged_at: string; status?: SupplementLog["status"]; skipped_reason?: string | null };
+type ExerciseLibraryRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  muscle_group: string;
+  equipment: ExerciseDefinition["equipment"];
+  movement_pattern: ExerciseDefinition["movementPattern"];
+  built_in: boolean;
+  slug?: string | null;
+  catalog_source?: ExerciseDefinition["catalogSource"] | null;
+  status?: ExerciseDefinition["status"] | null;
+  notes?: string | null;
+  primary_muscles?: string[] | null;
+  secondary_muscles?: string[] | null;
+  cues?: string[] | null;
+  common_mistakes?: string[] | null;
+  substitutions?: string[] | null;
+  media_url?: string | null;
+  difficulty?: ExerciseDefinition["difficulty"] | null;
+  unilateral?: boolean | null;
+  equipment_alternatives?: ExerciseDefinition["equipmentAlternatives"] | null;
+  force_type?: ExerciseDefinition["forceType"] | null;
+  contraindications?: string[] | null;
+  source?: string | null;
+  license?: string | null;
+  created_by?: string | null;
+  reviewed_by?: string | null;
+  published_at?: string | null;
+  version?: number | null;
+  tags?: string[] | null;
+};
+type RoutineRow = { id: string; user_id: string; name: string; days_per_week: number; created_at: string; updated_at?: string };
+type WorkoutDayRow = { id: string; user_id: string; routine_id: string; name: string; weekday: string; order_index: number };
+type RoutineExerciseRow = { id: string; user_id: string; workout_day_id: string; exercise_id?: string; order_index: number; target_sets: number; target_reps_min: number; target_reps_max: number; target_weight_kg: number | string; rest_seconds: number; progression_rule?: string; superset_group?: string | null; name?: string; muscle_group?: string };
+type WorkoutSessionRow = { id: string; user_id: string; routine_day_id?: string | null; started_at: string; finished_at?: string | null; status: WorkoutSession["status"]; notes?: string | null };
+type WorkoutSetRow = { id: string; user_id: string; session_id?: string | null; exercise_id?: string | null; exercise_name: string; set_index: number; target_weight_kg: number | string; target_reps: number; actual_weight_kg: number | string; actual_reps: number; rpe?: number | string | null; set_type?: WorkoutSet["setType"]; completed_at: string };
+type BodyMetricRow = { id: string; user_id: string; measured_at: string; weight_kg: number | string; height_cm: number | string; body_fat_percent?: number | string | null; waist_cm?: number | string | null; chest_cm?: number | string | null; arm_cm?: number | string | null; thigh_cm?: number | string | null; note?: string | null };
+type RecommendationRow = { id: string; user_id: string; exercise_id?: string | null; source: string; recommendation_json: RecommendationHistoryItem; reason: string; status: RecommendationHistoryItem["status"]; created_at: string; applied_at?: string | null };
+type LeaderboardProfileRow = { id: string; user_id: string; display_name: string; score: number | string; badge_streak_months: number; is_public: boolean };
+type SyncEventRow = { id: string; idempotency_key: string; event_type: string; payload: PersistedSyncResult; status: PersistedSyncResult["status"]; error?: string | null };
+type PushSubscriptionRow = { user_id: string; endpoint: string; p256dh: string; auth: string; platform?: string | null; local_profile_id?: string | null; created_at: string };
+type CronLockRow = { acquired: boolean; event_id: string; reason?: "already-processed" | "locked" | null };
+
+function syncKey(user: ApiUser, key: string) {
+  return `${user.id}:${key}`;
+}
+
+function cronLockTtlMs() {
+  return 10 * 60 * 1000;
+}
+
+function profileToRow(userId: string, state: AppState) {
+  return {
+    user_id: userId,
+    display_name: state.profile.name,
+    timezone: state.profile.timezone,
+    unit_weight: state.profile.unitWeight,
+    unit_volume: state.profile.unitVolume,
+    water_target_ml: state.profile.waterTargetMl,
+    wake_hour: state.profile.wakeHour,
+    sleep_hour: state.profile.sleepHour,
+    creatine_amount_g: state.profile.creatineAmountG,
+    creatine_hour: state.profile.creatineHour,
+    remind_before_minutes: state.profile.remindBeforeMinutes,
+    leaderboard_public: state.profile.leaderboardPublic
+  };
+}
+
+function drinkModuleFromRow(row: DrinkModuleRow): DrinkModule {
+  return {
+    id: row.drink_type as DrinkModule["id"],
+    name: row.name,
+    category: row.category as DrinkModule["category"],
+    unit: row.unit as DrinkModule["unit"],
+    active: row.active,
+    goal: Number(row.goal),
+    color: row.category === "supplement" ? "supplement" : row.category === "water" ? "hydration" : "neutral",
+    icon: row.drink_type as DrinkModule["icon"],
+    hydrationFactor: Number(row.hydration_factor),
+    reminderEnabled: row.reminder_enabled
+  };
+}
+
+function drinkModuleToRow(userId: string, item: DrinkModule) {
+  return { user_id: userId, drink_type: item.id, name: item.name, category: item.category, unit: item.unit, active: item.active, goal: item.goal, hydration_factor: item.hydrationFactor ?? 1, reminder_enabled: item.reminderEnabled };
+}
+
+function hydrationLogFromRow(row: HydrationLogRow): HydrationLog {
+  return { id: row.id, amountMl: row.amount_ml, drinkType: row.drink_type, loggedAt: row.logged_at };
+}
+
+function hydrationLogToRow(userId: string, item: HydrationLog) {
+  return { id: item.id, user_id: userId, amount_ml: item.amountMl, drink_type: item.drinkType, logged_at: item.loggedAt };
+}
+
+function supplementFromRow(row: SupplementRow): Supplement {
+  return { id: row.id, name: row.name, defaultAmount: Number(row.default_amount), unit: row.unit, reminderHour: hourFromTime(row.reminder_time), scheduleHours: row.schedule_rule?.hours ?? [], active: row.active };
+}
+
+function supplementToRow(userId: string, item: Supplement) {
+  return { id: item.id, user_id: userId, name: item.name, default_amount: item.defaultAmount, unit: item.unit, reminder_time: item.reminderHour === undefined ? null : `${String(item.reminderHour).padStart(2, "0")}:00:00`, schedule_rule: { hours: item.scheduleHours ?? [] }, active: item.active };
+}
+
+function supplementLogFromRow(row: SupplementLogRow): SupplementLog {
+  return { id: row.id, supplementId: row.supplement_id ?? undefined, name: row.name, amount: Number(row.amount), unit: row.unit, loggedAt: row.logged_at, status: row.status, skippedReason: row.skipped_reason ?? undefined };
+}
+
+function supplementLogToRow(userId: string, item: SupplementLog) {
+  return { id: item.id, user_id: userId, supplement_id: item.supplementId ?? null, name: item.name, amount: item.amount, unit: item.unit, logged_at: item.loggedAt, status: item.status ?? "taken", skipped_reason: item.skippedReason ?? null };
+}
+
+function exerciseFromRow(row: ExerciseLibraryRow): ExerciseDefinition {
+  return {
+    id: row.id,
+    name: row.name,
+    muscleGroup: row.muscle_group,
+    equipment: row.equipment,
+    movementPattern: row.movement_pattern,
+    builtIn: row.built_in,
+    slug: row.slug ?? undefined,
+    catalogSource: row.catalog_source ?? undefined,
+    status: row.status ?? undefined,
+    notes: row.notes ?? undefined,
+    primaryMuscles: row.primary_muscles ?? undefined,
+    secondaryMuscles: row.secondary_muscles ?? undefined,
+    cues: row.cues ?? undefined,
+    commonMistakes: row.common_mistakes ?? undefined,
+    substitutions: row.substitutions ?? undefined,
+    mediaUrl: row.media_url ?? undefined,
+    difficulty: row.difficulty ?? undefined,
+    unilateral: row.unilateral ?? undefined,
+    equipmentAlternatives: row.equipment_alternatives ?? undefined,
+    forceType: row.force_type ?? undefined,
+    contraindications: row.contraindications ?? undefined,
+    source: row.source ?? undefined,
+    license: row.license ?? undefined,
+    createdBy: row.created_by ?? undefined,
+    reviewedBy: row.reviewed_by ?? undefined,
+    publishedAt: row.published_at ?? undefined,
+    version: row.version ?? undefined,
+    tags: row.tags ?? undefined
+  };
+}
+
+function exerciseToRow(userId: string, item: ExerciseDefinition) {
+  return {
+    id: item.id,
+    user_id: userId,
+    name: item.name,
+    muscle_group: item.muscleGroup,
+    equipment: item.equipment,
+    movement_pattern: item.movementPattern,
+    built_in: item.builtIn,
+    slug: item.slug ?? null,
+    catalog_source: item.catalogSource ?? (item.builtIn ? "built-in" : "custom"),
+    status: item.status ?? "published",
+    notes: item.notes ?? null,
+    primary_muscles: item.primaryMuscles ?? [],
+    secondary_muscles: item.secondaryMuscles ?? [],
+    cues: item.cues ?? [],
+    common_mistakes: item.commonMistakes ?? [],
+    substitutions: item.substitutions ?? [],
+    media_url: item.mediaUrl ?? null,
+    difficulty: item.difficulty ?? null,
+    unilateral: item.unilateral ?? false,
+    equipment_alternatives: item.equipmentAlternatives ?? [],
+    force_type: item.forceType ?? null,
+    contraindications: item.contraindications ?? [],
+    source: item.source ?? null,
+    license: item.license ?? null,
+    created_by: item.createdBy ?? null,
+    reviewed_by: item.reviewedBy ?? null,
+    published_at: item.publishedAt ?? null,
+    version: item.version ?? 1,
+    tags: item.tags ?? []
+  };
+}
+
+function routineFromRows(routine: RoutineRow, days: WorkoutDayRow[], exercises: RoutineExerciseRow[]): Routine {
+  return {
+    id: routine.id,
+    name: routine.name,
+    daysPerWeek: routine.days_per_week,
+    createdAt: routine.created_at,
+    updatedAt: routine.updated_at ?? routine.created_at,
+    days: days
+      .filter((day) => day.routine_id === routine.id)
+      .map((day) => ({
+        id: day.id,
+        name: day.name,
+        day: day.weekday,
+        order: day.order_index,
+        exercises: exercises
+          .filter((exercise) => exercise.workout_day_id === day.id)
+          .map((exercise) => ({
+            id: exercise.id,
+            definitionId: exercise.exercise_id,
+            name: exercise.name ?? exercise.exercise_id ?? "Exercise",
+            muscleGroup: exercise.muscle_group ?? "General",
+            order: exercise.order_index,
+            targetSets: exercise.target_sets,
+            targetRepsMin: exercise.target_reps_min,
+            targetRepsMax: exercise.target_reps_max,
+            targetWeightKg: Number(exercise.target_weight_kg),
+            restSeconds: exercise.rest_seconds,
+            lastSession: "",
+            supersetGroup: exercise.superset_group ?? undefined
+          }))
+      }))
+  };
+}
+
+function routineToRow(userId: string, item: Routine) {
+  return { id: item.id, user_id: userId, name: item.name, days_per_week: item.daysPerWeek, active: true, created_at: item.createdAt, updated_at: item.updatedAt };
+}
+
+function workoutDayToRow(userId: string, routineId: string, item: Routine["days"][number]) {
+  return { id: item.id, user_id: userId, routine_id: routineId, name: item.name, weekday: item.day, order_index: item.order };
+}
+
+function routineExerciseToRow(userId: string, workoutDayId: string, item: Routine["days"][number]["exercises"][number]) {
+  return { id: item.id, user_id: userId, workout_day_id: workoutDayId, exercise_id: null, name: item.name, muscle_group: item.muscleGroup, order_index: item.order, target_sets: item.targetSets, target_reps_min: item.targetRepsMin, target_reps_max: item.targetRepsMax, target_weight_kg: item.targetWeightKg, rest_seconds: item.restSeconds, superset_group: item.supersetGroup ?? null };
+}
+
+function workoutSessionFromRow(row: WorkoutSessionRow): WorkoutSession {
+  return { id: row.id, routineId: "", workoutDayId: row.routine_day_id ?? "", sessionName: row.notes ?? "Workout Session", startedAt: row.started_at, endedAt: row.finished_at ?? undefined, durationSeconds: 0, status: row.status, sessionExerciseOrder: [], exerciseQueue: [] };
+}
+
+function workoutSessionToRow(userId: string, item: WorkoutSession) {
+  return { id: item.id, user_id: userId, routine_day_id: item.workoutDayId || null, started_at: item.startedAt, finished_at: item.endedAt ?? null, status: item.status, notes: item.sessionName };
+}
+
+function workoutSetFromRow(row: WorkoutSetRow): WorkoutSet {
+  return { id: row.id, sessionId: row.session_id ?? undefined, exerciseId: row.exercise_id ?? "", exerciseName: row.exercise_name, setType: row.set_type, targetWeightKg: Number(row.target_weight_kg), targetReps: row.target_reps, actualWeightKg: Number(row.actual_weight_kg), actualReps: row.actual_reps, rpe: row.rpe == null ? undefined : Number(row.rpe), completedAt: row.completed_at };
+}
+
+function workoutSetToRow(userId: string, item: WorkoutSet) {
+  return { id: item.id, user_id: userId, session_id: item.sessionId ?? null, exercise_id: item.exerciseId || null, exercise_name: item.exerciseName, set_index: 0, target_weight_kg: item.targetWeightKg, target_reps: item.targetReps, actual_weight_kg: item.actualWeightKg, actual_reps: item.actualReps, rpe: item.rpe ?? null, set_type: item.setType ?? "working", completed_at: item.completedAt ?? new Date().toISOString() };
+}
+
+function bodyMetricFromRow(row: BodyMetricRow): BodyMetric {
+  return { id: row.id, measuredAt: row.measured_at, weightKg: Number(row.weight_kg), heightCm: Number(row.height_cm), bodyFatPercent: row.body_fat_percent == null ? undefined : Number(row.body_fat_percent), waistCm: row.waist_cm == null ? undefined : Number(row.waist_cm), chestCm: row.chest_cm == null ? undefined : Number(row.chest_cm), armCm: row.arm_cm == null ? undefined : Number(row.arm_cm), thighCm: row.thigh_cm == null ? undefined : Number(row.thigh_cm), note: row.note ?? undefined };
+}
+
+function bodyMetricToRow(userId: string, item: BodyMetric) {
+  return { id: item.id, user_id: userId, measured_at: item.measuredAt, weight_kg: item.weightKg, height_cm: item.heightCm, body_fat_percent: item.bodyFatPercent ?? null, waist_cm: item.waistCm ?? null, chest_cm: item.chestCm ?? null, arm_cm: item.armCm ?? null, thigh_cm: item.thighCm ?? null, note: item.note ?? null };
+}
+
+function recommendationFromRow(row: RecommendationRow): RecommendationHistoryItem {
+  return { ...row.recommendation_json, id: row.id, generatedAt: row.created_at, exerciseId: row.exercise_id ?? row.recommendation_json.exerciseId, status: row.status };
+}
+
+function recommendationToRow(userId: string, item: RecommendationHistoryItem) {
+  return { id: item.id, user_id: userId, exercise_id: item.exerciseId ?? null, source: item.source, recommendation_json: item, reason: item.reason, status: item.status, created_at: item.generatedAt, applied_at: item.status === "accepted" ? new Date().toISOString() : null };
+}
+
+function leaderboardProfileToRow(userId: string, state: AppState) {
+  return { user_id: userId, display_name: state.profile.name, score: 91, badge_streak_months: 3, is_public: state.profile.leaderboardPublic };
+}
+
+function syncEventToResult(row: SyncEventRow): PersistedSyncResult {
+  return row.payload ?? { id: row.id, type: row.event_type, status: row.status, error: row.error ?? undefined };
+}
+
+function pushSubscriptionFromRow(row: PushSubscriptionRow): StoredNotificationSubscription {
+  return {
+    endpoint: row.endpoint,
+    p256dh: row.p256dh,
+    auth: row.auth,
+    userId: row.user_id,
+    localProfileId: row.local_profile_id ?? row.user_id,
+    platform: row.platform ?? undefined,
+    createdAt: row.created_at
+  };
+}
+
+function pushSubscriptionToRow(userId: string, subscription: StoredNotificationSubscription) {
+  return {
+    user_id: userId,
+    endpoint: subscription.endpoint,
+    p256dh: subscription.p256dh,
+    auth: subscription.auth,
+    platform: subscription.platform ?? null,
+    local_profile_id: subscription.localProfileId,
+    created_at: subscription.createdAt,
+    revoked_at: null
+  };
+}
+
+function hourFromTime(value?: string | null): number | undefined {
+  if (!value) return undefined;
+  const hour = Number(value.split(":")[0]);
+  return Number.isInteger(hour) ? hour : undefined;
+}

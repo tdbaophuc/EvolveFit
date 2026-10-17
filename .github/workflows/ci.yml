@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - breakthrough
+      - main
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: OpenAPI
+        run: npm run openapi
+
+      - name: Smoke web to API
+        run: npm run smoke
+        env:
+          PORT: 5173
+          API_PORT: 4174
+          API_CORS_ORIGIN: http://127.0.0.1:5173
+          NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:4174

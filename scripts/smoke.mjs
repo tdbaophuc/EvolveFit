@@ -1,37 +1,68 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
 
-const port = process.env.PORT ?? "5173";
-const baseUrl = `http://127.0.0.1:${port}`;
+const require = createRequire(import.meta.url);
+
+const webPort = process.env.PORT ?? "5173";
+const apiPort = process.env.API_PORT ?? "4174";
+const baseUrl = `http://127.0.0.1:${webPort}`;
+const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? `http://127.0.0.1:${apiPort}`;
+const nextCli = require.resolve("next/dist/bin/next");
+const tsxCli = require.resolve("tsx/cli");
 const routes = [
   "/",
   "/hydration",
   "/api/health",
+  "/api/ready",
   "/api/integrations/status",
   "/api/docs/openapi",
-  "/api/observability/logs",
   "/api/notifications/config",
   "/api/auth/session",
   "/api/hydration/today"
 ];
 
-const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "dev", "-p", port], {
+const apiServer = spawn(process.execPath, [tsxCli, "apps/api/src/server.ts"], {
   cwd: process.cwd(),
-  env: normalizedEnv({ ...process.env, PORT: port }),
+  env: normalizedEnv({
+    ...process.env,
+    PORT: apiPort,
+    API_CORS_ORIGIN: process.env.API_CORS_ORIGIN ?? baseUrl
+  }),
   stdio: ["ignore", "pipe", "pipe"]
 });
+apiServer.unref();
 
-let output = "";
-server.stdout.on("data", (chunk) => {
-  output += chunk.toString();
+const webServer = spawn(process.execPath, [nextCli, "dev", "apps/web", "-p", webPort], {
+  cwd: process.cwd(),
+  env: normalizedEnv({
+    ...process.env,
+    PORT: webPort,
+    NEXT_PUBLIC_API_BASE_URL: apiBaseUrl
+  }),
+  stdio: ["ignore", "pipe", "pipe"]
 });
-server.stderr.on("data", (chunk) => {
-  output += chunk.toString();
+webServer.unref();
+
+let apiOutput = "";
+let webOutput = "";
+apiServer.stdout.on("data", (chunk) => {
+  apiOutput += chunk.toString();
+});
+apiServer.stderr.on("data", (chunk) => {
+  apiOutput += chunk.toString();
+});
+webServer.stdout.on("data", (chunk) => {
+  webOutput += chunk.toString();
+});
+webServer.stderr.on("data", (chunk) => {
+  webOutput += chunk.toString();
 });
 
 let exitCode = 0;
 
 try {
-  await waitForReady();
+  await waitForHttp(`${apiBaseUrl}/api/health`, "api");
+  await waitForHttp(`${baseUrl}/`, "web");
   for (const route of routes) {
     const response = await fetch(`${baseUrl}${route}`);
     if (!response.ok) {
@@ -39,16 +70,21 @@ try {
     }
     console.log(`${route} => ${response.status}`);
   }
+  for (const route of ["/api/observability/logs", "/api/supabase/verify"]) {
+    const response = await fetch(`${baseUrl}${route}`);
+    if (response.status !== 401) throw new Error(`${route} must require admin auth, got ${response.status}`);
+    console.log(`${route} => ${response.status} (protected)`);
+  }
   const errorResponse = await fetch(`${baseUrl}/api/client-errors`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-EvolveFit-Client": "smoke" },
     body: JSON.stringify({ requestId: "req_smoke", message: "Smoke client error", path: "/smoke" })
   });
   if (!errorResponse.ok) throw new Error(`/api/client-errors returned ${errorResponse.status}`);
   console.log(`/api/client-errors => ${errorResponse.status}`);
   const coachResponse = await fetch(`${baseUrl}/api/coach/recommend`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-EvolveFit-Client": "smoke" },
     body: JSON.stringify({})
   });
   if (!coachResponse.ok) throw new Error(`/api/coach/recommend returned ${coachResponse.status}`);
@@ -57,18 +93,25 @@ try {
   exitCode = 1;
   console.error(error);
 } finally {
-  stopServer();
+  stopServer(webServer);
+  stopServer(apiServer);
   process.exit(exitCode);
 }
 
-async function waitForReady() {
+async function waitForHttp(url, name) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < 30_000) {
-    if (output.includes("Ready")) return;
-    if (server.exitCode !== null) throw new Error(`dev server exited early\n${output}`);
+    if (apiServer.exitCode !== null) throw new Error(`api server exited early\n${apiOutput}`);
+    if (webServer.exitCode !== null) throw new Error(`web server exited early\n${webOutput}`);
+    try {
+      const response = await fetch(url);
+      if (response.ok) return;
+    } catch {
+      // Keep polling until both dev servers are listening.
+    }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`dev server did not become ready\n${output}`);
+  throw new Error(`${name} server did not become ready\napi:\n${apiOutput}\nweb:\n${webOutput}`);
 }
 
 function normalizedEnv(env) {
@@ -85,13 +128,10 @@ function normalizedEnv(env) {
   return normalized;
 }
 
-function stopServer() {
+function stopServer(server) {
   server.stdout.destroy();
   server.stderr.destroy();
   if (server.exitCode !== null) return;
 
-  server.kill(process.platform === "win32" ? "SIGTERM" : "SIGTERM");
-  if (process.platform === "win32") {
-    spawnSync("taskkill", ["/pid", String(server.pid), "/T", "/F"], { stdio: "ignore", timeout: 2_000 });
-  }
+  server.kill("SIGTERM");
 }

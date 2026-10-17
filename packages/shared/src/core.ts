@@ -1,0 +1,3453 @@
+export type HydrationLog = {
+  id: string;
+  amountMl: number;
+  drinkType: "water" | "coffee" | "tea" | "electrolyte" | "protein" | "other";
+  loggedAt: string;
+};
+
+export type DrinkModule = {
+  id: HydrationLog["drinkType"] | "creatine";
+  name: string;
+  category: "water" | "drink" | "supplement";
+  unit: "ml" | "g";
+  active: boolean;
+  goal: number;
+  color: "hydration" | "supplement" | "neutral";
+  icon: "water" | "coffee" | "tea" | "electrolyte" | "protein" | "creatine" | "other";
+  hydrationFactor?: number;
+  reminderEnabled: boolean;
+};
+
+export type SupplementLog = {
+  id: string;
+  supplementId?: string;
+  name: string;
+  amount: number;
+  unit: "g" | "mg" | "capsule";
+  loggedAt: string;
+  status?: "taken" | "skipped";
+  skippedReason?: string;
+};
+
+export type Supplement = {
+  id: string;
+  name: string;
+  defaultAmount: number;
+  unit: "g" | "mg" | "capsule";
+  reminderHour?: number;
+  scheduleHours?: number[];
+  active: boolean;
+};
+
+export type BodyMetric = {
+  id: string;
+  measuredAt: string;
+  weightKg: number;
+  heightCm: number;
+  bodyFatPercent?: number;
+  waistCm?: number;
+  chestCm?: number;
+  armCm?: number;
+  thighCm?: number;
+  note?: string;
+};
+
+export type QuickAmount = {
+  id: string;
+  category: "hydration" | "supplement";
+  label: string;
+  amount: number;
+  unit: "ml" | "g";
+  pinned: boolean;
+  uses: number;
+};
+
+export type ReminderMode = "fixed" | "interval";
+
+export type WorkoutSet = {
+  id: string;
+  sessionId?: string;
+  exerciseId: string;
+  exerciseName: string;
+  setType?: WorkoutSetType;
+  targetWeightKg: number;
+  targetReps: number;
+  actualWeightKg: number;
+  actualReps: number;
+  rpe?: number;
+  completedAt?: string;
+};
+
+export type WorkoutSetType = "warmup" | "working" | "drop" | "failure";
+
+export type WarmUpSetSuggestion = {
+  setType: "warmup";
+  weightKg: number;
+  reps: number;
+  percent: number;
+};
+
+export type PlateSettings = {
+  barbellDefault: "20kg" | "15kg" | "custom";
+  customBarbellKg: number;
+  plateInventoryKg: number[];
+};
+
+export type PlateCalculation = {
+  targetWeightKg: number;
+  barbellKg: number;
+  loadableWeightKg: number;
+  perSideWeightKg: number;
+  platesPerSide: { weightKg: number; count: number }[];
+  matchedWeightKg: number;
+  remainderKg: number;
+};
+
+export type WorkoutSetPr = {
+  type: "maxWeight" | "maxReps" | "estimatedOneRepMax" | "volume";
+  label: string;
+  previous: number;
+  next: number;
+};
+
+export type WorkoutSessionStatus = "active" | "paused" | "finished" | "cancelled";
+export type SessionExerciseQueueStatus = "queued" | "completed" | "parked";
+
+export type SessionExerciseQueueItem = {
+  exerciseId: string;
+  status: SessionExerciseQueueStatus;
+};
+
+export type WorkoutSession = {
+  id: string;
+  routineId: string;
+  workoutDayId: string;
+  sessionName: string;
+  startedAt: string;
+  endedAt?: string;
+  durationSeconds: number;
+  status: WorkoutSessionStatus;
+  sessionExerciseOrder: string[];
+  exerciseQueue: SessionExerciseQueueItem[];
+};
+
+export type WorkoutExercise = {
+  id: string;
+  name: string;
+  muscleGroup: string;
+  supersetGroup?: string;
+  targetSets: number;
+  targetRepsMin: number;
+  targetRepsMax: number;
+  targetWeightKg: number;
+  restSeconds: number;
+  lastSession: string;
+};
+
+export type EquipmentType = "barbell" | "dumbbell" | "cable" | "machine" | "bodyweight" | "kettlebell" | "other";
+export type ExerciseDifficulty = "beginner" | "intermediate" | "advanced";
+export type ExerciseCatalogSource = "built-in" | "marketplace" | "custom";
+export type ExerciseCatalogStatus = "draft" | "published" | "archived" | "pending-review";
+export type ExerciseForceType = "push" | "pull" | "static" | "mixed";
+
+export type MovementPattern =
+  | "push"
+  | "pull"
+  | "squat"
+  | "hinge"
+  | "lunge"
+  | "carry"
+  | "isolation"
+  | "core";
+
+export type ExerciseDefinition = {
+  id: string;
+  name: string;
+  muscleGroup: string;
+  equipment: EquipmentType;
+  movementPattern: MovementPattern;
+  builtIn: boolean;
+  slug?: string;
+  catalogSource?: ExerciseCatalogSource;
+  status?: ExerciseCatalogStatus;
+  notes?: string;
+  primaryMuscles?: string[];
+  secondaryMuscles?: string[];
+  cues?: string[];
+  commonMistakes?: string[];
+  substitutions?: string[];
+  mediaUrl?: string;
+  difficulty?: ExerciseDifficulty;
+  unilateral?: boolean;
+  equipmentAlternatives?: EquipmentType[];
+  forceType?: ExerciseForceType;
+  contraindications?: string[];
+  source?: string;
+  license?: string;
+  createdBy?: string;
+  reviewedBy?: string;
+  publishedAt?: string;
+  updatedAt?: string;
+  version?: number;
+  tags?: string[];
+};
+
+export type RoutineExercise = WorkoutExercise & {
+  definitionId?: string;
+  order: number;
+};
+
+export type WorkoutDay = {
+  id: string;
+  name: string;
+  day: string;
+  order: number;
+  exercises: RoutineExercise[];
+};
+
+export type Routine = {
+  id: string;
+  name: string;
+  daysPerWeek: number;
+  days: WorkoutDay[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RoutineTemplateStatus = "draft" | "published" | "archived";
+export type RoutineTemplateVisibility = "public" | "private" | "admin-curated";
+export type RoutineTemplateGoal = "strength" | "muscle" | "fat-loss" | "health";
+
+export type RoutineTemplateExerciseSlot = {
+  id: string;
+  exerciseId: string;
+  name: string;
+  muscleGroup: string;
+  order: number;
+  targetSets: number;
+  targetRepsMin: number;
+  targetRepsMax: number;
+  targetWeightKg: number;
+  restSeconds: number;
+  tempo?: string;
+  rpe?: number;
+  note?: string;
+  substitutions?: string[];
+};
+
+export type RoutineTemplateDay = {
+  id: string;
+  name: string;
+  day: string;
+  order: number;
+  estimatedMinutes: number;
+  warmup?: string;
+  cooldown?: string;
+  exercises: RoutineTemplateExerciseSlot[];
+};
+
+export type RoutineTemplate = {
+  id: string;
+  slug: string;
+  name: string;
+  summary: string;
+  creatorName: string;
+  source?: string;
+  license: string;
+  targetGoal: RoutineTemplateGoal;
+  daysPerWeek: number;
+  minutesPerSession: number;
+  experienceLevel: ExerciseDifficulty;
+  equipment: EquipmentType[];
+  musclePriority?: string[];
+  recoveryDays?: string[];
+  progressionNotes?: string;
+  deloadNotes?: string;
+  muscleDistribution?: Record<string, number>;
+  tags: string[];
+  status: RoutineTemplateStatus;
+  visibility: RoutineTemplateVisibility;
+  version: number;
+  publishedAt?: string;
+  updatedAt: string;
+  days: RoutineTemplateDay[];
+};
+
+export type RoutineTemplateCompatibility = {
+  score: number;
+  missingEquipment: EquipmentType[];
+  matchedEquipment: EquipmentType[];
+  warnings: string[];
+  reasons: string[];
+};
+
+export type RoutineTemplatePreview = {
+  template: RoutineTemplate;
+  routine: Routine;
+  compatibility: RoutineTemplateCompatibility;
+  warnings: string[];
+  rationale: string[];
+};
+
+export type RoutineTemplateFilters = {
+  query?: string;
+  goal?: RoutineTemplateGoal | "all";
+  daysPerWeek?: number | "all";
+  equipment?: EquipmentType | "all";
+  experienceLevel?: ExerciseDifficulty | "all";
+  tag?: string;
+  status?: RoutineTemplateStatus | "all";
+  visibility?: RoutineTemplateVisibility | "all";
+  includeArchived?: boolean;
+  sort?: "name" | "goal" | "days" | "compatibility";
+  profile?: RoutineTemplateProfile;
+};
+
+export type RoutineTemplateProfile = {
+  trainingGoal?: RoutineTemplateGoal;
+  experienceLevel?: ExerciseDifficulty;
+  availableEquipment?: EquipmentType[];
+};
+
+export type RoutineImportRow = WorkoutExercise & {
+  sourceLine: number;
+  session: string;
+  day: string;
+  note: string;
+};
+
+export type RoutineImportPreview = {
+  fileName: string;
+  rows: RoutineImportRow[];
+  errors: string[];
+};
+
+export type Recommendation = {
+  title: string;
+  reason: string;
+  source: "rule" | "ai-assisted";
+  action: "increase" | "decrease" | "hold" | "deload";
+  nextWeightKg: number;
+  dataBasis: string[];
+  suggestedAction: string;
+  guardrail: string;
+  aiEligible: boolean;
+  mode: "rule-fallback" | "gemini" | "openai";
+  detectedSignals?: string[];
+  substituteExerciseIds?: string[];
+};
+
+export type RecommendationDecision = {
+  id: string;
+  recommendationId: string;
+  title: string;
+  source: Recommendation["source"];
+  action: Recommendation["action"];
+  nextWeightKg: number;
+  decision: "accepted" | "rejected";
+  reason?: string;
+  feedback?: string;
+  decidedAt: string;
+};
+
+export type RecommendationHistoryItem = Recommendation & {
+  id: string;
+  generatedAt: string;
+  exerciseId?: string;
+  exerciseName: string;
+  status: "pending" | "accepted" | "rejected";
+  feedback?: string;
+};
+
+export type WorkoutPlannerInput = {
+  goal: "strength" | "muscle" | "fat-loss" | "health";
+  daysPerWeek: number;
+  equipment: EquipmentType[];
+  experienceLevel: ExerciseDifficulty;
+  minutesPerSession?: number;
+  musclePriority?: string[];
+  recoveryDays?: string[];
+  now?: Date;
+};
+
+export type WorkoutPlannerPreview = {
+  routine: Routine;
+  rationale: string[];
+  warnings: string[];
+  equipmentMissing: EquipmentType[];
+};
+
+export type CoachV2Input = {
+  exercise: WorkoutExercise;
+  recentSets: WorkoutSet[];
+  allSets?: WorkoutSet[];
+  workoutSessions?: WorkoutSession[];
+  readiness?: { energy: number; sleepQuality: number; soreness: number; stress: number };
+  availableEquipment?: EquipmentType[];
+  exerciseLibrary?: ExerciseDefinition[];
+  now?: Date;
+};
+
+export type Friend = {
+  id: string;
+  displayName: string;
+  handle: string;
+  status: "pending" | "accepted" | "blocked";
+  badgeStreakMonths: number;
+  score: number;
+  addedAt: string;
+};
+
+export type SocialPrivacySettings = {
+  friendLeaderboardEnabled: boolean;
+  shareBadges: boolean;
+  shareWorkoutSummaries: boolean;
+  shareBodyMetrics: boolean;
+  shareWorkoutDetails: boolean;
+};
+
+export type HealthProvider = "health-connect" | "apple-health";
+export type HealthSyncDataType = "weight" | "workout" | "hydration";
+export type HealthPermissionStatus = "not_requested" | "requested" | "granted" | "denied" | "revoked";
+
+export type HealthUnitMapping = {
+  weight: "kg" | "lb";
+  hydration: "ml" | "oz";
+  workoutDistance: "km" | "mi";
+};
+
+export type HealthIntegrationSettings = {
+  provider: HealthProvider;
+  permissionStatus: HealthPermissionStatus;
+  selectedDataTypes: HealthSyncDataType[];
+  unitMapping: HealthUnitMapping;
+  privacyAccepted: boolean;
+  nativeBridgeAvailable: boolean;
+  lastPermissionRequestedAt?: string;
+  lastSyncedAt?: string;
+};
+
+export type SharePreview = {
+  id: string;
+  kind: "badge" | "workout-summary";
+  title: string;
+  summary: string;
+  visibleFields: string[];
+  redactedFields: string[];
+  createdAt: string;
+};
+
+export type SharedPost = SharePreview & {
+  publishedAt: string;
+  audience: "private-friends";
+};
+
+export type AchievementStatus = {
+  code: string;
+  name: string;
+  status: "active" | "locked" | "lost" | "disabled";
+  progress: number;
+  target: number;
+  streakMonths: number;
+  condition?: string;
+};
+
+export type PeriodProgress = {
+  days: number;
+  averageMl: number;
+  goalHitRate: number;
+  hitDays: number;
+};
+
+export type VolumeBucket = {
+  label: string;
+  volumeKg: number;
+};
+
+export type ExercisePr = {
+  exerciseId: string;
+  exerciseName: string;
+  maxWeightKg: number;
+  maxReps: number;
+  estimatedOneRepMaxKg: number;
+  volumePrKg: number;
+};
+
+export type E1RmTrendPoint = {
+  date: string;
+  exerciseId: string;
+  exerciseName: string;
+  estimatedOneRepMaxKg: number;
+};
+
+export type ProgressDashboard = {
+  hydration7: PeriodProgress;
+  hydration30: PeriodProgress;
+  creatineConsistency?: {
+    days: number;
+    takenDays: number;
+    consistencyRate: number;
+  };
+  workoutCount7: number;
+  workoutCount30: number;
+  weeklyVolume: VolumeBucket[];
+  volumeByMuscleGroup: VolumeBucket[];
+  e1RmTrend: E1RmTrendPoint[];
+  prs: ExercisePr[];
+};
+
+export type ReportTrend = {
+  hydrationAverageMl: number;
+  goalHitRate: number;
+  workoutCount: number;
+  totalVolumeKg: number;
+};
+
+export type ProgressReport = {
+  label: string;
+  period: "weekly" | "monthly";
+  periodStart: string;
+  periodEnd: string;
+  hydrationAverageMl: number;
+  hydrationGoalHitRate: number;
+  hydrationHitDays: number;
+  workoutCount: number;
+  totalVolumeKg: number;
+  prs: ExercisePr[];
+  badges: AchievementStatus[];
+  trendVsPrevious: ReportTrend;
+};
+
+export type ProgressReports = {
+  weekly: ProgressReport;
+  monthly: ProgressReport;
+};
+
+export type WeightUnit = "kg" | "lb";
+export type BodyMetricRangeDays = 7 | 30 | 90;
+
+export type BodyMetricValidationInput = {
+  weightKg: number;
+  bodyFatPercent?: number;
+  waistCm?: number;
+  chestCm?: number;
+  armCm?: number;
+  thighCm?: number;
+};
+
+export type BodyMetricChartPoint = {
+  date: string;
+  weight: number;
+  smoothedWeight: number;
+  bodyFatPercent?: number;
+  smoothedBodyFatPercent?: number;
+};
+
+export type BodyMetricChartDataset = {
+  rangeDays: BodyMetricRangeDays;
+  unit: WeightUnit;
+  weightGoal?: number;
+  bodyFatGoal?: number;
+  points: BodyMetricChartPoint[];
+  hasWeightData: boolean;
+  hasBodyFatData: boolean;
+};
+
+export const todayKey = (date = new Date()) => date.toISOString().slice(0, 10);
+
+export const builtInExerciseDefinitions: ExerciseDefinition[] = [
+  { id: "lib-bench-press", name: "Barbell Bench Press", muscleGroup: "Ngực", equipment: "barbell", movementPattern: "push", builtIn: true },
+  { id: "lib-incline-db-press", name: "Incline Dumbbell Press", muscleGroup: "Ngực", equipment: "dumbbell", movementPattern: "push", builtIn: true },
+  { id: "lib-push-up", name: "Push-up", muscleGroup: "Ngực", equipment: "bodyweight", movementPattern: "push", builtIn: true },
+  { id: "lib-row", name: "Chest Supported Row", muscleGroup: "Lưng", equipment: "machine", movementPattern: "pull", builtIn: true },
+  { id: "lib-lat-pulldown", name: "Lat Pulldown", muscleGroup: "Lưng", equipment: "cable", movementPattern: "pull", builtIn: true },
+  { id: "lib-pull-up", name: "Pull-up", muscleGroup: "Lưng", equipment: "bodyweight", movementPattern: "pull", builtIn: true },
+  { id: "lib-squat", name: "Back Squat", muscleGroup: "Chân", equipment: "barbell", movementPattern: "squat", builtIn: true },
+  { id: "lib-rdl", name: "Romanian Deadlift", muscleGroup: "Chân", equipment: "barbell", movementPattern: "hinge", builtIn: true },
+  { id: "lib-leg-press", name: "Leg Press", muscleGroup: "Chân", equipment: "machine", movementPattern: "squat", builtIn: true },
+  { id: "lib-shoulder-press", name: "Seated Shoulder Press", muscleGroup: "Vai", equipment: "dumbbell", movementPattern: "push", builtIn: true },
+  { id: "lib-lateral-raise", name: "Lateral Raise", muscleGroup: "Vai", equipment: "dumbbell", movementPattern: "isolation", builtIn: true },
+  { id: "lib-curl", name: "Dumbbell Curl", muscleGroup: "Tay", equipment: "dumbbell", movementPattern: "isolation", builtIn: true },
+  { id: "lib-triceps-pushdown", name: "Cable Triceps Pushdown", muscleGroup: "Tay", equipment: "cable", movementPattern: "isolation", builtIn: true },
+  { id: "lib-plank", name: "Plank", muscleGroup: "Core", equipment: "bodyweight", movementPattern: "core", builtIn: true },
+  { id: "lib-cable-crunch", name: "Cable Crunch", muscleGroup: "Core", equipment: "cable", movementPattern: "core", builtIn: true }
+];
+
+export const marketplaceExerciseDefinitions: ExerciseDefinition[] = [
+  {
+    id: "market-goblet-squat",
+    slug: "goblet-squat",
+    name: "Goblet Squat",
+    muscleGroup: "Chân",
+    equipment: "kettlebell",
+    movementPattern: "squat",
+    builtIn: true,
+    catalogSource: "marketplace",
+    status: "published",
+    primaryMuscles: ["Quads", "Glutes"],
+    secondaryMuscles: ["Core", "Adductors"],
+    cues: ["Giữ tạ sát ngực", "Gối đi theo hướng mũi chân", "Đứng lên qua giữa bàn chân"],
+    commonMistakes: ["Cúi lưng dưới", "Để gối sụp vào trong"],
+    substitutions: ["lib-squat", "lib-leg-press"],
+    difficulty: "beginner",
+    equipmentAlternatives: ["dumbbell"],
+    forceType: "push",
+    tags: ["marketplace", "lower", "home-friendly"],
+    source: "EvolveFit curated",
+    license: "EvolveFit original",
+    publishedAt: "2026-09-27T00:00:00.000Z",
+    version: 1
+  },
+  {
+    id: "market-single-arm-db-row",
+    slug: "single-arm-dumbbell-row",
+    name: "Single-arm Dumbbell Row",
+    muscleGroup: "Lưng",
+    equipment: "dumbbell",
+    movementPattern: "pull",
+    builtIn: true,
+    catalogSource: "marketplace",
+    status: "published",
+    primaryMuscles: ["Lats", "Upper back"],
+    secondaryMuscles: ["Biceps", "Rear delts", "Core"],
+    cues: ["Kéo khuỷu tay về hông", "Giữ vai thấp", "Dừng một nhịp ở đỉnh"],
+    commonMistakes: ["Xoay thân quá nhiều", "Kéo bằng tay thay vì lưng"],
+    substitutions: ["lib-row", "lib-lat-pulldown"],
+    difficulty: "beginner",
+    unilateral: true,
+    equipmentAlternatives: ["cable", "machine"],
+    forceType: "pull",
+    tags: ["marketplace", "back", "unilateral"],
+    source: "EvolveFit curated",
+    license: "EvolveFit original",
+    publishedAt: "2026-09-27T00:00:00.000Z",
+    version: 1
+  },
+  {
+    id: "market-hip-thrust",
+    slug: "barbell-hip-thrust",
+    name: "Barbell Hip Thrust",
+    muscleGroup: "Chân",
+    equipment: "barbell",
+    movementPattern: "hinge",
+    builtIn: true,
+    catalogSource: "marketplace",
+    status: "published",
+    primaryMuscles: ["Glutes"],
+    secondaryMuscles: ["Hamstrings", "Core"],
+    cues: ["Cằm hơi thu", "Đẩy hông lên bằng mông", "Dừng ở đỉnh khi xương sườn không bật lên"],
+    commonMistakes: ["Ưỡn lưng dưới", "Đặt chân quá xa thân"],
+    substitutions: ["lib-rdl", "lib-leg-press"],
+    difficulty: "intermediate",
+    equipmentAlternatives: ["dumbbell", "machine"],
+    forceType: "push",
+    tags: ["marketplace", "glutes", "posterior chain"],
+    source: "EvolveFit curated",
+    license: "EvolveFit original",
+    publishedAt: "2026-09-27T00:00:00.000Z",
+    version: 1
+  },
+  {
+    id: "market-dead-bug",
+    slug: "dead-bug",
+    name: "Dead Bug",
+    muscleGroup: "Core",
+    equipment: "bodyweight",
+    movementPattern: "core",
+    builtIn: true,
+    catalogSource: "marketplace",
+    status: "published",
+    primaryMuscles: ["Abs", "Deep core"],
+    secondaryMuscles: ["Hip flexors"],
+    cues: ["Ép lưng dưới nhẹ xuống sàn", "Di chuyển chậm", "Thở ra khi duỗi tay chân"],
+    commonMistakes: ["Cong lưng dưới", "Làm quá nhanh"],
+    substitutions: ["lib-plank", "lib-cable-crunch"],
+    difficulty: "beginner",
+    forceType: "static",
+    tags: ["marketplace", "core", "bodyweight", "warmup"],
+    source: "EvolveFit curated",
+    license: "EvolveFit original",
+    publishedAt: "2026-09-27T00:00:00.000Z",
+    version: 1
+  }
+];
+
+export const defaultExerciseCatalog: ExerciseDefinition[] = [
+  ...builtInExerciseDefinitions,
+  ...marketplaceExerciseDefinitions
+];
+
+export const routineMarketplaceTemplates: RoutineTemplate[] = [
+  {
+    id: "template-beginner-full-body-3d",
+    slug: "beginner-full-body-3d",
+    name: "Beginner Full Body 3D",
+    summary: "A simple three-day routine for new lifters who want repeatable full-body practice.",
+    creatorName: "EvolveFit Coach",
+    source: "EvolveFit curated",
+    license: "EvolveFit original",
+    targetGoal: "health",
+    daysPerWeek: 3,
+    minutesPerSession: 45,
+    experienceLevel: "beginner",
+    equipment: ["dumbbell", "bodyweight", "cable"],
+    musclePriority: ["Quads", "Chest", "Back", "Core"],
+    recoveryDays: ["Tue", "Thu", "Sat", "Sun"],
+    progressionNotes: "Add 1-2 reps before adding load. Keep two reps in reserve for the first two weeks.",
+    deloadNotes: "Every fourth week, keep the same exercises but reduce working sets by one.",
+    muscleDistribution: { legs: 30, push: 25, pull: 25, core: 20 },
+    tags: ["beginner", "full-body", "home-friendly"],
+    status: "published",
+    visibility: "admin-curated",
+    version: 1,
+    publishedAt: "2026-09-28T00:00:00.000Z",
+    updatedAt: "2026-09-28T00:00:00.000Z",
+    days: [
+      {
+        id: "template-bfb-day-a",
+        name: "Full Body A",
+        day: "Mon",
+        order: 0,
+        estimatedMinutes: 45,
+        warmup: "5 minutes easy cardio plus hip and shoulder mobility.",
+        cooldown: "Easy walk and breathing reset.",
+        exercises: [
+          { id: "template-bfb-a-1", exerciseId: "market-goblet-squat", name: "Goblet Squat", muscleGroup: "Quads", order: 0, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 16, restSeconds: 75, substitutions: ["lib-squat", "lib-leg-press"] },
+          { id: "template-bfb-a-2", exerciseId: "lib-push-up", name: "Push-up", muscleGroup: "Chest", order: 1, targetSets: 3, targetRepsMin: 8, targetRepsMax: 15, targetWeightKg: 0, restSeconds: 60, substitutions: ["lib-bench-press", "lib-incline-db-press"] },
+          { id: "template-bfb-a-3", exerciseId: "lib-lat-pulldown", name: "Lat Pulldown", muscleGroup: "Back", order: 2, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 35, restSeconds: 75, substitutions: ["lib-pull-up", "lib-row"] },
+          { id: "template-bfb-a-4", exerciseId: "market-dead-bug", name: "Dead Bug", muscleGroup: "Core", order: 3, targetSets: 2, targetRepsMin: 8, targetRepsMax: 12, targetWeightKg: 0, restSeconds: 45, substitutions: ["lib-plank"] }
+        ]
+      },
+      {
+        id: "template-bfb-day-b",
+        name: "Full Body B",
+        day: "Wed",
+        order: 1,
+        estimatedMinutes: 45,
+        warmup: "5 minutes easy cardio plus hinge pattern practice.",
+        cooldown: "Hamstring and lat stretch.",
+        exercises: [
+          { id: "template-bfb-b-1", exerciseId: "lib-rdl", name: "Romanian Deadlift", muscleGroup: "Hamstrings", order: 0, targetSets: 3, targetRepsMin: 8, targetRepsMax: 10, targetWeightKg: 45, restSeconds: 90, substitutions: ["market-hip-thrust"] },
+          { id: "template-bfb-b-2", exerciseId: "lib-incline-db-press", name: "Incline Dumbbell Press", muscleGroup: "Upper chest", order: 1, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 16, restSeconds: 75, substitutions: ["lib-push-up"] },
+          { id: "template-bfb-b-3", exerciseId: "market-single-arm-db-row", name: "Single-arm Dumbbell Row", muscleGroup: "Back", order: 2, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 18, restSeconds: 75, substitutions: ["lib-row"] },
+          { id: "template-bfb-b-4", exerciseId: "lib-plank", name: "Plank", muscleGroup: "Core", order: 3, targetSets: 2, targetRepsMin: 30, targetRepsMax: 45, targetWeightKg: 0, restSeconds: 45, substitutions: ["market-dead-bug"] }
+        ]
+      },
+      {
+        id: "template-bfb-day-c",
+        name: "Full Body C",
+        day: "Fri",
+        order: 2,
+        estimatedMinutes: 45,
+        warmup: "5 minutes easy cardio plus squat and row rehearsal.",
+        cooldown: "Quad and chest stretch.",
+        exercises: [
+          { id: "template-bfb-c-1", exerciseId: "lib-leg-press", name: "Leg Press", muscleGroup: "Quads", order: 0, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 80, restSeconds: 90, substitutions: ["market-goblet-squat", "lib-squat"] },
+          { id: "template-bfb-c-2", exerciseId: "lib-shoulder-press", name: "Seated Shoulder Press", muscleGroup: "Shoulders", order: 1, targetSets: 3, targetRepsMin: 8, targetRepsMax: 10, targetWeightKg: 16, restSeconds: 75, substitutions: ["lib-incline-db-press"] },
+          { id: "template-bfb-c-3", exerciseId: "lib-row", name: "Chest Supported Row", muscleGroup: "Back", order: 2, targetSets: 3, targetRepsMin: 8, targetRepsMax: 10, targetWeightKg: 35, restSeconds: 75, substitutions: ["market-single-arm-db-row"] },
+          { id: "template-bfb-c-4", exerciseId: "lib-curl", name: "Dumbbell Curl", muscleGroup: "Arms", order: 3, targetSets: 2, targetRepsMin: 12, targetRepsMax: 15, targetWeightKg: 10, restSeconds: 45, substitutions: ["lib-triceps-pushdown"] }
+        ]
+      }
+    ]
+  },
+  {
+    id: "template-upper-lower-strength-4d",
+    slug: "upper-lower-strength-4d",
+    name: "Upper Lower Strength 4D",
+    summary: "A four-day upper/lower template focused on compound lifts and measured progression.",
+    creatorName: "EvolveFit Coach",
+    source: "EvolveFit curated",
+    license: "EvolveFit original",
+    targetGoal: "strength",
+    daysPerWeek: 4,
+    minutesPerSession: 65,
+    experienceLevel: "intermediate",
+    equipment: ["barbell", "dumbbell", "cable", "machine"],
+    musclePriority: ["Chest", "Back", "Quads", "Hamstrings"],
+    recoveryDays: ["Wed", "Sat", "Sun"],
+    progressionNotes: "When all sets hit the top rep target twice, add 2.5kg upper body or 5kg lower body.",
+    deloadNotes: "Deload after two failed progressions on the same main lift.",
+    muscleDistribution: { upper: 50, lower: 50 },
+    tags: ["strength", "upper-lower", "barbell"],
+    status: "published",
+    visibility: "admin-curated",
+    version: 1,
+    publishedAt: "2026-09-28T00:00:00.000Z",
+    updatedAt: "2026-09-28T00:00:00.000Z",
+    days: [
+      {
+        id: "template-ul-day-upper-a",
+        name: "Upper A",
+        day: "Mon",
+        order: 0,
+        estimatedMinutes: 65,
+        warmup: "Band pull-aparts, ramp sets for bench press.",
+        cooldown: "Light pec and lat mobility.",
+        exercises: [
+          { id: "template-ul-ua-1", exerciseId: "lib-bench-press", name: "Barbell Bench Press", muscleGroup: "Chest", order: 0, targetSets: 4, targetRepsMin: 4, targetRepsMax: 6, targetWeightKg: 60, restSeconds: 150, rpe: 8, substitutions: ["lib-incline-db-press"] },
+          { id: "template-ul-ua-2", exerciseId: "lib-row", name: "Chest Supported Row", muscleGroup: "Back", order: 1, targetSets: 4, targetRepsMin: 6, targetRepsMax: 8, targetWeightKg: 45, restSeconds: 120, substitutions: ["market-single-arm-db-row"] },
+          { id: "template-ul-ua-3", exerciseId: "lib-shoulder-press", name: "Seated Shoulder Press", muscleGroup: "Shoulders", order: 2, targetSets: 3, targetRepsMin: 6, targetRepsMax: 8, targetWeightKg: 24, restSeconds: 120 },
+          { id: "template-ul-ua-4", exerciseId: "lib-triceps-pushdown", name: "Cable Triceps Pushdown", muscleGroup: "Arms", order: 3, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 30, restSeconds: 60 }
+        ]
+      },
+      {
+        id: "template-ul-day-lower-a",
+        name: "Lower A",
+        day: "Tue",
+        order: 1,
+        estimatedMinutes: 65,
+        warmup: "Hip airplanes, squat ramp sets.",
+        cooldown: "Easy walk.",
+        exercises: [
+          { id: "template-ul-la-1", exerciseId: "lib-squat", name: "Back Squat", muscleGroup: "Quads", order: 0, targetSets: 4, targetRepsMin: 4, targetRepsMax: 6, targetWeightKg: 80, restSeconds: 150, rpe: 8, substitutions: ["lib-leg-press"] },
+          { id: "template-ul-la-2", exerciseId: "lib-rdl", name: "Romanian Deadlift", muscleGroup: "Hamstrings", order: 1, targetSets: 3, targetRepsMin: 6, targetRepsMax: 8, targetWeightKg: 70, restSeconds: 120, substitutions: ["market-hip-thrust"] },
+          { id: "template-ul-la-3", exerciseId: "lib-cable-crunch", name: "Cable Crunch", muscleGroup: "Core", order: 2, targetSets: 3, targetRepsMin: 10, targetRepsMax: 15, targetWeightKg: 25, restSeconds: 60 },
+          { id: "template-ul-la-4", exerciseId: "market-dead-bug", name: "Dead Bug", muscleGroup: "Core", order: 3, targetSets: 2, targetRepsMin: 8, targetRepsMax: 12, targetWeightKg: 0, restSeconds: 45 }
+        ]
+      },
+      {
+        id: "template-ul-day-upper-b",
+        name: "Upper B",
+        day: "Thu",
+        order: 2,
+        estimatedMinutes: 65,
+        warmup: "Scapular pull-ups and shoulder circles.",
+        cooldown: "Lat stretch.",
+        exercises: [
+          { id: "template-ul-ub-1", exerciseId: "lib-pull-up", name: "Pull-up", muscleGroup: "Back", order: 0, targetSets: 4, targetRepsMin: 4, targetRepsMax: 8, targetWeightKg: 0, restSeconds: 150, substitutions: ["lib-lat-pulldown"] },
+          { id: "template-ul-ub-2", exerciseId: "lib-incline-db-press", name: "Incline Dumbbell Press", muscleGroup: "Upper chest", order: 1, targetSets: 4, targetRepsMin: 6, targetRepsMax: 8, targetWeightKg: 24, restSeconds: 120, substitutions: ["lib-bench-press"] },
+          { id: "template-ul-ub-3", exerciseId: "lib-lateral-raise", name: "Lateral Raise", muscleGroup: "Shoulders", order: 2, targetSets: 3, targetRepsMin: 12, targetRepsMax: 15, targetWeightKg: 8, restSeconds: 60 },
+          { id: "template-ul-ub-4", exerciseId: "lib-curl", name: "Dumbbell Curl", muscleGroup: "Arms", order: 3, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 12, restSeconds: 60 }
+        ]
+      },
+      {
+        id: "template-ul-day-lower-b",
+        name: "Lower B",
+        day: "Fri",
+        order: 3,
+        estimatedMinutes: 60,
+        warmup: "Glute bridges and hinge ramp sets.",
+        cooldown: "Hamstring mobility.",
+        exercises: [
+          { id: "template-ul-lb-1", exerciseId: "market-hip-thrust", name: "Barbell Hip Thrust", muscleGroup: "Glutes", order: 0, targetSets: 4, targetRepsMin: 6, targetRepsMax: 8, targetWeightKg: 70, restSeconds: 120, substitutions: ["lib-rdl"] },
+          { id: "template-ul-lb-2", exerciseId: "lib-leg-press", name: "Leg Press", muscleGroup: "Quads", order: 1, targetSets: 3, targetRepsMin: 8, targetRepsMax: 10, targetWeightKg: 100, restSeconds: 120, substitutions: ["lib-squat"] },
+          { id: "template-ul-lb-3", exerciseId: "market-goblet-squat", name: "Goblet Squat", muscleGroup: "Quads", order: 2, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 24, restSeconds: 75 },
+          { id: "template-ul-lb-4", exerciseId: "lib-plank", name: "Plank", muscleGroup: "Core", order: 3, targetSets: 3, targetRepsMin: 30, targetRepsMax: 60, targetWeightKg: 0, restSeconds: 45 }
+        ]
+      }
+    ]
+  },
+  {
+    id: "template-ppl-hypertrophy-5d",
+    slug: "ppl-hypertrophy-5d",
+    name: "PPL Hypertrophy 5D",
+    summary: "A high-volume push/pull/legs split for lifters who want more weekly muscle exposure.",
+    creatorName: "EvolveFit Coach",
+    source: "EvolveFit curated",
+    license: "EvolveFit original",
+    targetGoal: "muscle",
+    daysPerWeek: 5,
+    minutesPerSession: 70,
+    experienceLevel: "intermediate",
+    equipment: ["barbell", "dumbbell", "cable", "machine"],
+    musclePriority: ["Chest", "Back", "Shoulders", "Glutes"],
+    recoveryDays: ["Thu", "Sun"],
+    progressionNotes: "Use double progression on accessories and keep most sets at RPE 7-9.",
+    deloadNotes: "Take a lower-volume week when soreness or performance drops for two sessions.",
+    muscleDistribution: { push: 35, pull: 30, legs: 30, core: 5 },
+    tags: ["hypertrophy", "ppl", "volume"],
+    status: "published",
+    visibility: "public",
+    version: 1,
+    publishedAt: "2026-09-28T00:00:00.000Z",
+    updatedAt: "2026-09-28T00:00:00.000Z",
+    days: [
+      {
+        id: "template-ppl-day-push-a",
+        name: "Push A",
+        day: "Mon",
+        order: 0,
+        estimatedMinutes: 70,
+        exercises: [
+          { id: "template-ppl-pa-1", exerciseId: "lib-bench-press", name: "Barbell Bench Press", muscleGroup: "Chest", order: 0, targetSets: 4, targetRepsMin: 6, targetRepsMax: 8, targetWeightKg: 60, restSeconds: 120 },
+          { id: "template-ppl-pa-2", exerciseId: "lib-shoulder-press", name: "Seated Shoulder Press", muscleGroup: "Shoulders", order: 1, targetSets: 3, targetRepsMin: 8, targetRepsMax: 10, targetWeightKg: 24, restSeconds: 90 },
+          { id: "template-ppl-pa-3", exerciseId: "lib-lateral-raise", name: "Lateral Raise", muscleGroup: "Shoulders", order: 2, targetSets: 3, targetRepsMin: 12, targetRepsMax: 15, targetWeightKg: 8, restSeconds: 60 },
+          { id: "template-ppl-pa-4", exerciseId: "lib-triceps-pushdown", name: "Cable Triceps Pushdown", muscleGroup: "Arms", order: 3, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 30, restSeconds: 60 }
+        ]
+      },
+      {
+        id: "template-ppl-day-pull-a",
+        name: "Pull A",
+        day: "Tue",
+        order: 1,
+        estimatedMinutes: 65,
+        exercises: [
+          { id: "template-ppl-pua-1", exerciseId: "lib-lat-pulldown", name: "Lat Pulldown", muscleGroup: "Back", order: 0, targetSets: 4, targetRepsMin: 8, targetRepsMax: 10, targetWeightKg: 45, restSeconds: 90 },
+          { id: "template-ppl-pua-2", exerciseId: "market-single-arm-db-row", name: "Single-arm Dumbbell Row", muscleGroup: "Back", order: 1, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 22, restSeconds: 75 },
+          { id: "template-ppl-pua-3", exerciseId: "lib-curl", name: "Dumbbell Curl", muscleGroup: "Arms", order: 2, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 12, restSeconds: 60 }
+        ]
+      },
+      {
+        id: "template-ppl-day-legs-a",
+        name: "Legs A",
+        day: "Wed",
+        order: 2,
+        estimatedMinutes: 70,
+        exercises: [
+          { id: "template-ppl-la-1", exerciseId: "lib-squat", name: "Back Squat", muscleGroup: "Quads", order: 0, targetSets: 4, targetRepsMin: 6, targetRepsMax: 8, targetWeightKg: 80, restSeconds: 120 },
+          { id: "template-ppl-la-2", exerciseId: "market-hip-thrust", name: "Barbell Hip Thrust", muscleGroup: "Glutes", order: 1, targetSets: 3, targetRepsMin: 8, targetRepsMax: 10, targetWeightKg: 70, restSeconds: 90 },
+          { id: "template-ppl-la-3", exerciseId: "lib-cable-crunch", name: "Cable Crunch", muscleGroup: "Core", order: 2, targetSets: 3, targetRepsMin: 12, targetRepsMax: 15, targetWeightKg: 25, restSeconds: 60 }
+        ]
+      },
+      {
+        id: "template-ppl-day-upper-pump",
+        name: "Upper Pump",
+        day: "Fri",
+        order: 3,
+        estimatedMinutes: 60,
+        exercises: [
+          { id: "template-ppl-up-1", exerciseId: "lib-incline-db-press", name: "Incline Dumbbell Press", muscleGroup: "Upper chest", order: 0, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 24, restSeconds: 75 },
+          { id: "template-ppl-up-2", exerciseId: "lib-row", name: "Chest Supported Row", muscleGroup: "Back", order: 1, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 40, restSeconds: 75 },
+          { id: "template-ppl-up-3", exerciseId: "lib-lateral-raise", name: "Lateral Raise", muscleGroup: "Shoulders", order: 2, targetSets: 3, targetRepsMin: 15, targetRepsMax: 20, targetWeightKg: 6, restSeconds: 45 },
+          { id: "template-ppl-up-4", exerciseId: "lib-triceps-pushdown", name: "Cable Triceps Pushdown", muscleGroup: "Arms", order: 3, targetSets: 2, targetRepsMin: 12, targetRepsMax: 15, targetWeightKg: 25, restSeconds: 45 }
+        ]
+      },
+      {
+        id: "template-ppl-day-legs-b",
+        name: "Legs B",
+        day: "Sat",
+        order: 4,
+        estimatedMinutes: 65,
+        exercises: [
+          { id: "template-ppl-lb-1", exerciseId: "lib-rdl", name: "Romanian Deadlift", muscleGroup: "Hamstrings", order: 0, targetSets: 4, targetRepsMin: 8, targetRepsMax: 10, targetWeightKg: 70, restSeconds: 120 },
+          { id: "template-ppl-lb-2", exerciseId: "lib-leg-press", name: "Leg Press", muscleGroup: "Quads", order: 1, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 100, restSeconds: 90 },
+          { id: "template-ppl-lb-3", exerciseId: "market-dead-bug", name: "Dead Bug", muscleGroup: "Core", order: 2, targetSets: 2, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 0, restSeconds: 45 }
+        ]
+      }
+    ]
+  },
+  {
+    id: "template-bodyweight-home-3d",
+    slug: "bodyweight-home-3d",
+    name: "Home Bodyweight 3D",
+    summary: "A low-equipment routine for users training at home with bodyweight and one dumbbell.",
+    creatorName: "EvolveFit Coach",
+    source: "EvolveFit curated",
+    license: "EvolveFit original",
+    targetGoal: "fat-loss",
+    daysPerWeek: 3,
+    minutesPerSession: 35,
+    experienceLevel: "beginner",
+    equipment: ["bodyweight", "dumbbell"],
+    musclePriority: ["Core", "Chest", "Quads"],
+    recoveryDays: ["Tue", "Thu", "Sat", "Sun"],
+    progressionNotes: "Shorten rest first, then add reps, then add load where possible.",
+    deloadNotes: "Keep movement quality high and reduce one round when recovery is poor.",
+    muscleDistribution: { legs: 30, push: 25, pull: 15, core: 30 },
+    tags: ["home", "bodyweight", "fat-loss"],
+    status: "published",
+    visibility: "public",
+    version: 1,
+    publishedAt: "2026-09-28T00:00:00.000Z",
+    updatedAt: "2026-09-28T00:00:00.000Z",
+    days: [
+      {
+        id: "template-home-day-a",
+        name: "Home Circuit A",
+        day: "Mon",
+        order: 0,
+        estimatedMinutes: 35,
+        exercises: [
+          { id: "template-home-a-1", exerciseId: "lib-push-up", name: "Push-up", muscleGroup: "Chest", order: 0, targetSets: 3, targetRepsMin: 8, targetRepsMax: 15, targetWeightKg: 0, restSeconds: 45 },
+          { id: "template-home-a-2", exerciseId: "market-goblet-squat", name: "Goblet Squat", muscleGroup: "Quads", order: 1, targetSets: 3, targetRepsMin: 12, targetRepsMax: 15, targetWeightKg: 16, restSeconds: 45 },
+          { id: "template-home-a-3", exerciseId: "market-dead-bug", name: "Dead Bug", muscleGroup: "Core", order: 2, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 0, restSeconds: 30 }
+        ]
+      },
+      {
+        id: "template-home-day-b",
+        name: "Home Circuit B",
+        day: "Wed",
+        order: 1,
+        estimatedMinutes: 35,
+        exercises: [
+          { id: "template-home-b-1", exerciseId: "market-single-arm-db-row", name: "Single-arm Dumbbell Row", muscleGroup: "Back", order: 0, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 18, restSeconds: 45 },
+          { id: "template-home-b-2", exerciseId: "lib-plank", name: "Plank", muscleGroup: "Core", order: 1, targetSets: 3, targetRepsMin: 30, targetRepsMax: 45, targetWeightKg: 0, restSeconds: 30 },
+          { id: "template-home-b-3", exerciseId: "lib-lateral-raise", name: "Lateral Raise", muscleGroup: "Shoulders", order: 2, targetSets: 3, targetRepsMin: 12, targetRepsMax: 15, targetWeightKg: 6, restSeconds: 45 }
+        ]
+      },
+      {
+        id: "template-home-day-c",
+        name: "Home Circuit C",
+        day: "Fri",
+        order: 2,
+        estimatedMinutes: 35,
+        exercises: [
+          { id: "template-home-c-1", exerciseId: "lib-push-up", name: "Push-up", muscleGroup: "Chest", order: 0, targetSets: 3, targetRepsMin: 10, targetRepsMax: 16, targetWeightKg: 0, restSeconds: 45 },
+          { id: "template-home-c-2", exerciseId: "market-goblet-squat", name: "Goblet Squat", muscleGroup: "Quads", order: 1, targetSets: 3, targetRepsMin: 10, targetRepsMax: 14, targetWeightKg: 18, restSeconds: 45 },
+          { id: "template-home-c-3", exerciseId: "market-dead-bug", name: "Dead Bug", muscleGroup: "Core", order: 2, targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, targetWeightKg: 0, restSeconds: 30 }
+        ]
+      }
+    ]
+  }
+];
+
+const exerciseIntelligenceDefaults: Record<string, Partial<ExerciseDefinition>> = {
+  "lib-bench-press": {
+    primaryMuscles: ["Chest"],
+    secondaryMuscles: ["Triceps", "Front delts"],
+    cues: ["Shoulder blades back and down", "Touch lower chest with control", "Drive feet into floor"],
+    commonMistakes: ["Bouncing the bar", "Elbows flaring hard", "Losing upper-back tightness"],
+    substitutions: ["lib-incline-db-press", "lib-push-up"],
+    difficulty: "intermediate",
+    tags: ["horizontal push", "compound", "strength"]
+  },
+  "lib-incline-db-press": {
+    primaryMuscles: ["Upper chest"],
+    secondaryMuscles: ["Front delts", "Triceps"],
+    cues: ["Keep wrists stacked", "Lower dumbbells with control", "Press up and slightly in"],
+    substitutions: ["lib-bench-press", "lib-push-up"],
+    difficulty: "beginner",
+    unilateral: false,
+    tags: ["incline", "hypertrophy"]
+  },
+  "lib-push-up": {
+    primaryMuscles: ["Chest"],
+    secondaryMuscles: ["Triceps", "Core"],
+    cues: ["Brace ribs down", "Keep body in one line", "Finish with elbows extended"],
+    substitutions: ["lib-bench-press", "lib-incline-db-press"],
+    difficulty: "beginner",
+    equipmentAlternatives: ["bodyweight"],
+    tags: ["home", "bodyweight"]
+  },
+  "lib-row": {
+    primaryMuscles: ["Back"],
+    secondaryMuscles: ["Rear delts", "Biceps"],
+    cues: ["Pull elbows toward hips", "Pause at the top", "Keep chest supported"],
+    substitutions: ["lib-lat-pulldown", "lib-pull-up"],
+    difficulty: "beginner",
+    tags: ["horizontal pull", "back"]
+  },
+  "lib-lat-pulldown": {
+    primaryMuscles: ["Lats"],
+    secondaryMuscles: ["Biceps", "Upper back"],
+    cues: ["Pull elbows down", "Keep ribs stacked", "Control the stretch"],
+    substitutions: ["lib-pull-up", "lib-row"],
+    difficulty: "beginner",
+    tags: ["vertical pull", "back"]
+  },
+  "lib-pull-up": {
+    primaryMuscles: ["Lats"],
+    secondaryMuscles: ["Biceps", "Core"],
+    cues: ["Start from a dead hang", "Drive elbows to ribs", "Avoid kicking"],
+    substitutions: ["lib-lat-pulldown", "lib-row"],
+    difficulty: "advanced",
+    tags: ["bodyweight", "vertical pull"]
+  },
+  "lib-squat": {
+    primaryMuscles: ["Quads", "Glutes"],
+    secondaryMuscles: ["Core", "Adductors"],
+    cues: ["Brace before descending", "Knees track toes", "Stand tall through midfoot"],
+    substitutions: ["lib-leg-press"],
+    difficulty: "intermediate",
+    tags: ["squat", "compound", "lower"]
+  },
+  "lib-rdl": {
+    primaryMuscles: ["Hamstrings", "Glutes"],
+    secondaryMuscles: ["Back", "Core"],
+    cues: ["Hinge hips back", "Keep lats tight", "Stop when hamstrings limit range"],
+    substitutions: ["lib-leg-press"],
+    difficulty: "intermediate",
+    tags: ["hinge", "posterior chain"]
+  },
+  "lib-leg-press": {
+    primaryMuscles: ["Quads", "Glutes"],
+    secondaryMuscles: ["Hamstrings"],
+    cues: ["Use full controlled range", "Keep hips down", "Do not lock knees hard"],
+    substitutions: ["lib-squat"],
+    difficulty: "beginner",
+    tags: ["machine", "lower"]
+  },
+  "lib-shoulder-press": {
+    primaryMuscles: ["Shoulders"],
+    secondaryMuscles: ["Triceps", "Upper chest"],
+    cues: ["Brace before pressing", "Press in a straight path", "Finish with biceps near ears"],
+    substitutions: ["lib-lateral-raise", "lib-push-up"],
+    difficulty: "intermediate",
+    tags: ["vertical push"]
+  },
+  "lib-lateral-raise": {
+    primaryMuscles: ["Side delts"],
+    secondaryMuscles: ["Traps"],
+    cues: ["Lead with elbows", "Stop around shoulder height", "Use controlled tempo"],
+    substitutions: ["lib-shoulder-press"],
+    difficulty: "beginner",
+    unilateral: false,
+    tags: ["isolation", "shoulders"]
+  },
+  "lib-curl": {
+    primaryMuscles: ["Biceps"],
+    secondaryMuscles: ["Forearms"],
+    cues: ["Keep elbows quiet", "Control the lowering", "Avoid swinging"],
+    substitutions: ["lib-row"],
+    difficulty: "beginner",
+    tags: ["arms", "isolation"]
+  },
+  "lib-triceps-pushdown": {
+    primaryMuscles: ["Triceps"],
+    secondaryMuscles: [],
+    cues: ["Pin elbows by sides", "Lock out under control", "Do not lean through reps"],
+    substitutions: ["lib-push-up"],
+    difficulty: "beginner",
+    tags: ["arms", "isolation"]
+  },
+  "lib-plank": {
+    primaryMuscles: ["Core"],
+    secondaryMuscles: ["Glutes", "Shoulders"],
+    cues: ["Ribs down", "Squeeze glutes", "Breathe behind the brace"],
+    substitutions: ["lib-cable-crunch"],
+    difficulty: "beginner",
+    tags: ["core", "bodyweight"]
+  },
+  "lib-cable-crunch": {
+    primaryMuscles: ["Abs"],
+    secondaryMuscles: ["Hip flexors"],
+    cues: ["Curl ribs toward pelvis", "Keep hips stable", "Control the return"],
+    substitutions: ["lib-plank"],
+    difficulty: "beginner",
+    tags: ["core", "cable"]
+  }
+};
+
+function slugifyExerciseName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+export function normalizeExerciseDefinition(exercise: ExerciseDefinition): ExerciseDefinition {
+  const defaults = exerciseIntelligenceDefaults[exercise.id] ?? {};
+  const primaryMuscles = exercise.primaryMuscles?.length ? exercise.primaryMuscles : defaults.primaryMuscles ?? [exercise.muscleGroup];
+  const catalogSource = exercise.catalogSource ?? defaults.catalogSource ?? (exercise.builtIn ? "built-in" : "custom");
+  const status = exercise.status ?? defaults.status ?? (catalogSource === "custom" ? "published" : "published");
+  return {
+    ...defaults,
+    ...exercise,
+    slug: exercise.slug ?? defaults.slug ?? slugifyExerciseName(exercise.name),
+    catalogSource,
+    status,
+    primaryMuscles,
+    secondaryMuscles: exercise.secondaryMuscles ?? defaults.secondaryMuscles ?? [],
+    cues: exercise.cues ?? defaults.cues ?? [],
+    commonMistakes: exercise.commonMistakes ?? defaults.commonMistakes ?? [],
+    substitutions: exercise.substitutions ?? defaults.substitutions ?? [],
+    difficulty: exercise.difficulty ?? defaults.difficulty ?? "beginner",
+    unilateral: exercise.unilateral ?? defaults.unilateral ?? false,
+    equipmentAlternatives: exercise.equipmentAlternatives ?? defaults.equipmentAlternatives ?? [],
+    forceType: exercise.forceType ?? defaults.forceType,
+    contraindications: exercise.contraindications ?? defaults.contraindications ?? [],
+    source: exercise.source ?? defaults.source,
+    license: exercise.license ?? defaults.license,
+    createdBy: exercise.createdBy ?? defaults.createdBy,
+    reviewedBy: exercise.reviewedBy ?? defaults.reviewedBy,
+    publishedAt: exercise.publishedAt ?? defaults.publishedAt,
+    updatedAt: exercise.updatedAt ?? defaults.updatedAt,
+    version: exercise.version ?? defaults.version ?? 1,
+    tags: exercise.tags ?? defaults.tags ?? []
+  };
+}
+
+export const defaultDrinkModules: DrinkModule[] = [
+  {
+    id: "water",
+    name: "Nước",
+    category: "water",
+    unit: "ml",
+    active: true,
+    goal: 2500,
+    color: "hydration",
+    icon: "water",
+    hydrationFactor: 1,
+    reminderEnabled: true
+  },
+  {
+    id: "creatine",
+    name: "Creatine",
+    category: "supplement",
+    unit: "g",
+    active: true,
+    goal: 5,
+    color: "supplement",
+    icon: "creatine",
+    reminderEnabled: true
+  },
+  {
+    id: "coffee",
+    name: "Coffee",
+    category: "drink",
+    unit: "ml",
+    active: false,
+    goal: 0,
+    color: "neutral",
+    icon: "coffee",
+    hydrationFactor: 0.8,
+    reminderEnabled: false
+  },
+  {
+    id: "tea",
+    name: "Tea",
+    category: "drink",
+    unit: "ml",
+    active: false,
+    goal: 0,
+    color: "neutral",
+    icon: "tea",
+    hydrationFactor: 0.9,
+    reminderEnabled: false
+  },
+  {
+    id: "electrolyte",
+    name: "Electrolyte",
+    category: "drink",
+    unit: "ml",
+    active: false,
+    goal: 0,
+    color: "hydration",
+    icon: "electrolyte",
+    hydrationFactor: 1,
+    reminderEnabled: false
+  },
+  {
+    id: "protein",
+    name: "Protein shake",
+    category: "drink",
+    unit: "ml",
+    active: false,
+    goal: 0,
+    color: "neutral",
+    icon: "protein",
+    hydrationFactor: 0.7,
+    reminderEnabled: false
+  }
+];
+
+export const defaultPlateSettings: PlateSettings = {
+  barbellDefault: "20kg",
+  customBarbellKg: 20,
+  plateInventoryKg: [25, 20, 15, 10, 5, 2.5, 1.25]
+};
+
+export function barbellWeightKg(settings: PlateSettings): number {
+  if (settings.barbellDefault === "15kg") return 15;
+  if (settings.barbellDefault === "custom") return Number.isFinite(settings.customBarbellKg) ? Math.max(0, settings.customBarbellKg) : 0;
+  return 20;
+}
+
+export function normalizePlateInventory(plates: number[] | undefined): number[] {
+  const normalized = (plates?.length ? plates : defaultPlateSettings.plateInventoryKg)
+    .filter((plate) => Number.isFinite(plate) && plate > 0)
+    .map((plate) => round(plate, 2))
+    .filter((plate, index, list) => list.indexOf(plate) === index)
+    .sort((a, b) => b - a);
+  return normalized.length ? normalized : defaultPlateSettings.plateInventoryKg;
+}
+
+export function calculatePlatesPerSide(targetWeightKg: number, settings: PlateSettings): PlateCalculation {
+  const barbellKg = barbellWeightKg(settings);
+  const loadableWeightKg = Math.max(0, targetWeightKg - barbellKg);
+  let remainingPerSide = loadableWeightKg / 2;
+  const platesPerSide: PlateCalculation["platesPerSide"] = [];
+
+  for (const weightKg of normalizePlateInventory(settings.plateInventoryKg)) {
+    const count = Math.floor((remainingPerSide + 0.0001) / weightKg);
+    if (!count) continue;
+    platesPerSide.push({ weightKg, count });
+    remainingPerSide = round(remainingPerSide - weightKg * count, 2);
+  }
+
+  const matchedPerSide = platesPerSide.reduce((sum, plate) => sum + plate.weightKg * plate.count, 0);
+  const matchedWeightKg = round(barbellKg + matchedPerSide * 2, 2);
+  return {
+    targetWeightKg,
+    barbellKg,
+    loadableWeightKg: round(loadableWeightKg, 2),
+    perSideWeightKg: round(loadableWeightKg / 2, 2),
+    platesPerSide,
+    matchedWeightKg,
+    remainderKg: round(Math.max(0, targetWeightKg - matchedWeightKg), 2)
+  };
+}
+
+export function normalizeDrinkModules(modules: DrinkModule[] | undefined, waterTargetMl = 2500, creatineGoalG = 5): DrinkModule[] {
+  const existing = modules ?? [];
+  return defaultDrinkModules.map((fallback) => {
+    const current = existing.find((module) => module.id === fallback.id);
+    const goal = fallback.id === "water" ? waterTargetMl : fallback.id === "creatine" ? creatineGoalG : fallback.goal;
+    return {
+      ...fallback,
+      ...current,
+      active: fallback.id === "water" ? true : (current?.active ?? fallback.active),
+      goal: fallback.id === "water" || fallback.id === "creatine" ? goal : (current?.goal ?? goal),
+      reminderEnabled: current?.reminderEnabled ?? fallback.reminderEnabled
+    };
+  });
+}
+
+export function isDrinkModuleActive(modules: DrinkModule[], id: DrinkModule["id"]): boolean {
+  if (id === "water") return true;
+  return modules.find((module) => module.id === id)?.active ?? false;
+}
+
+export function activeDrinkModules(modules: DrinkModule[]): DrinkModule[] {
+  return normalizeDrinkModules(modules).filter((module) => module.active);
+}
+
+export function hydrationContribution(log: HydrationLog, modules: DrinkModule[]): number {
+  const drinkModule = normalizeDrinkModules(modules).find((item) => item.id === log.drinkType);
+  if (!drinkModule || !drinkModule.active) return 0;
+  return Math.round(log.amountMl * (drinkModule.hydrationFactor ?? 0));
+}
+
+export function visibleHydrationLogs(logs: HydrationLog[], modules: DrinkModule[], includeInactiveHistory = false): HydrationLog[] {
+  if (includeInactiveHistory) return logs;
+  const normalized = normalizeDrinkModules(modules);
+  return logs.filter((log) => isDrinkModuleActive(normalized, log.drinkType));
+}
+
+export function hydrationTotal(logs: HydrationLog[], date = new Date(), modules: DrinkModule[] = defaultDrinkModules): number {
+  const key = todayKey(date);
+  return logs
+    .filter((log) => log.loggedAt.slice(0, 10) === key)
+    .reduce((sum, log) => sum + hydrationContribution(log, modules), 0);
+}
+
+export function hydrationPercent(totalMl: number, targetMl: number): number {
+  if (targetMl <= 0) return 0;
+  return Math.min(100, Math.round((totalMl / targetMl) * 100));
+}
+
+export function expectedHydrationByNow(
+  targetMl: number,
+  wakeHour: number,
+  sleepHour: number,
+  now = new Date()
+): number {
+  const currentHour = now.getHours() + now.getMinutes() / 60;
+  const activeHours = Math.max(1, sleepHour - wakeHour);
+  const elapsed = Math.min(activeHours, Math.max(0, currentHour - wakeHour));
+  return Math.round((targetMl / activeHours) * elapsed);
+}
+
+export function hydrationPaceStatus(totalMl: number, expectedMl: number): "ahead" | "on-pace" | "behind" {
+  const threshold = 250;
+  if (totalMl + threshold < expectedMl) return "behind";
+  if (totalMl > expectedMl + threshold) return "ahead";
+  return "on-pace";
+}
+
+export function isInQuietHours(now: Date, quietHours: { start: number; end: number }): boolean {
+  if (quietHours.start < 0 || quietHours.end < 0 || quietHours.start === quietHours.end) return false;
+  const hour = now.getHours();
+  return quietHours.start > quietHours.end
+    ? hour >= quietHours.start || hour < quietHours.end
+    : hour >= quietHours.start && hour < quietHours.end;
+}
+
+export function isSnoozed(snoozeUntil: string | undefined, now = new Date()): boolean {
+  return Boolean(snoozeUntil && new Date(snoozeUntil).getTime() > now.getTime());
+}
+
+function minutesSince(iso: string | undefined, now: Date): number | undefined {
+  if (!iso) return undefined;
+  return (now.getTime() - new Date(iso).getTime()) / 60000;
+}
+
+function scheduledDateForHour(now: Date, hour: number, minuteOffset = 0): Date {
+  const scheduled = new Date(now);
+  scheduled.setHours(hour, 0, 0, 0);
+  scheduled.setMinutes(scheduled.getMinutes() + minuteOffset);
+  return scheduled;
+}
+
+function fixedReminderDue(params: {
+  times: number[];
+  now: Date;
+  lastReminderAt?: string;
+  minuteOffset?: number;
+}): boolean {
+  const today = todayKey(params.now);
+  const lastReminderAt = params.lastReminderAt ? new Date(params.lastReminderAt) : undefined;
+  return params.times.some((hour) => {
+    const scheduled = scheduledDateForHour(params.now, hour, params.minuteOffset);
+    if (scheduled.toISOString().slice(0, 10) !== today || params.now < scheduled) return false;
+    return !lastReminderAt || lastReminderAt < scheduled;
+  });
+}
+
+export function suggestedWaterTargetMl(weightKg: number, workoutDaysPerWeek = 0): number {
+  if (!Number.isFinite(weightKg) || weightKg <= 0) return 2500;
+  const base = weightKg * 35;
+  const trainingBump = Math.min(500, Math.max(0, workoutDaysPerWeek) * 75);
+  return Math.round((base + trainingBump) / 50) * 50;
+}
+
+export function suggestedRoutineTemplate(workoutDaysPerWeek: number): "ppl" | "upper-lower" | "full-body" {
+  if (workoutDaysPerWeek >= 5) return "ppl";
+  if (workoutDaysPerWeek >= 4) return "upper-lower";
+  return "full-body";
+}
+
+export function shouldSendHydrationReminder(params: {
+  totalMl: number;
+  expectedMl: number;
+  lastLogAt?: string;
+  lastReminderAt?: string;
+  now?: Date;
+  quietHours: { start: number; end: number };
+  enabled?: boolean;
+  mode?: ReminderMode;
+  times?: number[];
+  intervalHours?: number;
+  snoozeUntil?: string;
+  quietHoursEnabled?: boolean;
+}): boolean {
+  if (params.enabled === false) return false;
+  const now = params.now ?? new Date();
+  if (isSnoozed(params.snoozeUntil, now)) return false;
+  if (params.quietHoursEnabled !== false && isInQuietHours(now, params.quietHours)) return false;
+  if (params.totalMl >= params.expectedMl - 250) return false;
+
+  const mode = params.mode ?? "interval";
+  const intervalHours = Math.max(1, params.intervalHours ?? 1.25);
+  const minutesSinceLastLog = minutesSince(params.lastLogAt, now);
+  const minutesSinceLastReminder = minutesSince(params.lastReminderAt, now);
+  if (minutesSinceLastLog !== undefined && minutesSinceLastLog < intervalHours * 60) return false;
+
+  if (mode === "fixed") {
+    return fixedReminderDue({ times: params.times?.length ? params.times : [9, 11, 13, 15, 17, 19, 21], now, lastReminderAt: params.lastReminderAt });
+  }
+
+  if (minutesSinceLastReminder !== undefined && minutesSinceLastReminder < intervalHours * 60) return false;
+  return true;
+}
+
+export function upsertQuickAmount(amounts: QuickAmount[], next: Omit<QuickAmount, "id" | "uses">): QuickAmount[] {
+  const existing = amounts.find(
+    (amount) => amount.category === next.category && amount.amount === next.amount && amount.unit === next.unit
+  );
+
+  if (existing) {
+    return amounts.map((amount) =>
+      amount.id === existing.id ? { ...amount, pinned: amount.pinned || next.pinned, uses: amount.uses + 1 } : amount
+    );
+  }
+
+  return [
+    ...amounts,
+    {
+      ...next,
+      id: cryptoSafeId(),
+      uses: 1
+    }
+  ];
+}
+
+export function visibleQuickAmounts(amounts: QuickAmount[], category: QuickAmount["category"], limit = 4): QuickAmount[] {
+  return amounts
+    .filter((amount) => amount.category === category && amount.pinned)
+    .sort((a, b) => b.uses - a.uses || a.amount - b.amount)
+    .slice(0, limit);
+}
+
+export function workoutExerciseToRoutineExercise(exercise: WorkoutExercise, order: number): RoutineExercise {
+  return {
+    ...exercise,
+    order
+  };
+}
+
+export function routineExercisesToWorkoutExercises(exercises: RoutineExercise[]): WorkoutExercise[] {
+  return [...exercises]
+    .sort((a, b) => a.order - b.order)
+    .map((exercise) => ({
+      id: exercise.id,
+      name: exercise.name,
+      muscleGroup: exercise.muscleGroup,
+      supersetGroup: exercise.supersetGroup,
+      targetSets: exercise.targetSets,
+      targetRepsMin: exercise.targetRepsMin,
+      targetRepsMax: exercise.targetRepsMax,
+      targetWeightKg: exercise.targetWeightKg,
+      restSeconds: exercise.restSeconds,
+      lastSession: exercise.lastSession
+    }));
+}
+
+export function migrateWorkoutExercisesToRoutine(
+  exercises: WorkoutExercise[],
+  options: { routineId?: string; name?: string; day?: string; dayName?: string; now?: Date } = {}
+): Routine {
+  const nowIso = (options.now ?? new Date()).toISOString();
+  return {
+    id: options.routineId ?? "routine-local",
+    name: options.name ?? "Lịch tập hiện tại",
+    daysPerWeek: 1,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    days: [
+      {
+        id: `${options.routineId ?? "routine-local"}-day-1`,
+        name: options.dayName ?? "Ngày 1",
+        day: options.day ?? "Mon",
+        order: 0,
+        exercises: exercises.map((exercise, index) => workoutExerciseToRoutineExercise(exercise, index))
+      }
+    ]
+  };
+}
+
+export function selectedWorkoutDay(routine: Routine | undefined, date = new Date()): WorkoutDay | undefined {
+  if (!routine?.days.length) return undefined;
+  const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][date.getDay()];
+  return routine.days.find((day) => day.day === weekday) ?? [...routine.days].sort((a, b) => a.order - b.order)[0];
+}
+
+function normalizeMuscleGroupForFilter(group: string): string {
+  const aliases: Record<string, string> = {
+    chest: "ngực",
+    back: "lưng",
+    legs: "chân",
+    shoulders: "vai",
+    arms: "tay",
+    upper: "thân trên",
+    lower: "thân dưới",
+    custom: "tùy chỉnh"
+  };
+  const normalized = group.trim().toLowerCase();
+  return aliases[normalized] ?? normalized;
+}
+
+export function filterExerciseLibrary(
+  exercises: ExerciseDefinition[],
+  filters: {
+    query?: string;
+    muscleGroup?: string;
+    equipment?: string;
+    movementPattern?: string;
+    difficulty?: string;
+    tag?: string;
+    catalogSource?: ExerciseCatalogSource | "all";
+    status?: ExerciseCatalogStatus | "all";
+    includeArchived?: boolean;
+  }
+): ExerciseDefinition[] {
+  const query = filters.query?.trim().toLowerCase() ?? "";
+  const muscleGroup = filters.muscleGroup ? normalizeMuscleGroupForFilter(filters.muscleGroup) : undefined;
+  const tag = filters.tag?.trim().toLowerCase();
+  return exercises
+    .map(normalizeExerciseDefinition)
+    .filter((exercise) => filters.includeArchived || exercise.status !== "archived")
+    .filter((exercise) => !filters.catalogSource || filters.catalogSource === "all" || exercise.catalogSource === filters.catalogSource)
+    .filter((exercise) => !filters.status || filters.status === "all" || exercise.status === filters.status)
+    .filter((exercise) => {
+      if (!query) return true;
+      const haystack = [
+        exercise.name,
+        exercise.slug,
+        exercise.muscleGroup,
+        ...(exercise.primaryMuscles ?? []),
+        ...(exercise.secondaryMuscles ?? []),
+        ...(exercise.tags ?? []),
+        ...(exercise.cues ?? []),
+        ...(exercise.commonMistakes ?? []),
+        ...(exercise.contraindications ?? []),
+        exercise.source,
+        exercise.license
+      ].join(" ").toLowerCase();
+      return haystack.includes(query);
+    })
+    .filter((exercise) => {
+      if (!muscleGroup || muscleGroup === "all") return true;
+      return [exercise.muscleGroup, ...(exercise.primaryMuscles ?? []), ...(exercise.secondaryMuscles ?? [])]
+        .map(normalizeMuscleGroupForFilter)
+        .includes(muscleGroup);
+    })
+    .filter((exercise) => !filters.equipment || filters.equipment === "all" || exercise.equipment === filters.equipment || exercise.equipmentAlternatives?.includes(filters.equipment as EquipmentType))
+    .filter((exercise) => !filters.movementPattern || filters.movementPattern === "all" || exercise.movementPattern === filters.movementPattern)
+    .filter((exercise) => !filters.difficulty || filters.difficulty === "all" || exercise.difficulty === filters.difficulty)
+    .filter((exercise) => !tag || tag === "all" || exercise.tags?.some((item) => item.toLowerCase() === tag))
+    .sort((a, b) => {
+      const sourceRank = (source?: ExerciseCatalogSource) => (source === "marketplace" ? 3 : source === "built-in" ? 2 : 1);
+      return sourceRank(b.catalogSource) - sourceRank(a.catalogSource) || a.muscleGroup.localeCompare(b.muscleGroup) || a.name.localeCompare(b.name);
+    });
+}
+
+export function listMarketplaceExercises(
+  exercises: ExerciseDefinition[] = defaultExerciseCatalog,
+  filters: Parameters<typeof filterExerciseLibrary>[1] = {}
+): ExerciseDefinition[] {
+  return filterExerciseLibrary(exercises, {
+    ...filters,
+    catalogSource: filters.catalogSource ?? "marketplace",
+    status: filters.status ?? "published"
+  });
+}
+
+export function exerciseCatalogDetail(exercises: ExerciseDefinition[], idOrSlug: string): ExerciseDefinition | undefined {
+  const key = idOrSlug.trim().toLowerCase();
+  return exercises.map(normalizeExerciseDefinition).find((exercise) => exercise.id.toLowerCase() === key || exercise.slug?.toLowerCase() === key);
+}
+
+export function suggestExerciseSubstitutions(
+  exercise: ExerciseDefinition,
+  library: ExerciseDefinition[] = defaultExerciseCatalog,
+  options: { equipment?: EquipmentType[]; limit?: number } = {}
+): ExerciseDefinition[] {
+  const normalized = normalizeExerciseDefinition(exercise);
+  const equipment = options.equipment ?? [];
+  const substitutions = new Set(normalized.substitutions ?? []);
+  return library
+    .map(normalizeExerciseDefinition)
+    .filter((candidate) => candidate.id !== normalized.id && candidate.status !== "archived")
+    .filter((candidate) => substitutions.has(candidate.id) || candidate.movementPattern === normalized.movementPattern || candidate.primaryMuscles?.some((muscle) => normalized.primaryMuscles?.includes(muscle)))
+    .filter((candidate) => !equipment.length || equipment.includes(candidate.equipment) || candidate.equipmentAlternatives?.some((item) => equipment.includes(item)))
+    .slice(0, options.limit ?? 5);
+}
+
+export function createCustomExerciseDefinition(input: {
+  name: string;
+  muscleGroup: string;
+  equipment: EquipmentType;
+  movementPattern: MovementPattern;
+  notes?: string;
+  primaryMuscles?: string[];
+  secondaryMuscles?: string[];
+  cues?: string[];
+  commonMistakes?: string[];
+  substitutions?: string[];
+  mediaUrl?: string;
+  difficulty?: ExerciseDifficulty;
+  unilateral?: boolean;
+  equipmentAlternatives?: EquipmentType[];
+  forceType?: ExerciseForceType;
+  contraindications?: string[];
+  source?: string;
+  license?: string;
+  tags?: string[];
+}): ExerciseDefinition {
+  return normalizeExerciseDefinition({
+    id: cryptoSafeId(),
+    name: input.name.trim() || "Bài tập tùy chỉnh",
+    muscleGroup: input.muscleGroup.trim() || "Tùy chỉnh",
+    equipment: input.equipment,
+    movementPattern: input.movementPattern,
+    notes: input.notes,
+    primaryMuscles: input.primaryMuscles,
+    secondaryMuscles: input.secondaryMuscles,
+    cues: input.cues,
+    commonMistakes: input.commonMistakes,
+    substitutions: input.substitutions,
+    mediaUrl: input.mediaUrl,
+    difficulty: input.difficulty,
+    unilateral: input.unilateral,
+    equipmentAlternatives: input.equipmentAlternatives,
+    forceType: input.forceType,
+    contraindications: input.contraindications,
+    source: input.source,
+    license: input.license,
+    catalogSource: "custom",
+    status: "published",
+    version: 1,
+    tags: input.tags,
+    builtIn: false
+  });
+}
+
+export function cloneMarketplaceExerciseToCustom(exercise: ExerciseDefinition, overrides: Partial<ExerciseDefinition> = {}): ExerciseDefinition {
+  const normalized = normalizeExerciseDefinition(exercise);
+  return normalizeExerciseDefinition({
+    ...normalized,
+    ...overrides,
+    id: overrides.id ?? cryptoSafeId(),
+    name: overrides.name ?? `${normalized.name} (của tôi)`,
+    builtIn: false,
+    catalogSource: "custom",
+    status: "published",
+    createdBy: overrides.createdBy,
+    reviewedBy: undefined,
+    publishedAt: undefined,
+    updatedAt: new Date().toISOString(),
+    source: normalized.id,
+    license: "Custom copy from marketplace",
+    version: 1
+  });
+}
+
+export function isUserOwnedExercise(exercise: ExerciseDefinition): boolean {
+  const normalized = normalizeExerciseDefinition(exercise);
+  return !normalized.builtIn || normalized.catalogSource === "custom";
+}
+
+export function isPublicCatalogExercise(exercise: ExerciseDefinition): boolean {
+  const normalized = normalizeExerciseDefinition(exercise);
+  return normalized.catalogSource === "built-in" || normalized.catalogSource === "marketplace";
+}
+
+export function normalizeRoutineTemplate(template: RoutineTemplate): RoutineTemplate {
+  const days = [...template.days]
+    .sort((a, b) => a.order - b.order)
+    .map((day) => ({
+      ...day,
+      estimatedMinutes: clampInt(day.estimatedMinutes, 15, 180),
+      exercises: [...day.exercises]
+        .sort((a, b) => a.order - b.order)
+        .map((slot, order) => ({
+          ...slot,
+          order,
+          targetSets: clampInt(slot.targetSets, 1, 12),
+          targetRepsMin: clampInt(slot.targetRepsMin, 1, 200),
+          targetRepsMax: Math.max(clampInt(slot.targetRepsMax, 1, 200), clampInt(slot.targetRepsMin, 1, 200)),
+          restSeconds: clampInt(slot.restSeconds, 15, 600),
+          targetWeightKg: Number.isFinite(slot.targetWeightKg) ? Math.max(0, slot.targetWeightKg) : 0
+        }))
+    }));
+  return {
+    ...template,
+    slug: template.slug.trim().toLowerCase(),
+    name: template.name.trim() || "Routine template",
+    summary: template.summary.trim(),
+    daysPerWeek: clampInt(template.daysPerWeek, 1, 7),
+    minutesPerSession: clampInt(template.minutesPerSession, 15, 180),
+    equipment: [...new Set<EquipmentType>(template.equipment.length ? template.equipment : ["bodyweight"])],
+    tags: [...new Set(template.tags.map((tag) => tag.trim()).filter(Boolean))],
+    days
+  };
+}
+
+export function routineTemplateCompatibility(
+  template: RoutineTemplate,
+  profile: RoutineTemplateProfile = {}
+): RoutineTemplateCompatibility {
+  const normalized = normalizeRoutineTemplate(template);
+  const available = profile.availableEquipment?.length ? profile.availableEquipment : [];
+  const missingEquipment = available.length ? normalized.equipment.filter((item) => !available.includes(item)) : [];
+  const matchedEquipment = available.length ? normalized.equipment.filter((item) => available.includes(item)) : normalized.equipment;
+  const reasons: string[] = [];
+  const warnings: string[] = [];
+  let score = 55;
+  if (profile.trainingGoal && profile.trainingGoal === normalized.targetGoal) {
+    score += 20;
+    reasons.push("Goal matches profile.");
+  } else if (profile.trainingGoal) {
+    score -= 5;
+    warnings.push(`Template goal is ${normalized.targetGoal}, profile goal is ${profile.trainingGoal}.`);
+  }
+  if (profile.experienceLevel && profile.experienceLevel === normalized.experienceLevel) {
+    score += 15;
+    reasons.push("Experience level matches.");
+  } else if (profile.experienceLevel === "beginner" && normalized.experienceLevel === "advanced") {
+    score -= 20;
+    warnings.push("Template may be too advanced for a beginner.");
+  }
+  if (available.length) {
+    score += Math.round((matchedEquipment.length / Math.max(1, normalized.equipment.length)) * 20);
+    if (missingEquipment.length) warnings.push(`Missing equipment: ${missingEquipment.join(", ")}.`);
+  } else {
+    reasons.push("No equipment profile set; compatibility uses template defaults.");
+  }
+  if (normalized.visibility === "admin-curated") score += 5;
+  return {
+    score: clampInt(score, 0, 100),
+    missingEquipment,
+    matchedEquipment,
+    warnings,
+    reasons
+  };
+}
+
+export function listRoutineTemplates(
+  templates: RoutineTemplate[] = routineMarketplaceTemplates,
+  filters: RoutineTemplateFilters = {}
+): RoutineTemplate[] {
+  const query = filters.query?.trim().toLowerCase() ?? "";
+  const tag = filters.tag?.trim().toLowerCase();
+  const result = templates
+    .map(normalizeRoutineTemplate)
+    .filter((template) => filters.includeArchived || template.status !== "archived")
+    .filter((template) => !filters.status || filters.status === "all" || template.status === filters.status)
+    .filter((template) => !filters.visibility || filters.visibility === "all" || template.visibility === filters.visibility)
+    .filter((template) => !filters.goal || filters.goal === "all" || template.targetGoal === filters.goal)
+    .filter((template) => !filters.daysPerWeek || filters.daysPerWeek === "all" || template.daysPerWeek === filters.daysPerWeek)
+    .filter((template) => !filters.equipment || filters.equipment === "all" || template.equipment.includes(filters.equipment))
+    .filter((template) => !filters.experienceLevel || filters.experienceLevel === "all" || template.experienceLevel === filters.experienceLevel)
+    .filter((template) => !tag || tag === "all" || template.tags.some((item) => item.toLowerCase() === tag))
+    .filter((template) => {
+      if (!query) return true;
+      const haystack = [
+        template.name,
+        template.slug,
+        template.summary,
+        template.creatorName,
+        template.targetGoal,
+        template.experienceLevel,
+        ...template.tags,
+        ...template.equipment,
+        ...template.days.flatMap((day) => [day.name, ...day.exercises.map((slot) => slot.name)])
+      ].join(" ").toLowerCase();
+      return haystack.includes(query);
+    });
+
+  return result.sort((a, b) => {
+    if (filters.sort === "compatibility") {
+      return routineTemplateCompatibility(b, filters.profile).score - routineTemplateCompatibility(a, filters.profile).score || a.name.localeCompare(b.name);
+    }
+    if (filters.sort === "goal") return a.targetGoal.localeCompare(b.targetGoal) || a.name.localeCompare(b.name);
+    if (filters.sort === "days") return a.daysPerWeek - b.daysPerWeek || a.name.localeCompare(b.name);
+    return a.name.localeCompare(b.name);
+  });
+}
+
+export function routineTemplateDetail(templates: RoutineTemplate[], idOrSlug: string): RoutineTemplate | undefined {
+  const key = idOrSlug.trim().toLowerCase();
+  return templates.map(normalizeRoutineTemplate).find((template) => template.id.toLowerCase() === key || template.slug.toLowerCase() === key);
+}
+
+export function routineFromMarketplaceTemplate(
+  template: RoutineTemplate,
+  options: { id?: string; name?: string; now?: Date } = {}
+): Routine {
+  const normalized = normalizeRoutineTemplate(template);
+  const nowIso = (options.now ?? new Date()).toISOString();
+  return {
+    id: options.id ?? `routine-template-${cryptoSafeId()}`,
+    name: options.name?.trim() || normalized.name,
+    daysPerWeek: normalized.daysPerWeek,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    days: normalized.days.map((day) => ({
+      id: `${day.id}-${cryptoSafeId()}`,
+      name: day.name,
+      day: day.day,
+      order: day.order,
+      exercises: day.exercises.map((slot) => ({
+        id: `${slot.id}-${cryptoSafeId()}`,
+        definitionId: slot.exerciseId,
+        order: slot.order,
+        name: slot.name,
+        muscleGroup: slot.muscleGroup,
+        targetSets: slot.targetSets,
+        targetRepsMin: slot.targetRepsMin,
+        targetRepsMax: slot.targetRepsMax,
+        targetWeightKg: slot.targetWeightKg,
+        restSeconds: slot.restSeconds,
+        lastSession: `Template ${normalized.name} v${normalized.version}`
+      }))
+    }))
+  };
+}
+
+export function previewRoutineTemplateApply(
+  template: RoutineTemplate,
+  profile: RoutineTemplateProfile = {},
+  options: { routineName?: string; now?: Date } = {}
+): RoutineTemplatePreview {
+  const normalized = normalizeRoutineTemplate(template);
+  const compatibility = routineTemplateCompatibility(normalized, profile);
+  const routine = routineFromMarketplaceTemplate(normalized, { name: options.routineName, now: options.now });
+  return {
+    template: normalized,
+    routine,
+    compatibility,
+    warnings: compatibility.warnings,
+    rationale: [
+      `${normalized.daysPerWeek} days/week, about ${normalized.minutesPerSession} minutes/session.`,
+      `Goal ${normalized.targetGoal}, ${normalized.experienceLevel} level.`,
+      `${normalized.days.reduce((sum, day) => sum + day.exercises.length, 0)} exercise slots will be copied into a user-owned routine.`
+    ]
+  };
+}
+
+export function createCustomExerciseDefinitionLegacy(input: {
+  name: string;
+  muscleGroup: string;
+  equipment: EquipmentType;
+  movementPattern: MovementPattern;
+  notes?: string;
+  primaryMuscles?: string[];
+  secondaryMuscles?: string[];
+  cues?: string[];
+  commonMistakes?: string[];
+  substitutions?: string[];
+  mediaUrl?: string;
+  difficulty?: ExerciseDifficulty;
+  unilateral?: boolean;
+  equipmentAlternatives?: EquipmentType[];
+  tags?: string[];
+}): ExerciseDefinition {
+  return createCustomExerciseDefinition(input);
+}
+
+export function workoutSessionDurationSeconds(session: Pick<WorkoutSession, "startedAt" | "endedAt">, now = new Date()): number {
+  const end = session.endedAt ? new Date(session.endedAt) : now;
+  return Math.max(0, Math.round((end.getTime() - new Date(session.startedAt).getTime()) / 1000));
+}
+
+export function createWorkoutSession(input: {
+  routineId: string;
+  workoutDayId: string;
+  sessionName: string;
+  sessionExerciseOrder: string[];
+  now?: Date;
+}): WorkoutSession {
+  const startedAt = (input.now ?? new Date()).toISOString();
+  return {
+    id: cryptoSafeId(),
+    routineId: input.routineId,
+    workoutDayId: input.workoutDayId,
+    sessionName: input.sessionName,
+    startedAt,
+    durationSeconds: 0,
+    status: "active",
+    sessionExerciseOrder: input.sessionExerciseOrder,
+    exerciseQueue: input.sessionExerciseOrder.map((exerciseId) => ({ exerciseId, status: "queued" }))
+  };
+}
+
+export function warmUpSetSuggestions(params: {
+  workingWeightKg: number;
+  workingReps: number;
+  incrementKg?: number;
+}): WarmUpSetSuggestion[] {
+  if (!Number.isFinite(params.workingWeightKg) || params.workingWeightKg <= 0) return [];
+  const increment = params.incrementKg ?? 2.5;
+  const roundToIncrement = (weight: number) => Math.max(0, Math.round(weight / increment) * increment);
+  const workingReps = Math.max(1, Math.round(params.workingReps));
+  const tiers =
+    params.workingWeightKg >= 80
+      ? [
+          { percent: 0.4, reps: Math.min(8, workingReps) },
+          { percent: 0.6, reps: Math.min(5, workingReps) },
+          { percent: 0.8, reps: Math.min(3, workingReps) }
+        ]
+      : params.workingWeightKg >= 40
+        ? [
+            { percent: 0.5, reps: Math.min(6, workingReps) },
+            { percent: 0.75, reps: Math.min(3, workingReps) }
+          ]
+        : [{ percent: 0.6, reps: Math.min(5, workingReps) }];
+
+  const seen = new Set<number>();
+  return tiers.flatMap((tier) => {
+    const weightKg = roundToIncrement(params.workingWeightKg * tier.percent);
+    if (weightKg <= 0 || weightKg >= params.workingWeightKg || seen.has(weightKg)) return [];
+    seen.add(weightKg);
+    return [{ setType: "warmup" as const, weightKg, reps: tier.reps, percent: Math.round(tier.percent * 100) }];
+  });
+}
+
+export function isWorkingVolumeSet(set: WorkoutSet): boolean {
+  const setType = set.setType ?? "working";
+  return set.actualReps > 0 && set.actualWeightKg >= 0 && setType !== "warmup";
+}
+
+export function countsTowardTargetSets(set: WorkoutSet): boolean {
+  return (set.setType ?? "working") !== "warmup";
+}
+
+export function workingSetVolumeKg(sets: WorkoutSet[]): number {
+  return round(sets.filter(isWorkingVolumeSet).reduce((sum, set) => sum + set.actualWeightKg * set.actualReps, 0));
+}
+
+export function nextSupersetExerciseIndex(params: {
+  exercises: WorkoutExercise[];
+  currentIndex: number;
+  sets: WorkoutSet[];
+}): number | undefined {
+  const current = params.exercises[params.currentIndex];
+  if (!current?.supersetGroup) return undefined;
+  const groupIndexes = params.exercises
+    .map((exercise, index) => ({ exercise, index }))
+    .filter(({ exercise }) => exercise.supersetGroup === current.supersetGroup);
+  if (groupIndexes.length < 2) return undefined;
+
+  const completedCount = (exerciseId: string) =>
+    params.sets.filter((set) => set.exerciseId === exerciseId && countsTowardTargetSets(set)).length;
+  const currentCount = completedCount(current.id);
+  const currentGroupPosition = groupIndexes.findIndex(({ index }) => index === params.currentIndex);
+
+  for (let offset = 1; offset <= groupIndexes.length; offset += 1) {
+    const candidate = groupIndexes[(currentGroupPosition + offset) % groupIndexes.length];
+    const count = completedCount(candidate.exercise.id);
+    if (count < candidate.exercise.targetSets && count <= currentCount) return candidate.index;
+  }
+
+  return undefined;
+}
+
+function sessionOrderFromQueue(queue: SessionExerciseQueueItem[]): string[] {
+  return queue.map((item) => item.exerciseId);
+}
+
+export function normalizeWorkoutSessionQueue(session: WorkoutSession): WorkoutSession {
+  if (session.exerciseQueue?.length) {
+    return { ...session, sessionExerciseOrder: sessionOrderFromQueue(session.exerciseQueue) };
+  }
+  const exerciseQueue = session.sessionExerciseOrder.map((exerciseId) => ({ exerciseId, status: "queued" as const }));
+  return { ...session, exerciseQueue };
+}
+
+export function reorderSessionExerciseQueue(session: WorkoutSession, exerciseId: string, direction: -1 | 1): WorkoutSession {
+  const normalized = normalizeWorkoutSessionQueue(session);
+  const index = normalized.exerciseQueue.findIndex((item) => item.exerciseId === exerciseId);
+  const nextIndex = index + direction;
+  if (index < 0 || nextIndex < 0 || nextIndex >= normalized.exerciseQueue.length) return normalized;
+  const exerciseQueue = [...normalized.exerciseQueue];
+  [exerciseQueue[index], exerciseQueue[nextIndex]] = [exerciseQueue[nextIndex], exerciseQueue[index]];
+  return { ...normalized, exerciseQueue, sessionExerciseOrder: sessionOrderFromQueue(exerciseQueue) };
+}
+
+export function parkSessionExercise(session: WorkoutSession, exerciseId: string): WorkoutSession {
+  const normalized = normalizeWorkoutSessionQueue(session);
+  const item = normalized.exerciseQueue.find((entry) => entry.exerciseId === exerciseId);
+  if (!item || item.status === "completed") return normalized;
+  const exerciseQueue = [
+    ...normalized.exerciseQueue.filter((entry) => entry.exerciseId !== exerciseId),
+    { ...item, status: "parked" as const }
+  ];
+  return { ...normalized, exerciseQueue, sessionExerciseOrder: sessionOrderFromQueue(exerciseQueue) };
+}
+
+export function completeSessionExercise(session: WorkoutSession, exerciseId: string): WorkoutSession {
+  const normalized = normalizeWorkoutSessionQueue(session);
+  const exerciseQueue = normalized.exerciseQueue.map((item) =>
+    item.exerciseId === exerciseId ? { ...item, status: "completed" as const } : item
+  );
+  return { ...normalized, exerciseQueue, sessionExerciseOrder: sessionOrderFromQueue(exerciseQueue) };
+}
+
+export function saveSessionExerciseOrderToRoutine(routine: Routine, workoutDayId: string, queue: SessionExerciseQueueItem[]): Routine {
+  const order = queue.map((item) => item.exerciseId);
+  return {
+    ...routine,
+    updatedAt: new Date().toISOString(),
+    days: routine.days.map((day) => {
+      if (day.id !== workoutDayId) return day;
+      const byId = new Map(day.exercises.map((exercise) => [exercise.id, exercise]));
+      const ordered = order.flatMap((exerciseId) => {
+        const exercise = byId.get(exerciseId);
+        return exercise ? [exercise] : [];
+      });
+      const missing = day.exercises.filter((exercise) => !order.includes(exercise.id));
+      return {
+        ...day,
+        exercises: [...ordered, ...missing].map((exercise, index) => ({ ...exercise, order: index }))
+      };
+    })
+  };
+}
+
+export function finishWorkoutSession(session: WorkoutSession, now = new Date()): WorkoutSession {
+  const endedAt = now.toISOString();
+  return {
+    ...session,
+    endedAt,
+    durationSeconds: workoutSessionDurationSeconds({ ...session, endedAt }),
+    status: "finished"
+  };
+}
+
+export function pauseWorkoutSession(session: WorkoutSession, now = new Date()): WorkoutSession {
+  return {
+    ...session,
+    durationSeconds: workoutSessionDurationSeconds(session, now),
+    status: "paused"
+  };
+}
+
+export function resumeWorkoutSession(session: WorkoutSession): WorkoutSession {
+  return {
+    ...session,
+    status: "active"
+  };
+}
+
+export function migrateLegacyWorkoutSession(params: {
+  sets: WorkoutSet[];
+  routineId: string;
+  workoutDayId: string;
+  sessionName: string;
+  now?: Date;
+}): { sessions: WorkoutSession[]; sets: WorkoutSet[] } {
+  if (!params.sets.length || params.sets.every((set) => set.sessionId)) return { sessions: [], sets: params.sets };
+  const completedTimes = params.sets.map((set) => set.completedAt).filter(Boolean).sort() as string[];
+  const startedAt = completedTimes[0] ?? (params.now ?? new Date()).toISOString();
+  const endedAt = completedTimes[completedTimes.length - 1] ?? startedAt;
+  const session: WorkoutSession = {
+    id: "session-legacy",
+    routineId: params.routineId,
+    workoutDayId: params.workoutDayId,
+    sessionName: `${params.sessionName} (legacy)`,
+    startedAt,
+    endedAt,
+    durationSeconds: workoutSessionDurationSeconds({ startedAt, endedAt }),
+    status: "finished",
+    sessionExerciseOrder: Array.from(new Set(params.sets.map((set) => set.exerciseId))),
+    exerciseQueue: Array.from(new Set(params.sets.map((set) => set.exerciseId))).map((exerciseId) => ({
+      exerciseId,
+      status: "completed"
+    }))
+  };
+  return {
+    sessions: [session],
+    sets: params.sets.map((set) => ({ ...set, sessionId: set.sessionId ?? session.id }))
+  };
+}
+
+export function splitCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let current = "";
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+    if (char === '"' && quoted && next === '"') {
+      current += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      cells.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+function normalizeHeader(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+const routineColumnAliases = {
+  session: ["session", "session name", "buoi", "buoi tap", "phien", "lich"],
+  day: ["day", "workout day", "ngay", "thu", "ngay tap"],
+  exercise: ["exercise", "exercise name", "name", "bai tap", "ten bai tap"],
+  muscleGroup: ["muscle group", "muscle", "group", "nhom co"],
+  sets: ["sets", "set", "so set", "so sets"],
+  repsMin: ["reps min", "rep min", "min reps", "reps from", "rep toi thieu", "reps toi thieu"],
+  repsMax: ["reps max", "rep max", "max reps", "reps", "reps to", "rep toi da", "reps toi da"],
+  weight: ["weight", "weight kg", "kg", "target weight", "muc ta", "ta", "trong luong"],
+  restSeconds: ["rest seconds", "rest", "rest sec", "nghi giay", "thoi gian nghi"],
+  supersetGroup: ["superset", "superset group", "group set", "nhom superset"],
+  note: ["note", "notes", "ghi chu"]
+} satisfies Record<string, string[]>;
+
+function routineHeaderIndexes(headers: string[]) {
+  const normalized = headers.map(normalizeHeader);
+  const findHeader = (aliases: string[]) => aliases.map(normalizeHeader).map((name) => normalized.indexOf(name)).find((index) => index >= 0) ?? -1;
+  return {
+    session: findHeader(routineColumnAliases.session),
+    day: findHeader(routineColumnAliases.day),
+    exercise: findHeader(routineColumnAliases.exercise),
+    muscleGroup: findHeader(routineColumnAliases.muscleGroup),
+    sets: findHeader(routineColumnAliases.sets),
+    repsMin: findHeader(routineColumnAliases.repsMin),
+    repsMax: findHeader(routineColumnAliases.repsMax),
+    weight: findHeader(routineColumnAliases.weight),
+    restSeconds: findHeader(routineColumnAliases.restSeconds),
+    supersetGroup: findHeader(routineColumnAliases.supersetGroup),
+    note: findHeader(routineColumnAliases.note)
+  };
+}
+
+export function rowsToRoutineCsv(rows: unknown[][]): string {
+  return rows
+    .map((row) =>
+      row
+        .map((cell) => {
+          const text = cell === undefined || cell === null ? "" : String(cell);
+          return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+        })
+        .join(",")
+    )
+    .join("\n");
+}
+
+export function parseRoutineCsv(text: string, fileName: string): RoutineImportPreview {
+  const lines = text
+    .replace(/^\uFEFF/, "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const errors: string[] = [];
+  if (lines.length < 2) return { fileName, rows: [], errors: ["CSV cần có dòng tiêu đề và ít nhất một dòng bài tập."] };
+
+  const headers = splitCsvLine(lines[0]);
+  const indexes = routineHeaderIndexes(headers);
+  const requiredColumns: [keyof typeof indexes, string][] = [
+    ["session", "buổi"],
+    ["day", "ngày"],
+    ["exercise", "bài tập"],
+    ["muscleGroup", "nhóm cơ"],
+    ["sets", "số set"],
+    ["repsMin", "rep tối thiểu"],
+    ["repsMax", "rep tối đa"],
+    ["weight", "tạ"],
+    ["restSeconds", "giây nghỉ"]
+  ];
+
+  requiredColumns.forEach(([key, label]) => {
+    if (indexes[key] < 0) errors.push(`Thiếu cột bắt buộc: ${label}.`);
+  });
+  if (errors.length) return { fileName, rows: [], errors };
+
+  const numberAt = (cells: string[], index: number) => Number(cells[index]);
+  const textAt = (cells: string[], index: number) => (index >= 0 && cells[index] ? cells[index].trim() : "");
+  const seen = new Set<string>();
+
+  const rows = lines.slice(1).flatMap<RoutineImportRow>((line, index) => {
+    const sourceLine = index + 2;
+    const cells = splitCsvLine(line);
+    const session = textAt(cells, indexes.session);
+    const day = textAt(cells, indexes.day);
+    const name = textAt(cells, indexes.exercise);
+    const muscleGroup = textAt(cells, indexes.muscleGroup);
+    const targetSets = numberAt(cells, indexes.sets);
+    const targetRepsMin = numberAt(cells, indexes.repsMin);
+    const targetRepsMax = numberAt(cells, indexes.repsMax);
+    const targetWeightKg = numberAt(cells, indexes.weight);
+    const restSeconds = numberAt(cells, indexes.restSeconds);
+    const supersetGroup = textAt(cells, indexes.supersetGroup);
+    const note = textAt(cells, indexes.note);
+    const duplicateKey = `${normalizeHeader(session)}::${normalizeHeader(name)}`;
+    const duplicated = Boolean(session && name && seen.has(duplicateKey));
+
+    if (!session) errors.push(`Dòng ${sourceLine}, cột buổi: cần có giá trị.`);
+    if (!day) errors.push(`Dòng ${sourceLine}, cột ngày: cần có giá trị.`);
+    if (!name) errors.push(`Dòng ${sourceLine}, cột bài tập: cần có giá trị.`);
+    if (!muscleGroup) errors.push(`Dòng ${sourceLine}, cột nhóm cơ: cần có giá trị.`);
+    if (!Number.isInteger(targetSets) || targetSets < 1) errors.push(`Dòng ${sourceLine}, cột số set: phải là số nguyên dương.`);
+    if (!Number.isFinite(targetRepsMin) || targetRepsMin < 1) errors.push(`Dòng ${sourceLine}, cột rep tối thiểu: phải lớn hơn 0.`);
+    if (!Number.isFinite(targetRepsMax) || targetRepsMax < 1) errors.push(`Dòng ${sourceLine}, cột rep tối đa: phải lớn hơn 0.`);
+    if (Number.isFinite(targetRepsMin) && Number.isFinite(targetRepsMax) && targetRepsMin > targetRepsMax) {
+      errors.push(`Dòng ${sourceLine}, cột rep tối thiểu: phải nhỏ hơn hoặc bằng rep tối đa.`);
+    }
+    if (!Number.isFinite(targetWeightKg) || targetWeightKg < 0) errors.push(`Dòng ${sourceLine}, cột tạ: phải bằng 0 hoặc lớn hơn.`);
+    if (!Number.isFinite(restSeconds) || restSeconds < 15) errors.push(`Dòng ${sourceLine}, cột giây nghỉ: phải ít nhất 15.`);
+    if (duplicated) errors.push(`Dòng ${sourceLine}, cột bài tập: bài "${name}" bị trùng trong buổi "${session}".`);
+    if (session && name) seen.add(duplicateKey);
+
+    const valid =
+      session &&
+      day &&
+      name &&
+      muscleGroup &&
+      Number.isInteger(targetSets) &&
+      targetSets >= 1 &&
+      Number.isFinite(targetRepsMin) &&
+      Number.isFinite(targetRepsMax) &&
+      targetRepsMin >= 1 &&
+      targetRepsMax >= 1 &&
+      targetRepsMin <= targetRepsMax &&
+      Number.isFinite(targetWeightKg) &&
+      targetWeightKg >= 0 &&
+      Number.isFinite(restSeconds) &&
+      restSeconds >= 15 &&
+      !duplicated;
+
+    if (!valid) return [];
+
+    return [
+      {
+        id: `import-${sourceLine}-${cryptoSafeId()}`,
+        sourceLine,
+        session,
+        day,
+        name,
+        muscleGroup,
+        targetSets,
+        targetRepsMin,
+        targetRepsMax,
+        targetWeightKg,
+        restSeconds,
+        supersetGroup: supersetGroup || undefined,
+        note,
+        lastSession: note || `${session} - ${day}`
+      }
+    ];
+  });
+
+  return { fileName, rows, errors };
+}
+
+export function progressiveOverloadRecommendation(params: {
+  exerciseName: string;
+  targetWeightKg: number;
+  targetRepsMax: number;
+  recentSets: Pick<WorkoutSet, "actualWeightKg" | "actualReps" | "rpe">[];
+  incrementKg?: number;
+}): Recommendation {
+  const increment = params.incrementKg ?? 2.5;
+  const dataBasis = coachDataBasis(params);
+  const guardrail = coachGuardrailCopy();
+  const aiEligible = hasEnoughCoachData(params.recentSets);
+  const allHitTopReps =
+    params.recentSets.length > 0 &&
+    params.recentSets.every((set) => set.actualReps >= params.targetRepsMax && set.actualWeightKg >= params.targetWeightKg);
+  const failedBadly = params.recentSets.some((set) => set.actualReps <= Math.max(1, params.targetRepsMax - 4));
+  const veryHard = params.recentSets.some((set) => (set.rpe ?? 8) >= 10);
+
+  if (allHitTopReps && !veryHard) {
+    return {
+      title: `Tăng ${params.exerciseName} lên ${params.targetWeightKg + increment}kg`,
+      reason: "Bạn đã đạt top reps ở toàn bộ set gần nhất, phù hợp double progression.",
+      source: "rule",
+      action: "increase",
+      nextWeightKg: params.targetWeightKg + increment,
+      dataBasis,
+      suggestedAction: `Try ${params.targetWeightKg + increment}kg next time and stop the increase if form breaks down.`,
+      guardrail,
+      aiEligible,
+      mode: "rule-fallback"
+    };
+  }
+
+  if (failedBadly || veryHard) {
+    const nextWeight = Math.max(0, params.targetWeightKg * 0.9);
+    return {
+      title: `Giảm tải ${params.exerciseName}`,
+      reason: "Set gần nhất quá nặng hoặc hụt reps sâu; nên deload để giữ kỹ thuật.",
+      source: "rule",
+      action: "deload",
+      nextWeightKg: Math.round(nextWeight * 2) / 2,
+      dataBasis,
+      suggestedAction: `Dùng khoảng ${Math.round(nextWeight * 2) / 2}kg ở lần tới và xây lại reps với kỹ thuật kiểm soát.`,
+      guardrail,
+      aiEligible,
+      mode: "rule-fallback"
+    };
+  }
+
+  return {
+    title: `Giữ mức ${params.targetWeightKg}kg`,
+    reason: "Bạn đang trong vùng tiến bộ, tiếp tục gom thêm reps trước khi tăng tải.",
+    source: "rule",
+    action: "hold",
+    nextWeightKg: params.targetWeightKg,
+    dataBasis,
+    suggestedAction: `Lặp lại ${params.targetWeightKg}kg và cố gắng thêm rep sạch trước khi tăng tạ.`,
+    guardrail,
+    aiEligible,
+    mode: "rule-fallback"
+  };
+}
+
+export function coachGuardrailCopy(): string {
+  return "Chỉ là gợi ý tập luyện. Dừng lại nếu đau nhói, chóng mặt, đau ngực hoặc có triệu chứng bất thường, và hỏi chuyên gia đủ điều kiện khi có vấn đề y tế.";
+}
+
+export function hasEnoughCoachData(recentSets: Pick<WorkoutSet, "actualWeightKg" | "actualReps" | "rpe">[]): boolean {
+  const usefulSets = recentSets.filter((set) => Number.isFinite(set.actualWeightKg) && set.actualWeightKg >= 0 && Number.isFinite(set.actualReps) && set.actualReps > 0);
+  return usefulSets.length >= 3;
+}
+
+export function coachDataBasis(params: {
+  exerciseName: string;
+  targetWeightKg: number;
+  targetRepsMax: number;
+  recentSets: Pick<WorkoutSet, "actualWeightKg" | "actualReps" | "rpe">[];
+}): string[] {
+  const recentSetText = params.recentSets.length
+    ? params.recentSets.map((set) => `${set.actualWeightKg}kg x ${set.actualReps}${set.rpe ? ` @RPE ${set.rpe}` : ""}`).join(", ")
+    : "chưa có set chính hoàn tất";
+  return [
+    `Bài tập: ${params.exerciseName}`,
+    `Mục tiêu: ${params.targetWeightKg}kg x ${params.targetRepsMax} rep`,
+    `Set gần đây: ${recentSetText}`
+  ];
+}
+
+function clampInt(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function includesEquipment(exercise: ExerciseDefinition, equipment: EquipmentType[]): boolean {
+  return equipment.includes(exercise.equipment) || (exercise.equipmentAlternatives ?? []).some((item) => equipment.includes(item));
+}
+
+function plannerWeekdays(daysPerWeek: number): string[] {
+  const options: Record<number, string[]> = {
+    1: ["Mon"],
+    2: ["Mon", "Thu"],
+    3: ["Mon", "Wed", "Fri"],
+    4: ["Mon", "Tue", "Thu", "Fri"],
+    5: ["Mon", "Tue", "Wed", "Fri", "Sat"],
+    6: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+  };
+  return options[clampInt(daysPerWeek, 1, 6)] ?? options[3];
+}
+
+function plannerSplit(daysPerWeek: number, goal: WorkoutPlannerInput["goal"]): { name: string; patterns: MovementPattern[]; muscles: string[] }[] {
+  if (daysPerWeek >= 5) {
+    return [
+      { name: "Push", patterns: ["push", "isolation"], muscles: ["Chest", "Shoulders", "Triceps", "Ngá»±c", "Vai", "Tay"] },
+      { name: "Pull", patterns: ["pull", "isolation"], muscles: ["Back", "Lats", "Biceps", "LÆ°ng", "Tay"] },
+      { name: "Legs", patterns: ["squat", "hinge", "lunge"], muscles: ["Quads", "Glutes", "Hamstrings", "ChÃ¢n"] },
+      { name: "Upper", patterns: ["push", "pull", "isolation"], muscles: ["Chest", "Back", "Shoulders", "Arms", "Ngá»±c", "LÆ°ng", "Vai", "Tay"] },
+      { name: goal === "health" ? "Full body skill" : "Full body volume", patterns: ["push", "pull", "squat", "hinge", "core"], muscles: ["Core", "Chest", "Back", "Legs", "Core"] },
+      { name: "Recovery pump", patterns: ["isolation", "core", "carry"], muscles: ["Core", "Arms", "Shoulders"] }
+    ];
+  }
+  if (daysPerWeek >= 4) {
+    return [
+      { name: "Upper A", patterns: ["push", "pull", "isolation"], muscles: ["Chest", "Back", "Shoulders", "Arms", "Ngá»±c", "LÆ°ng", "Vai"] },
+      { name: "Lower A", patterns: ["squat", "hinge", "lunge", "core"], muscles: ["Quads", "Glutes", "Hamstrings", "Core", "ChÃ¢n"] },
+      { name: "Upper B", patterns: ["pull", "push", "isolation"], muscles: ["Back", "Chest", "Shoulders", "Arms", "LÆ°ng", "Ngá»±c"] },
+      { name: "Lower B", patterns: ["hinge", "squat", "core"], muscles: ["Hamstrings", "Glutes", "Quads", "Core", "ChÃ¢n"] }
+    ];
+  }
+  return [
+    { name: "Full body A", patterns: ["squat", "push", "pull", "core"], muscles: ["Quads", "Chest", "Back", "Core", "ChÃ¢n", "Ngá»±c", "LÆ°ng"] },
+    { name: "Full body B", patterns: ["hinge", "pull", "push", "core"], muscles: ["Hamstrings", "Back", "Shoulders", "Core", "ChÃ¢n", "LÆ°ng", "Vai"] },
+    { name: "Full body C", patterns: ["lunge", "push", "pull", "isolation"], muscles: ["Glutes", "Chest", "Back", "Arms", "Ngá»±c", "LÆ°ng", "Tay"] }
+  ];
+}
+
+function exerciseScore(exercise: ExerciseDefinition, target: { patterns: MovementPattern[]; muscles: string[] }, input: WorkoutPlannerInput): number {
+  const normalized = normalizeExerciseDefinition(exercise);
+  let score = 0;
+  if (target.patterns.includes(normalized.movementPattern)) score += 5;
+  const muscles = [normalized.muscleGroup, ...(normalized.primaryMuscles ?? []), ...(normalized.secondaryMuscles ?? [])].map((item) => item.toLowerCase());
+  score += target.muscles.filter((muscle) => muscles.includes(muscle.toLowerCase())).length * 3;
+  score += (input.musclePriority ?? []).filter((muscle) => muscles.includes(muscle.toLowerCase())).length * 3;
+  if (includesEquipment(normalized, input.equipment)) score += 4;
+  if (normalized.difficulty === input.experienceLevel) score += 2;
+  if (input.experienceLevel === "beginner" && normalized.difficulty === "advanced") score -= 5;
+  if (input.goal === "strength" && normalized.tags?.includes("compound")) score += 2;
+  if (input.goal === "fat-loss" && (normalized.equipment === "bodyweight" || normalized.tags?.includes("home"))) score += 1;
+  return score;
+}
+
+function routineExerciseFromDefinition(exercise: ExerciseDefinition, order: number, goal: WorkoutPlannerInput["goal"], experience: ExerciseDifficulty): RoutineExercise {
+  const normalized = normalizeExerciseDefinition(exercise);
+  const strength = goal === "strength";
+  const health = goal === "health";
+  const beginner = experience === "beginner";
+  return {
+    id: cryptoSafeId(),
+    definitionId: normalized.id,
+    order,
+    name: normalized.name,
+    muscleGroup: normalized.primaryMuscles?.[0] ?? normalized.muscleGroup,
+    targetSets: strength ? (beginner ? 3 : 4) : health ? 2 : 3,
+    targetRepsMin: strength ? 4 : normalized.movementPattern === "core" ? 30 : 8,
+    targetRepsMax: strength ? 6 : normalized.movementPattern === "core" ? 60 : goal === "fat-loss" ? 15 : 12,
+    targetWeightKg: normalized.equipment === "bodyweight" ? 0 : strength ? 50 : 25,
+    restSeconds: strength ? 150 : normalized.movementPattern === "isolation" || goal === "fat-loss" ? 60 : 90,
+    lastSession: `Planner: ${normalized.cues?.[0] ?? "start conservative"}`
+  };
+}
+
+export function buildWorkoutPlannerPreview(input: WorkoutPlannerInput, library: ExerciseDefinition[] = builtInExerciseDefinitions): WorkoutPlannerPreview {
+  const daysPerWeek = clampInt(input.daysPerWeek, 1, 6);
+  const equipment: EquipmentType[] = input.equipment.length ? input.equipment : ["bodyweight"];
+  const normalizedInput: WorkoutPlannerInput = { ...input, daysPerWeek, equipment };
+  const normalizedLibrary = library.map(normalizeExerciseDefinition);
+  const available = normalizedLibrary.filter((exercise) => includesEquipment(exercise, equipment));
+  const source = available.length ? available : normalizedLibrary.filter((exercise) => exercise.equipment === "bodyweight");
+  const weekdays = plannerWeekdays(daysPerWeek);
+  const split = plannerSplit(daysPerWeek, input.goal);
+  const exercisesPerDay = input.minutesPerSession && input.minutesPerSession < 40 ? 4 : input.minutesPerSession && input.minutesPerSession > 75 ? 7 : 5;
+  const usedByDay = new Set<string>();
+  const days = weekdays.map((weekday, index) => {
+    const target = split[index % split.length];
+    const picked = source
+      .map((exercise) => ({ exercise, score: exerciseScore(exercise, target, normalizedInput) }))
+      .sort((a, b) => b.score - a.score || a.exercise.name.localeCompare(b.exercise.name))
+      .filter((entry) => entry.score > 0 || source.length <= exercisesPerDay)
+      .filter((entry) => !usedByDay.has(entry.exercise.id))
+      .slice(0, exercisesPerDay);
+    if (picked.length < Math.min(3, exercisesPerDay)) {
+      source.slice(0, exercisesPerDay - picked.length).forEach((exercise) => picked.push({ exercise, score: 0 }));
+    }
+    picked.forEach((entry) => usedByDay.add(entry.exercise.id));
+    if (usedByDay.size > source.length - exercisesPerDay) usedByDay.clear();
+    return {
+      id: `planner-day-${index + 1}-${cryptoSafeId()}`,
+      name: target.name,
+      day: weekday,
+      order: index,
+      exercises: picked.map((entry, order) => routineExerciseFromDefinition(entry.exercise, order, input.goal, input.experienceLevel))
+    };
+  });
+  const nowIso = (input.now ?? new Date()).toISOString();
+  const missing = Array.from(new Set(library.map((exercise) => exercise.equipment).filter((item) => !equipment.includes(item))));
+  return {
+    routine: {
+      id: `routine-planner-${cryptoSafeId()}`,
+      name: `Coach planner ${daysPerWeek}d ${input.goal}`,
+      daysPerWeek,
+      days,
+      createdAt: nowIso,
+      updatedAt: nowIso
+    },
+    rationale: [
+      `Goal ${input.goal}, ${daysPerWeek} days/week, ${input.experienceLevel} level.`,
+      `Selected exercises from ${source.length} matching library entries.`,
+      `Session length target ${input.minutesPerSession ?? 60} minutes.`
+    ],
+    warnings: available.length ? [] : ["No exact equipment matches; generated bodyweight fallback plan."],
+    equipmentMissing: missing
+  };
+}
+
+function recentWeeklyVolume(sets: WorkoutSet[], now: Date, days: number): number {
+  const since = now.getTime() - days * 86400000;
+  return workingSetVolumeKg(sets.filter((set) => set.completedAt && new Date(set.completedAt).getTime() >= since));
+}
+
+function missedWorkoutCount(sessions: WorkoutSession[], now: Date): number {
+  const finished = sessions.filter((session) => session.status === "finished").sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  if (!finished[0]) return 0;
+  const daysSince = (now.getTime() - new Date(finished[0].startedAt).getTime()) / 86400000;
+  return Math.max(0, Math.floor(daysSince / 3));
+}
+
+export function coachV2Recommendation(input: CoachV2Input): Recommendation {
+  const now = input.now ?? new Date();
+  const base = progressiveOverloadRecommendation({
+    exerciseName: input.exercise.name,
+    targetWeightKg: input.exercise.targetWeightKg,
+    targetRepsMax: input.exercise.targetRepsMax,
+    recentSets: input.recentSets
+  });
+  const signals: string[] = [];
+  let recommendation: Recommendation = { ...base, title: `Coach V2: ${base.title}`, detectedSignals: signals };
+  const usefulSets = input.recentSets.filter(isWorkingVolumeSet).slice(-6);
+  const e1rms = usefulSets.map((set) => estimatedOneRepMax(set.actualWeightKg, set.actualReps));
+  const plateau = e1rms.length >= 4 && Math.max(...e1rms) - Math.min(...e1rms) <= Math.max(1, Math.max(...e1rms) * 0.025);
+  const currentVolume = recentWeeklyVolume(input.allSets ?? input.recentSets, now, 7);
+  const previousVolume = recentWeeklyVolume(input.allSets ?? [], new Date(now.getTime() - 7 * 86400000), 7);
+  const volumeJump = previousVolume > 0 && currentVolume > previousVolume * 1.35;
+  const readiness = input.readiness ? readinessScore(input.readiness) : undefined;
+  const missed = missedWorkoutCount(input.workoutSessions ?? [], now);
+
+  if (volumeJump) signals.push("volume-spike");
+  if (plateau) signals.push("plateau");
+  if (readiness !== undefined && readiness < 55) signals.push("low-readiness");
+  if (missed > 0) signals.push("missed-workouts");
+
+  if (volumeJump || (readiness !== undefined && readiness < 45)) {
+    recommendation = {
+      ...recommendation,
+      title: `Coach V2: deload ${input.exercise.name}`,
+      reason: volumeJump ? "Weekly volume increased too quickly, so a deload is safer than another load jump." : "Readiness is low, so reduce load and keep movement quality high.",
+      action: "deload",
+      nextWeightKg: Math.round(input.exercise.targetWeightKg * 0.9 * 2) / 2,
+      suggestedAction: "Run one easier week at roughly 90% load or 70% set volume, then reassess.",
+      dataBasis: [...recommendation.dataBasis, `7-day volume: ${Math.round(currentVolume)}kg`, previousVolume ? `Previous 7-day volume: ${Math.round(previousVolume)}kg` : "Previous 7-day volume unavailable"],
+      detectedSignals: signals
+    };
+  } else if (plateau) {
+    recommendation = {
+      ...recommendation,
+      title: `Coach V2: break plateau on ${input.exercise.name}`,
+      reason: "Estimated 1RM has stayed flat across recent working sets.",
+      action: "decrease",
+      nextWeightKg: Math.max(0, Math.round(input.exercise.targetWeightKg * 0.95 * 2) / 2),
+      suggestedAction: "Reduce load 5%, add one clean rep target, or swap variation for 2-3 weeks.",
+      dataBasis: [...recommendation.dataBasis, `Recent e1RM range: ${Math.round(Math.min(...e1rms))}-${Math.round(Math.max(...e1rms))}kg`],
+      detectedSignals: signals
+    };
+  } else if (missed > 0 && recommendation.action === "increase") {
+    recommendation = {
+      ...recommendation,
+      action: "hold",
+      nextWeightKg: input.exercise.targetWeightKg,
+      reason: "You earned a progression, but recent missed workouts make holding load for one exposure more reliable.",
+      suggestedAction: "Repeat the current load once, then increase if reps and RPE are stable.",
+      dataBasis: [...recommendation.dataBasis, `Missed workout blocks: ${missed}`],
+      detectedSignals: signals
+    };
+  }
+
+  const unavailable = input.availableEquipment?.length && input.exerciseLibrary?.length
+    ? input.exerciseLibrary.map(normalizeExerciseDefinition).filter((exercise) => exercise.name === input.exercise.name && !includesEquipment(exercise, input.availableEquipment ?? []))
+    : [];
+  if (unavailable.length) {
+    const substitutes = input.exerciseLibrary
+      ?.map(normalizeExerciseDefinition)
+      .filter((exercise) => includesEquipment(exercise, input.availableEquipment ?? []) && (exercise.primaryMuscles ?? []).includes(input.exercise.muscleGroup))
+      .slice(0, 3) ?? [];
+    if (substitutes.length) {
+      recommendation = {
+        ...recommendation,
+        detectedSignals: [...(recommendation.detectedSignals ?? []), "equipment-missing"],
+        substituteExerciseIds: substitutes.map((exercise) => exercise.id),
+        dataBasis: [...recommendation.dataBasis, `Substitutions: ${substitutes.map((exercise) => exercise.name).join(", ")}`]
+      };
+    }
+  }
+
+  return recommendation;
+}
+
+export function defaultSocialPrivacySettings(): SocialPrivacySettings {
+  return {
+    friendLeaderboardEnabled: false,
+    shareBadges: false,
+    shareWorkoutSummaries: false,
+    shareBodyMetrics: false,
+    shareWorkoutDetails: false
+  };
+}
+
+export const healthSyncDataTypes: HealthSyncDataType[] = ["weight", "workout", "hydration"];
+
+export function defaultHealthIntegrationSettings(): HealthIntegrationSettings {
+  return {
+    provider: "health-connect",
+    permissionStatus: "not_requested",
+    selectedDataTypes: [],
+    unitMapping: {
+      weight: "kg",
+      hydration: "ml",
+      workoutDistance: "km"
+    },
+    privacyAccepted: false,
+    nativeBridgeAvailable: false
+  };
+}
+
+export function normalizeHealthIntegrationSettings(input?: Partial<HealthIntegrationSettings>): HealthIntegrationSettings {
+  const defaults = defaultHealthIntegrationSettings();
+  const selectedDataTypes = (input?.selectedDataTypes ?? []).filter((type): type is HealthSyncDataType =>
+    healthSyncDataTypes.includes(type as HealthSyncDataType)
+  );
+  return {
+    ...defaults,
+    ...input,
+    provider: input?.provider === "apple-health" ? "apple-health" : "health-connect",
+    permissionStatus: isHealthPermissionStatus(input?.permissionStatus) ? input.permissionStatus : defaults.permissionStatus,
+    selectedDataTypes: Array.from(new Set(selectedDataTypes)),
+    unitMapping: {
+      ...defaults.unitMapping,
+      ...input?.unitMapping
+    },
+    privacyAccepted: Boolean(input?.privacyAccepted),
+    nativeBridgeAvailable: Boolean(input?.nativeBridgeAvailable)
+  };
+}
+
+export function requestHealthIntegrationPermission(
+  settings: HealthIntegrationSettings,
+  selectedDataTypes: HealthSyncDataType[],
+  now = new Date()
+): HealthIntegrationSettings {
+  const normalized = normalizeHealthIntegrationSettings({
+    ...settings,
+    selectedDataTypes
+  });
+  return {
+    ...normalized,
+    permissionStatus: normalized.nativeBridgeAvailable && normalized.privacyAccepted && normalized.selectedDataTypes.length ? "granted" : "requested",
+    lastPermissionRequestedAt: now.toISOString()
+  };
+}
+
+export function revokeHealthIntegrationPermission(settings: HealthIntegrationSettings, now = new Date()): HealthIntegrationSettings {
+  return {
+    ...normalizeHealthIntegrationSettings(settings),
+    permissionStatus: "revoked",
+    selectedDataTypes: [],
+    lastPermissionRequestedAt: now.toISOString(),
+    lastSyncedAt: undefined
+  };
+}
+
+export function canSyncHealthData(settings: HealthIntegrationSettings, dataType: HealthSyncDataType): boolean {
+  const normalized = normalizeHealthIntegrationSettings(settings);
+  return (
+    normalized.nativeBridgeAvailable &&
+    normalized.privacyAccepted &&
+    normalized.permissionStatus === "granted" &&
+    normalized.selectedDataTypes.includes(dataType)
+  );
+}
+
+export function healthIntegrationPrivacyCopy(settings: HealthIntegrationSettings): string {
+  const platform = settings.provider === "apple-health" ? "Apple Health cần ứng dụng iOS hỗ trợ quyền sức khỏe." : "Health Connect cần ứng dụng Android hỗ trợ quyền sức khỏe.";
+  return `${platform} Bản web này chỉ lưu lựa chọn đồng ý của bạn và không tự đồng bộ dữ liệu sức khỏe trong nền. Cân nặng, buổi tập và dữ liệu nước chỉ có thể đồng bộ sau khi bạn chọn nhóm dữ liệu và ứng dụng di động xác nhận quyền.`;
+}
+
+function isHealthPermissionStatus(value: unknown): value is HealthPermissionStatus {
+  return value === "not_requested" || value === "requested" || value === "granted" || value === "denied" || value === "revoked";
+}
+
+export function privateFriendLeaderboard(input: {
+  profileName: string;
+  friends: Friend[];
+  enabled: boolean;
+  myScore: number;
+  myBadgeStreakMonths: number;
+}): { visible: boolean; entries: { rank: number; displayName: string; score: number; badgeStreakMonths: number }[] } {
+  if (!input.enabled) return { visible: false, entries: [] };
+  const acceptedFriends = input.friends.filter((friend) => friend.status === "accepted");
+  const entries = [
+    { displayName: input.profileName || "You", score: input.myScore, badgeStreakMonths: input.myBadgeStreakMonths },
+    ...acceptedFriends.map((friend) => ({
+      displayName: friend.displayName,
+      score: friend.score,
+      badgeStreakMonths: friend.badgeStreakMonths
+    }))
+  ]
+    .sort((a, b) => b.score - a.score || b.badgeStreakMonths - a.badgeStreakMonths || a.displayName.localeCompare(b.displayName))
+    .map((entry, index) => ({ ...entry, rank: index + 1 }));
+  return { visible: true, entries };
+}
+
+export function buildBadgeSharePreview(input: {
+  badge: Pick<AchievementStatus, "name" | "status" | "streakMonths" | "progress" | "target">;
+  privacy: SocialPrivacySettings;
+  now?: Date;
+}): SharePreview | null {
+  if (!input.privacy.shareBadges) return null;
+  const status = String(input.badge.status);
+  const badgeStatus = status === "active" ? "đang bật" : status === "earned" ? "đã đạt" : status;
+  return {
+    id: `share-${cryptoSafeId()}`,
+    kind: "badge",
+    title: `Huy hiệu ${input.badge.name}`,
+    summary: `Huy hiệu ${badgeStatus}, streak ${input.badge.streakMonths} tháng, tiến độ ${input.badge.progress}/${input.badge.target}.`,
+    visibleFields: ["tên huy hiệu", "trạng thái huy hiệu", "streak huy hiệu", "tiến độ huy hiệu"],
+    redactedFields: ["cân nặng", "mỡ cơ thể", "chi tiết bài tập", "email"],
+    createdAt: (input.now ?? new Date()).toISOString()
+  };
+}
+
+export function buildWorkoutSummarySharePreview(input: {
+  session: Pick<WorkoutSession, "sessionName" | "durationSeconds" | "status">;
+  setCount: number;
+  totalVolumeKg: number;
+  privacy: SocialPrivacySettings;
+  now?: Date;
+}): SharePreview | null {
+  if (!input.privacy.shareWorkoutSummaries) return null;
+  const status = String(input.session.status);
+  const sessionStatus = status === "finished" ? "hoàn tất" : status === "active" ? "đang tập" : status === "paused" ? "tạm dừng" : status === "cancelled" ? "đã hủy" : status;
+  return {
+    id: `share-${cryptoSafeId()}`,
+    kind: "workout-summary",
+    title: `Tóm tắt ${input.session.sessionName}`,
+    summary: `Buổi tập ${sessionStatus}, ${Math.round(input.session.durationSeconds / 60)} phút, ${input.setCount} set, ${input.totalVolumeKg}kg volume.`,
+    visibleFields: ["tên buổi", "thời lượng", "số set", "tổng volume"],
+    redactedFields: [
+      "cân nặng",
+      "mỡ cơ thể",
+      "email",
+      ...(input.privacy.shareWorkoutDetails ? [] : ["tên bài tập", "tạ từng set", "rep từng set", "RPE"])
+    ],
+    createdAt: (input.now ?? new Date()).toISOString()
+  };
+}
+
+export function publishSharePreview(preview: SharePreview | null, privacy: SocialPrivacySettings, now = new Date()): SharedPost | null {
+  if (!preview) return null;
+  if (preview.kind === "badge" && !privacy.shareBadges) return null;
+  if (preview.kind === "workout-summary" && !privacy.shareWorkoutSummaries) return null;
+  return { ...preview, audience: "private-friends", publishedAt: now.toISOString() };
+}
+
+export function estimatedOneRepMax(weightKg: number, reps: number): number {
+  if (reps <= 1) return weightKg;
+  return Math.round(weightKg * (1 + reps / 30) * 10) / 10;
+}
+
+function round(value: number, digits = 0): number {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function dateOnly(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function rollingDateKeys(days: number, now = new Date()): string[] {
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  return Array.from({ length: days }, (_, index) => dateOnly(addDays(end, index - days + 1)));
+}
+
+function weekLabel(dateKeyValue: string): string {
+  const date = new Date(`${dateKeyValue}T00:00:00.000Z`);
+  const day = date.getUTCDay() || 7;
+  const monday = addDays(date, 1 - day);
+  return dateOnly(monday);
+}
+
+function monthKey(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthRange(now = new Date(), offsetMonths = 0): { start: Date; end: Date; days: number; label: string } {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offsetMonths, 1));
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offsetMonths + 1, 0));
+  return {
+    start,
+    end,
+    days: end.getUTCDate(),
+    label: monthKey(start)
+  };
+}
+
+function dateRangeKeys(start: Date, end: Date): string[] {
+  const keys: string[] = [];
+  let cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
+  const last = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
+  while (cursor <= last) {
+    keys.push(dateOnly(cursor));
+    cursor = addDays(cursor, 1);
+  }
+  return keys;
+}
+
+function isoDateInRange(value: string | undefined, start: Date, end: Date): boolean {
+  if (!value) return false;
+  const key = value.slice(0, 10);
+  return key >= dateOnly(start) && key <= dateOnly(end);
+}
+
+function trendDelta(next: number, previous: number): number {
+  return round(next - previous);
+}
+
+export function hydrationPeriodProgress(logs: HydrationLog[], targetMl: number, days: number, now = new Date()): PeriodProgress {
+  const keys = rollingDateKeys(days, now);
+  const totals = new Map(keys.map((key) => [key, 0]));
+  logs.forEach((log) => {
+    const key = log.loggedAt.slice(0, 10);
+    if (totals.has(key)) totals.set(key, (totals.get(key) ?? 0) + log.amountMl);
+  });
+  const values = [...totals.values()];
+  const hitDays = values.filter((total) => total >= targetMl).length;
+  return {
+    days,
+    averageMl: round(values.reduce((sum, total) => sum + total, 0) / days),
+    goalHitRate: round((hitDays / days) * 100),
+    hitDays
+  };
+}
+
+export function creatineConsistency(
+  logs: SupplementLog[],
+  enabled: boolean,
+  days = 30,
+  now = new Date()
+): ProgressDashboard["creatineConsistency"] {
+  if (!enabled) return undefined;
+  const keys = new Set(rollingDateKeys(days, now));
+  const takenDays = new Set(
+    logs
+      .filter((log) => log.name.toLowerCase() === "creatine" && log.status !== "skipped" && keys.has(log.loggedAt.slice(0, 10)))
+      .map((log) => log.loggedAt.slice(0, 10))
+  );
+  return {
+    days,
+    takenDays: takenDays.size,
+    consistencyRate: round((takenDays.size / days) * 100)
+  };
+}
+
+function workingWorkoutSets(sets: WorkoutSet[]): WorkoutSet[] {
+  return sets.filter(isWorkingVolumeSet);
+}
+
+export function exercisePersonalRecords(sets: WorkoutSet[]): ExercisePr[] {
+  const byExercise = workingWorkoutSets(sets).reduce<Map<string, WorkoutSet[]>>((map, set) => {
+    map.set(set.exerciseId, [...(map.get(set.exerciseId) ?? []), set]);
+    return map;
+  }, new Map());
+
+  return [...byExercise.entries()]
+    .map(([exerciseId, exerciseSets]) => {
+      const maxWeight = Math.max(...exerciseSets.map((set) => set.actualWeightKg));
+      const maxReps = Math.max(...exerciseSets.map((set) => set.actualReps));
+      const e1rm = Math.max(...exerciseSets.map((set) => estimatedOneRepMax(set.actualWeightKg, set.actualReps)));
+      const volumePr = Math.max(...exerciseSets.map((set) => set.actualWeightKg * set.actualReps));
+      return {
+        exerciseId,
+        exerciseName: exerciseSets[0]?.exerciseName ?? exerciseId,
+        maxWeightKg: round(maxWeight, 1),
+        maxReps,
+        estimatedOneRepMaxKg: round(e1rm, 1),
+        volumePrKg: round(volumePr)
+      };
+    })
+    .sort((a, b) => b.estimatedOneRepMaxKg - a.estimatedOneRepMaxKg || a.exerciseName.localeCompare(b.exerciseName));
+}
+
+export function detectWorkoutSetPrs(previousSets: WorkoutSet[], nextSet: WorkoutSet): WorkoutSetPr[] {
+  if (nextSet.actualReps <= 0 || nextSet.actualWeightKg < 0) return [];
+  const previous = workingWorkoutSets(previousSets).filter((set) => set.exerciseId === nextSet.exerciseId);
+  const nextE1Rm = round(estimatedOneRepMax(nextSet.actualWeightKg, nextSet.actualReps), 1);
+  const nextVolume = round(nextSet.actualWeightKg * nextSet.actualReps);
+  const previousMaxWeight = previous.length ? Math.max(...previous.map((set) => set.actualWeightKg)) : 0;
+  const previousMaxReps = previous.length ? Math.max(...previous.map((set) => set.actualReps)) : 0;
+  const previousE1Rm = previous.length ? round(Math.max(...previous.map((set) => estimatedOneRepMax(set.actualWeightKg, set.actualReps))), 1) : 0;
+  const previousVolume = previous.length ? round(Math.max(...previous.map((set) => set.actualWeightKg * set.actualReps))) : 0;
+  const prs: WorkoutSetPr[] = [];
+
+  if (nextSet.actualWeightKg > previousMaxWeight) prs.push({ type: "maxWeight", label: "PR tạ", previous: previousMaxWeight, next: nextSet.actualWeightKg });
+  if (nextSet.actualReps > previousMaxReps) prs.push({ type: "maxReps", label: "PR rep", previous: previousMaxReps, next: nextSet.actualReps });
+  if (nextE1Rm > previousE1Rm) prs.push({ type: "estimatedOneRepMax", label: "e1RM PR", previous: previousE1Rm, next: nextE1Rm });
+  if (nextVolume > previousVolume) prs.push({ type: "volume", label: "PR volume", previous: previousVolume, next: nextVolume });
+
+  return prs;
+}
+
+export function e1RmTrendByExercise(sets: WorkoutSet[], mainExerciseLimit = 3): E1RmTrendPoint[] {
+  const workingSets = workingWorkoutSets(sets);
+  const volumeByExercise = workingSets.reduce<Map<string, number>>((map, set) => {
+    map.set(set.exerciseId, (map.get(set.exerciseId) ?? 0) + set.actualWeightKg * set.actualReps);
+    return map;
+  }, new Map());
+  const mainExerciseIds = [...volumeByExercise.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, mainExerciseLimit)
+    .map(([exerciseId]) => exerciseId);
+  const bestByExerciseDate = workingSets.reduce<Map<string, E1RmTrendPoint>>((map, set) => {
+    const date = (set.completedAt ?? new Date().toISOString()).slice(0, 10);
+    if (!mainExerciseIds.includes(set.exerciseId)) return map;
+    const key = `${set.exerciseId}:${date}`;
+    const estimated = estimatedOneRepMax(set.actualWeightKg, set.actualReps);
+    const current = map.get(key);
+    if (!current || estimated > current.estimatedOneRepMaxKg) {
+      map.set(key, {
+        date,
+        exerciseId: set.exerciseId,
+        exerciseName: set.exerciseName,
+        estimatedOneRepMaxKg: round(estimated, 1)
+      });
+    }
+    return map;
+  }, new Map());
+  return [...bestByExerciseDate.values()].sort((a, b) => a.date.localeCompare(b.date) || a.exerciseName.localeCompare(b.exerciseName));
+}
+
+export function buildProgressDashboard(params: {
+  hydrationLogs: HydrationLog[];
+  waterTargetMl: number;
+  supplementLogs: SupplementLog[];
+  creatineEnabled: boolean;
+  workoutSessions: WorkoutSession[];
+  workoutSets: WorkoutSet[];
+  workoutExercises: WorkoutExercise[];
+  now?: Date;
+}): ProgressDashboard {
+  const now = params.now ?? new Date();
+  const dayKeys7 = new Set(rollingDateKeys(7, now));
+  const dayKeys30 = new Set(rollingDateKeys(30, now));
+  const activeSessions = params.workoutSessions.filter((session) => session.status !== "cancelled");
+  const workingSets = workingWorkoutSets(params.workoutSets);
+  const exerciseMuscles = new Map(params.workoutExercises.map((exercise) => [exercise.id, exercise.muscleGroup]));
+
+  const weeklyVolume = workingSets.reduce<Map<string, number>>((map, set) => {
+    const key = weekLabel((set.completedAt ?? new Date().toISOString()).slice(0, 10));
+    map.set(key, (map.get(key) ?? 0) + set.actualWeightKg * set.actualReps);
+    return map;
+  }, new Map());
+
+  const volumeByMuscleGroup = workingSets.reduce<Map<string, number>>((map, set) => {
+    const muscle = exerciseMuscles.get(set.exerciseId) ?? set.exerciseName;
+    map.set(muscle, (map.get(muscle) ?? 0) + set.actualWeightKg * set.actualReps);
+    return map;
+  }, new Map());
+
+  return {
+    hydration7: hydrationPeriodProgress(params.hydrationLogs, params.waterTargetMl, 7, now),
+    hydration30: hydrationPeriodProgress(params.hydrationLogs, params.waterTargetMl, 30, now),
+    creatineConsistency: creatineConsistency(params.supplementLogs, params.creatineEnabled, 30, now),
+    workoutCount7: activeSessions.filter((session) => dayKeys7.has(session.startedAt.slice(0, 10))).length,
+    workoutCount30: activeSessions.filter((session) => dayKeys30.has(session.startedAt.slice(0, 10))).length,
+    weeklyVolume: [...weeklyVolume.entries()]
+      .map(([label, volumeKg]) => ({ label, volumeKg: round(volumeKg) }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    volumeByMuscleGroup: [...volumeByMuscleGroup.entries()]
+      .map(([label, volumeKg]) => ({ label, volumeKg: round(volumeKg) }))
+      .sort((a, b) => b.volumeKg - a.volumeKg || a.label.localeCompare(b.label)),
+    e1RmTrend: e1RmTrendByExercise(params.workoutSets),
+    prs: exercisePersonalRecords(params.workoutSets)
+  };
+}
+
+function reportMetrics(params: {
+  hydrationLogs: HydrationLog[];
+  waterTargetMl: number;
+  workoutSessions: WorkoutSession[];
+  workoutSets: WorkoutSet[];
+  start: Date;
+  end: Date;
+}) {
+  const keys = dateRangeKeys(params.start, params.end);
+  const keySet = new Set(keys);
+  const hydrationTotals = new Map(keys.map((key) => [key, 0]));
+  params.hydrationLogs.forEach((log) => {
+    const key = log.loggedAt.slice(0, 10);
+    if (hydrationTotals.has(key)) hydrationTotals.set(key, (hydrationTotals.get(key) ?? 0) + log.amountMl);
+  });
+  const hydrationValues = [...hydrationTotals.values()];
+  const hydrationHitDays = hydrationValues.filter((total) => total >= params.waterTargetMl).length;
+  const workoutSessions = params.workoutSessions.filter((session) => session.status !== "cancelled" && keySet.has(session.startedAt.slice(0, 10)));
+  const workoutSets = params.workoutSets.filter((set) => isoDateInRange(set.completedAt, params.start, params.end));
+  const totalVolumeKg = workingSetVolumeKg(workoutSets);
+
+  return {
+    hydrationAverageMl: round(hydrationValues.reduce((sum, total) => sum + total, 0) / Math.max(1, keys.length)),
+    hydrationGoalHitRate: round((hydrationHitDays / Math.max(1, keys.length)) * 100),
+    hydrationHitDays,
+    workoutCount: workoutSessions.length,
+    workoutSets,
+    totalVolumeKg
+  };
+}
+
+function reportTrend(current: ReturnType<typeof reportMetrics>, previous: ReturnType<typeof reportMetrics>): ReportTrend {
+  return {
+    hydrationAverageMl: trendDelta(current.hydrationAverageMl, previous.hydrationAverageMl),
+    goalHitRate: trendDelta(current.hydrationGoalHitRate, previous.hydrationGoalHitRate),
+    workoutCount: trendDelta(current.workoutCount, previous.workoutCount),
+    totalVolumeKg: trendDelta(current.totalVolumeKg, previous.totalVolumeKg)
+  };
+}
+
+function rollingMonthlyStreak(params: {
+  now: Date;
+  predicate: (range: { start: Date; end: Date; days: number; label: string }) => boolean;
+  offsetBeforeCurrent?: number;
+}): number {
+  let streak = 0;
+  for (let offset = params.offsetBeforeCurrent ?? -1; offset >= -24; offset -= 1) {
+    const range = monthRange(params.now, offset);
+    if (!params.predicate(range)) break;
+    streak += 1;
+  }
+  return streak;
+}
+
+export function buildProgressReports(params: {
+  hydrationLogs: HydrationLog[];
+  waterTargetMl: number;
+  workoutSessions: WorkoutSession[];
+  workoutSets: WorkoutSet[];
+  workoutExercises: WorkoutExercise[];
+  hydrationEnabled?: boolean;
+  workoutEnabled?: boolean;
+  volumeEnabled?: boolean;
+  monthlyHydrationTargetDays?: number;
+  monthlyWorkoutTargetCount?: number;
+  now?: Date;
+}): ProgressReports {
+  const now = params.now ?? new Date();
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const weekEnd = today;
+  const weekStart = addDays(weekEnd, -6);
+  const previousWeekEnd = addDays(weekStart, -1);
+  const previousWeekStart = addDays(previousWeekEnd, -6);
+  const currentMonth = monthRange(now, 0);
+  const previousMonth = monthRange(now, -1);
+  const monthlyHydrationTargetDays = params.monthlyHydrationTargetDays ?? Math.min(24, currentMonth.days);
+  const monthlyWorkoutTargetCount = params.monthlyWorkoutTargetCount ?? 12;
+
+  const weeklyMetrics = reportMetrics({ ...params, start: weekStart, end: weekEnd });
+  const previousWeeklyMetrics = reportMetrics({ ...params, start: previousWeekStart, end: previousWeekEnd });
+  const monthlyMetrics = reportMetrics({ ...params, start: currentMonth.start, end: currentMonth.end });
+  const previousMonthlyMetrics = reportMetrics({ ...params, start: previousMonth.start, end: previousMonth.end });
+  const previousMonthVolume = previousMonthlyMetrics.totalVolumeKg;
+  const currentVolumeChangePercent = previousMonthVolume > 0 ? round(((monthlyMetrics.totalVolumeKg - previousMonthVolume) / previousMonthVolume) * 100) : 0;
+  const previousPreviousMonth = monthRange(now, -2);
+
+  const hydrationPredicate = (range: { start: Date; end: Date }) =>
+    reportMetrics({ ...params, start: range.start, end: range.end }).hydrationHitDays >= monthlyHydrationTargetDays;
+  const workoutPredicate = (range: { start: Date; end: Date }) =>
+    reportMetrics({ ...params, start: range.start, end: range.end }).workoutCount >= monthlyWorkoutTargetCount;
+  const volumePredicate = (range: { start: Date; end: Date }, previousRange: { start: Date; end: Date }) => {
+    const current = reportMetrics({ ...params, start: range.start, end: range.end }).totalVolumeKg;
+    const previous = reportMetrics({ ...params, start: previousRange.start, end: previousRange.end }).totalVolumeKg;
+    return previous > 0 && ((current - previous) / previous) * 100 >= 3;
+  };
+
+  const previousHydrationActive = hydrationPredicate(previousMonth);
+  const previousWorkoutActive = workoutPredicate(previousMonth);
+  const previousVolumeActive = volumePredicate(previousMonth, previousPreviousMonth);
+  const previousVolumeStreak = rollingMonthlyStreak({
+    now,
+    offsetBeforeCurrent: -1,
+    predicate: (range) => volumePredicate(range, monthRange(new Date(`${range.label}-01T00:00:00.000Z`), -1))
+  });
+
+  const badges = monthlyAchievements({
+    hydrationGoalDays: monthlyMetrics.hydrationHitDays,
+    hydrationTargetDays: monthlyHydrationTargetDays,
+    workoutCount: monthlyMetrics.workoutCount,
+    workoutTargetCount: monthlyWorkoutTargetCount,
+    volumeChangePercent: currentVolumeChangePercent,
+    previousHydrationStreak: rollingMonthlyStreak({ now, predicate: hydrationPredicate }),
+    previousWorkoutStreak: rollingMonthlyStreak({ now, predicate: workoutPredicate }),
+    previousVolumeStreak,
+    previousHydrationActive,
+    previousWorkoutActive,
+    previousVolumeActive,
+    hydrationEnabled: params.hydrationEnabled,
+    workoutEnabled: params.workoutEnabled,
+    volumeEnabled: params.volumeEnabled
+  });
+
+  return {
+    weekly: {
+      label: "Last 7 days",
+      period: "weekly",
+      periodStart: dateOnly(weekStart),
+      periodEnd: dateOnly(weekEnd),
+      hydrationAverageMl: weeklyMetrics.hydrationAverageMl,
+      hydrationGoalHitRate: weeklyMetrics.hydrationGoalHitRate,
+      hydrationHitDays: weeklyMetrics.hydrationHitDays,
+      workoutCount: weeklyMetrics.workoutCount,
+      totalVolumeKg: weeklyMetrics.totalVolumeKg,
+      prs: exercisePersonalRecords(weeklyMetrics.workoutSets),
+      badges: [],
+      trendVsPrevious: reportTrend(weeklyMetrics, previousWeeklyMetrics)
+    },
+    monthly: {
+      label: currentMonth.label,
+      period: "monthly",
+      periodStart: dateOnly(currentMonth.start),
+      periodEnd: dateOnly(currentMonth.end),
+      hydrationAverageMl: monthlyMetrics.hydrationAverageMl,
+      hydrationGoalHitRate: monthlyMetrics.hydrationGoalHitRate,
+      hydrationHitDays: monthlyMetrics.hydrationHitDays,
+      workoutCount: monthlyMetrics.workoutCount,
+      totalVolumeKg: monthlyMetrics.totalVolumeKg,
+      prs: exercisePersonalRecords(monthlyMetrics.workoutSets),
+      badges,
+      trendVsPrevious: reportTrend(monthlyMetrics, previousMonthlyMetrics)
+    }
+  };
+}
+
+export function latestBodyMetric(metrics: BodyMetric[]): BodyMetric | undefined {
+  return [...metrics].sort((a, b) => b.measuredAt.localeCompare(a.measuredAt))[0];
+}
+
+export function bodyWeightDelta(metrics: BodyMetric[]): number {
+  const sorted = [...metrics].sort((a, b) => a.measuredAt.localeCompare(b.measuredAt));
+  if (sorted.length < 2) return 0;
+  return Math.round((sorted[sorted.length - 1].weightKg - sorted[0].weightKg) * 10) / 10;
+}
+
+export function kgToLb(kg: number): number {
+  return round(kg * 2.2046226218, 1);
+}
+
+export function lbToKg(lb: number): number {
+  return round(lb / 2.2046226218, 1);
+}
+
+export function formatWeight(kg: number, unit: WeightUnit): string {
+  return unit === "lb" ? `${kgToLb(kg)}lb` : `${round(kg, 1)}kg`;
+}
+
+export function displayWeight(kg: number, unit: WeightUnit): number {
+  return unit === "lb" ? kgToLb(kg) : round(kg, 1);
+}
+
+export function inputWeightToKg(value: number, unit: WeightUnit): number {
+  return unit === "lb" ? lbToKg(value) : round(value, 1);
+}
+
+export function validateBodyMetric(input: BodyMetricValidationInput): string[] {
+  const errors: string[] = [];
+  if (!Number.isFinite(input.weightKg) || input.weightKg <= 0) errors.push("Cân nặng phải lớn hơn 0.");
+  if (input.bodyFatPercent !== undefined && (!Number.isFinite(input.bodyFatPercent) || input.bodyFatPercent < 0 || input.bodyFatPercent > 70)) {
+    errors.push("Mỡ cơ thể phải nằm trong khoảng 0 đến 70%.");
+  }
+  const circumferenceFields: [keyof BodyMetricValidationInput, string][] = [
+    ["waistCm", "Eo"],
+    ["chestCm", "Ngực"],
+    ["armCm", "Tay"],
+    ["thighCm", "Đùi"]
+  ];
+  circumferenceFields.forEach(([key, label]) => {
+    const value = input[key];
+    if (value !== undefined && (!Number.isFinite(value) || value <= 0 || value > 250)) {
+      errors.push(`${label} phải nằm trong khoảng 1 đến 250cm.`);
+    }
+  });
+  return errors;
+}
+
+function movingAverage(values: number[], index: number, windowSize = 3): number {
+  const start = Math.max(0, index - windowSize + 1);
+  const windowValues = values.slice(start, index + 1);
+  return round(windowValues.reduce((sum, value) => sum + value, 0) / windowValues.length, 1);
+}
+
+export function buildBodyMetricChartDataset(params: {
+  metrics: BodyMetric[];
+  rangeDays: BodyMetricRangeDays;
+  unit: WeightUnit;
+  goalWeightKg?: number;
+  goalBodyFatPercent?: number;
+  now?: Date;
+}): BodyMetricChartDataset {
+  const end = new Date(params.now ?? new Date());
+  const start = addDays(new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate())), -params.rangeDays + 1);
+  const filtered = params.metrics
+    .filter((metric) => new Date(metric.measuredAt) >= start && new Date(metric.measuredAt) <= end)
+    .sort((a, b) => a.measuredAt.localeCompare(b.measuredAt));
+  const weights = filtered.map((metric) => displayWeight(metric.weightKg, params.unit));
+  const bodyFatValues = filtered.map((metric) => metric.bodyFatPercent).filter((value): value is number => value !== undefined);
+  const points = filtered.map((metric, index) => {
+    const bodyFatIndex = filtered.slice(0, index + 1).filter((item) => item.bodyFatPercent !== undefined).length - 1;
+    const bodyFatPercent = metric.bodyFatPercent;
+    return {
+      date: metric.measuredAt.slice(0, 10),
+      weight: displayWeight(metric.weightKg, params.unit),
+      smoothedWeight: movingAverage(weights, index),
+      bodyFatPercent,
+      smoothedBodyFatPercent:
+        bodyFatPercent !== undefined && bodyFatIndex >= 0 ? movingAverage(bodyFatValues, bodyFatIndex) : undefined
+    };
+  });
+  return {
+    rangeDays: params.rangeDays,
+    unit: params.unit,
+    weightGoal: params.goalWeightKg !== undefined ? displayWeight(params.goalWeightKg, params.unit) : undefined,
+    bodyFatGoal: params.goalBodyFatPercent,
+    points,
+    hasWeightData: points.length > 0,
+    hasBodyFatData: points.some((point) => point.bodyFatPercent !== undefined)
+  };
+}
+
+export function exportAppData(data: unknown): string {
+  return JSON.stringify(data, null, 2);
+}
+
+export function toCsv(rows: Record<string, unknown>[]): string {
+  if (!rows.length) return "";
+  const headers = Array.from(rows.reduce<Set<string>>((set, row) => {
+    Object.keys(row).forEach((key) => set.add(key));
+    return set;
+  }, new Set()));
+  const escape = (value: unknown) => {
+    const text = value === undefined || value === null ? "" : String(value);
+    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  return [headers.join(","), ...rows.map((row) => headers.map((header) => escape(row[header])).join(","))].join("\n");
+}
+
+export function readinessScore(input: { energy: number; sleepQuality: number; soreness: number; stress: number }): number {
+  const clamp = (value: number) => Math.min(5, Math.max(1, value));
+  const positive = clamp(input.energy) + clamp(input.sleepQuality);
+  const inverse = 6 - clamp(input.soreness) + (6 - clamp(input.stress));
+  return Math.round(((positive + inverse) / 20) * 100);
+}
+
+export type SyncQueueItem = {
+  id: string;
+  type: string;
+  status: "pending" | "syncing" | "synced" | "failed" | "conflict";
+  createdAt: string;
+  updatedAt?: string;
+  attempts?: number;
+  nextRetryAt?: string;
+  lastError?: string;
+  idempotencyKey?: string;
+  conflict?: {
+    kind: "routine";
+    local: unknown;
+    remote: unknown;
+    message: string;
+  };
+  payload: unknown;
+};
+
+export function enqueueSync(queue: SyncQueueItem[], item: Omit<SyncQueueItem, "id" | "status" | "createdAt">): SyncQueueItem[] {
+  const id = cryptoSafeId();
+  return [
+    {
+      ...item,
+      id,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      attempts: item.attempts ?? 0,
+      idempotencyKey: item.idempotencyKey ?? id
+    },
+    ...queue
+  ];
+}
+
+export function markSyncQueue(queue: SyncQueueItem[], status: SyncQueueItem["status"]): SyncQueueItem[] {
+  return queue.map((item) =>
+    item.status === "pending" || item.status === "failed" || item.status === "syncing"
+      ? { ...item, status, updatedAt: new Date().toISOString(), lastError: status === "synced" ? undefined : item.lastError }
+      : item
+  );
+}
+
+export function syncRetryDelayMs(attempts: number): number {
+  return Math.min(60_000, 1000 * 2 ** Math.max(0, attempts));
+}
+
+export function markSyncItemSyncing(queue: SyncQueueItem[], id: string): SyncQueueItem[] {
+  return queue.map((item) => (item.id === id ? { ...item, status: "syncing", updatedAt: new Date().toISOString() } : item));
+}
+
+export function markSyncItemSynced(queue: SyncQueueItem[], id: string): SyncQueueItem[] {
+  return queue.map((item) =>
+    item.id === id ? { ...item, status: "synced", updatedAt: new Date().toISOString(), lastError: undefined, nextRetryAt: undefined } : item
+  );
+}
+
+export function markSyncItemFailed(queue: SyncQueueItem[], id: string, error: string, now = new Date()): SyncQueueItem[] {
+  return queue.map((item) => {
+    if (item.id !== id) return item;
+    const attempts = (item.attempts ?? 0) + 1;
+    return {
+      ...item,
+      status: "failed",
+      attempts,
+      lastError: error,
+      updatedAt: now.toISOString(),
+      nextRetryAt: new Date(now.getTime() + syncRetryDelayMs(attempts)).toISOString()
+    };
+  });
+}
+
+export function markSyncItemConflict(queue: SyncQueueItem[], id: string, conflict: NonNullable<SyncQueueItem["conflict"]>): SyncQueueItem[] {
+  return queue.map((item) =>
+    item.id === id ? { ...item, status: "conflict", conflict, lastError: conflict.message, updatedAt: new Date().toISOString() } : item
+  );
+}
+
+export function monthlyAchievements(params: {
+  hydrationGoalDays: number;
+  hydrationTargetDays: number;
+  volumeChangePercent: number;
+  previousHydrationStreak?: number;
+  previousVolumeStreak?: number;
+  workoutCount?: number;
+  workoutTargetCount?: number;
+  previousWorkoutStreak?: number;
+  hydrationEnabled?: boolean;
+  workoutEnabled?: boolean;
+  volumeEnabled?: boolean;
+  previousHydrationActive?: boolean;
+  previousWorkoutActive?: boolean;
+  previousVolumeActive?: boolean;
+}): AchievementStatus[] {
+  const hydrationEnabled = params.hydrationEnabled !== false;
+  const workoutEnabled = params.workoutEnabled !== false;
+  const volumeEnabled = params.volumeEnabled !== false;
+  const workoutTarget = params.workoutTargetCount ?? 12;
+  const workoutCount = params.workoutCount ?? 0;
+  const hydrationActive = params.hydrationGoalDays >= params.hydrationTargetDays;
+  const workoutActive = workoutCount >= workoutTarget;
+  const volumeActive = params.volumeChangePercent >= 3;
+  const statusFor = (enabled: boolean, active: boolean, previousActive?: boolean): AchievementStatus["status"] => {
+    if (!enabled) return "disabled";
+    if (active) return "active";
+    return previousActive ? "lost" : "locked";
+  };
+
+  return [
+    {
+      code: "monthly_hydration",
+      name: "Uống nước đều",
+      status: statusFor(hydrationEnabled, hydrationActive, params.previousHydrationActive),
+      progress: params.hydrationGoalDays,
+      target: params.hydrationTargetDays,
+      streakMonths: hydrationEnabled && hydrationActive ? (params.previousHydrationStreak ?? 0) + 1 : 0,
+      condition: `Đạt mục tiêu nước trong ${params.hydrationTargetDays} ngày của tháng này.`
+    },
+    {
+      code: "workout_consistency",
+      name: "Giữ nhịp tập",
+      status: statusFor(workoutEnabled, workoutActive, params.previousWorkoutActive),
+      progress: workoutCount,
+      target: workoutTarget,
+      streakMonths: workoutEnabled && workoutActive ? (params.previousWorkoutStreak ?? 0) + 1 : 0,
+      condition: `Hoàn tất ${workoutTarget} buổi tập trong tháng này.`
+    },
+    {
+      code: "volume_progression",
+      name: "Tăng volume",
+      status: statusFor(volumeEnabled, volumeActive, params.previousVolumeActive),
+      progress: Math.max(0, Math.round(params.volumeChangePercent)),
+      target: 3,
+      streakMonths: volumeEnabled && volumeActive ? (params.previousVolumeStreak ?? 0) + 1 : 0,
+      condition: "Tăng volume set chính hằng tháng ít nhất 3% so với tháng trước."
+    }
+  ];
+}
+
+export function shouldSendCreatineReminder(params: {
+  logs: SupplementLog[];
+  scheduledHour: number;
+  scheduleHours?: number[];
+  remindBeforeMinutes: number;
+  lastReminderAt?: string;
+  now?: Date;
+  enabled?: boolean;
+  mode?: ReminderMode;
+  intervalHours?: number;
+  snoozeUntil?: string;
+  quietHours?: { start: number; end: number };
+  quietHoursEnabled?: boolean;
+}): boolean {
+  if (params.enabled === false) return false;
+  const now = params.now ?? new Date();
+  if (isSnoozed(params.snoozeUntil, now)) return false;
+  if (params.quietHours && params.quietHoursEnabled !== false && isInQuietHours(now, params.quietHours)) return false;
+  const today = todayKey(now);
+  const loggedToday = params.logs.some((log) => log.name.toLowerCase() === "creatine" && log.loggedAt.startsWith(today));
+  if (loggedToday) return false;
+
+  const mode = params.mode ?? "fixed";
+  if (mode === "interval") {
+    const intervalHours = Math.max(1, params.intervalHours ?? 24);
+    const minutesSinceLastReminder = minutesSince(params.lastReminderAt, now);
+    if (minutesSinceLastReminder !== undefined && minutesSinceLastReminder < intervalHours * 60) return false;
+    return true;
+  }
+
+  return fixedReminderDue({
+    times: params.scheduleHours?.length ? params.scheduleHours : [params.scheduledHour],
+    now,
+    lastReminderAt: params.lastReminderAt,
+    minuteOffset: -params.remindBeforeMinutes
+  });
+}
+
+export function cryptoSafeId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
