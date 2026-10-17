@@ -122,6 +122,16 @@ using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
 
 drop trigger if exists routine_templates_set_updated_at on public.routine_templates;
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
 create trigger routine_templates_set_updated_at
 before update on public.routine_templates
 for each row execute function public.set_updated_at();
