@@ -5,16 +5,15 @@ import React from "react";
 import { MainNavigation, type AppSection } from "./app-navigation";
 
 const text = {
-  avatar: "\u1ea2nh \u0111\u1ea1i di\u1ec7n ng\u01b0\u1eddi d\u00f9ng",
-  localFirst: "L\u01b0u tr\u00ean m\u00e1y tr\u01b0\u1edbc",
-  notifications: "Th\u00f4ng b\u00e1o"
+  avatar: "Ảnh đại diện người dùng",
+  localFirst: "Lưu trên máy trước",
+  notifications: "Thông báo"
 };
 
 type AppChromeProps = {
   active: AppSection | "hydration";
   children: React.ReactNode;
   hasReminder: boolean;
-  isInkShell: boolean;
   now: Date;
   onNavigate: (section: AppSection) => void;
   onUndo: () => void;
@@ -28,7 +27,7 @@ type AppChromeProps = {
 
 export function AppChrome(props: AppChromeProps) {
   return (
-    <main className={`app-shell ${props.isInkShell ? "ink-shell" : ""}`}>
+    <main className="app-shell">
       <header className="top-bar">
         <button className="avatar" aria-label={text.avatar} onClick={() => props.onNavigate("settings")}>
           <User size={18} />

@@ -2,9 +2,9 @@ import Link from "next/link";
 import { Home } from "lucide-react";
 
 const text = {
-  title: "Kh\u00f4ng t\u00ecm th\u1ea5y trang",
-  body: "\u0110\u01b0\u1eddng d\u1eabn n\u00e0y kh\u00f4ng t\u1ed3n t\u1ea1i ho\u1eb7c \u0111\u00e3 \u0111\u01b0\u1ee3c \u0111\u1ed5i.",
-  home: "V\u1ec1 H\u00f4m nay"
+  title: "Không tìm thấy trang",
+  body: "Đường dẫn này không tồn tại hoặc đã được đổi.",
+  home: "Về Hôm nay"
 };
 
 export default function NotFound() {

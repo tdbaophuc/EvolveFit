@@ -259,7 +259,10 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
       }
     }
     reply.header(requestIdResponseHeader(), request.requestId);
-    return { ok: true, data: publicSession(cookieSession ?? getAuthSession(), exposeTokens(env)), requestId: request.requestId };
+    const session = publicSession(cookieSession ?? getAuthSession(), exposeTokens(env));
+    // Memory (local demo) mode has no Supabase tokens: a valid sealed cookie is the session.
+    if (cookieSession && request.apiRepository.mode === "memory") session.authenticated = true;
+    return { ok: true, data: session, requestId: request.requestId };
   });
 
   app.post("/api/auth/sign-in", async (request, reply) => {

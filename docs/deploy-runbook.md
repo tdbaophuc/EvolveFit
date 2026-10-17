@@ -8,18 +8,22 @@
 npm ci
 ```
 
-2. Configure backend env from `apps/api/.env.example`.
+2. Configure backend env: copy `apps/api/.env.example` to `apps/api/.env`. `apps/api/src/server.ts` loads it automatically; variables already set in the shell or hosting platform win.
 
-Required for production-like Supabase mode:
-- `API_DATA_MODE=supabase`
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `API_CORS_ORIGIN=http://localhost:3000`
-- optional `API_BODY_LIMIT_BYTES`
+`APP_ENV`/`NODE_ENV` of `production` or `staging` run fail-closed: the API refuses to start unless all of these are set (see `apps/api/src/lib/config.ts`):
+- `API_DATA_MODE=supabase` (memory mode is local demo only)
+- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
+- `SESSION_SECRET` (>= 32 chars; encrypts the session cookie). Rotate via `SESSION_SECRET_PREVIOUS`.
+- `API_CORS_ORIGIN` (exact web origins, comma-separated)
+- `APP_BASE_URL` (https web URL, used for auth redirects)
+- `CRON_SECRET` >= 32 chars when set
+
+Optional:
+- `API_BODY_LIMIT_BYTES`
 - optional grouped rate limits such as `API_RATE_LIMIT_AUTH_MAX`, `API_RATE_LIMIT_SYNC_MAX`, and `API_RATE_LIMIT_PUBLIC_WINDOW_MS`
-- optional `COOKIE_DOMAIN`
-- `CRON_SECRET`
+- `COOKIE_SAMESITE` (`lax` default, `none` when web and API are on different sites), `COOKIE_DOMAIN`
+- `TRUST_PROXY` (hop count such as `1` behind a load balancer)
+- `ADMIN_BOOTSTRAP_EMAILS` (env-bootstrapped super admins)
 - `CRON_USER_ID` and optional `CRON_USER_EMAIL` for scheduler-owned cron state
 
 Required for Web Push delivery:
@@ -44,10 +48,15 @@ Default local ports are API `4000` and web `3000` unless `PORT` is overridden.
 ## Health Checks
 
 - `GET /api/health`: liveness. It does not require auth and should stay cheap.
-- `GET /api/ready`: readiness. In memory mode it returns ready. In Supabase mode it verifies required Supabase env and production tables through service-role access.
-- `GET /api/docs/openapi`: serves the backend OpenAPI contract from `docs/api-v1.openapi.json`.
+- `GET /api/ready`: readiness. Supabase mode verifies env and production tables (including `user_roles` and `admin_audit_logs`) through service-role access; memory mode is never ready in production.
+- `GET /api/docs/openapi`: serves `docs/api-v1.openapi.json`. Hidden (404) in production unless `API_PUBLIC_DOCS=true`.
+- `GET /api/observability/logs` and `GET /api/supabase/verify` are super-admin only (`ops:read`).
 
-Use `/api/health` for container liveness and `/api/ready` for load balancer readiness.
+Use `/api/health` as the platform health check. Check `/api/ready` after each deploy, or run the read-only probe locally:
+
+```bash
+npm run verify:supabase -w @evolvefit/api -- apps/api/.env.production
+```
 
 ## API Contract and Hardening
 
@@ -77,7 +86,8 @@ Supabase Auth settings to verify per environment:
 - Email confirmation can be enabled; sign-up returns `needsEmailVerification=true` when Supabase does not issue an access token immediately.
 
 Session behavior:
-- Backend stores Supabase access/refresh tokens in the httpOnly `evolvefit_session` cookie when sign-in, sign-up, refresh, or OAuth succeeds.
+- Backend stores Supabase access/refresh tokens in the httpOnly `evolvefit_session` cookie when sign-in, sign-up, refresh, or OAuth succeeds. The cookie is AES-256-GCM sealed with `SESSION_SECRET`; tokens are not returned in JSON unless `AUTH_EXPOSE_TOKENS=true` (native clients).
+- Cookie-authenticated `POST/PUT/PATCH/DELETE` requests must send `X-EvolveFit-Client` and come from a trusted origin (CSRF protection). Bearer-token requests are exempt.
 - Data endpoints also accept `Authorization: Bearer <Supabase JWT>` for native/API clients.
 - `POST /api/auth/refresh` uses the refresh token from the request body or session cookie and rotates the httpOnly cookie.
 
@@ -93,7 +103,7 @@ Account deletion:
 
 ## Repository and Sync Safety
 
-Apply all Supabase migrations through `supabase db push` or the hosted migration runner before enabling `API_DATA_MODE=supabase`. Migration `0005_sync_resource_safety.sql` adds sync/resource indexes and metadata used by production-safe replay checks.
+Apply all Supabase migrations (`0001` through `0010`) through `supabase db push` or the SQL editor before enabling `API_DATA_MODE=supabase`. Migration `0010_admin_store_production.sql` is required for admin role grants. Migration `0005_sync_resource_safety.sql` adds sync/resource indexes and metadata used by production-safe replay checks.
 
 Mutation routes persist through resource-scoped repository writes instead of replacing the full `AppState`. `/api/sync/batch` writes each resource mutation before storing its idempotent sync result. See `docs/sync-repository-boundary.md` for the current domain boundary, retry semantics, conflict confirmation flow, and staging checklist.
 
@@ -135,18 +145,19 @@ If VAPID is missing or invalid, notification send falls back to in-app metadata 
 
 ## Deploy
 
-Container option:
+Current hosting:
+- **API: Render** Web Service, runtime Docker, repo root as build context, `Dockerfile Path=./apps/api/Dockerfile`, health check `/api/health`. Build filters: `apps/api/**`, `packages/shared/**`, `package.json`, `package-lock.json`. Render injects `PORT`; set backend secrets in the service Environment (never commit `apps/api/.env.production`).
+- **Web: Vercel**, `Root Directory=apps/web` with files outside the root directory included (needs `packages/shared`). Only public vars: `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `NEXT_PUBLIC_APP_VERSION`. `NEXT_PUBLIC_*` values are baked in at build time, so redeploy after changing them.
+
+Cookies across sites:
+- API on `*.onrender.com` and web on another domain are different sites: use `COOKIE_SAMESITE=none` and leave `COOKIE_DOMAIN` empty. Safari/third-party-cookie blocking may drop sessions and Google OAuth cannot complete in this setup.
+- Preferred: serve the API on a subdomain of the web domain (for example `api.<web-domain>`), then use `COOKIE_SAMESITE=lax` and `COOKIE_DOMAIN=<web-domain>`.
+
+Container build (API only):
 
 ```bash
 docker build -f apps/api/Dockerfile -t evolvefit-api .
-docker build -f apps/web/Dockerfile -t evolvefit-web .
 ```
-
-Run API with backend secrets only. Run web with public vars only.
-
-Hosted option:
-- Web: Vercel, Netlify, or any Next.js host. Set `NEXT_PUBLIC_API_BASE_URL` to the API origin.
-- API: Fly.io, Render, Railway, or VPS/container host. Set `API_CORS_ORIGIN` to the web origin and configure backend secrets there.
 
 ## CI
 
@@ -168,7 +179,9 @@ Rollback web and API independently:
 
 ## Troubleshooting
 
-- CORS errors: verify `API_CORS_ORIGIN` exactly matches the browser origin, including scheme and port.
+- CORS errors: verify `API_CORS_ORIGIN` exactly matches the browser origin, including scheme and port (no trailing slash).
+- 403 `missing-csrf-header` / `untrusted-origin`: the client must send `X-EvolveFit-Client`, and its origin must be in `API_CORS_ORIGIN`, `APP_BASE_URL` or `AUTH_REDIRECT_ORIGINS`.
+- API exits with `Invalid API configuration`: the log lists the missing production variables.
 - Validation errors: inspect `details[].field` in the API error envelope.
 - 429 errors: adjust the matching grouped rate limit env, for example `API_RATE_LIMIT_AUTH_MAX`.
 - Payload too large: raise `API_BODY_LIMIT_BYTES` only after confirming the endpoint really needs larger bodies.

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Activity,
@@ -45,8 +46,6 @@ export default function AdminPage() {
   const [summary, setSummary] = useState<AdminDashboardSummary | null>(null);
   const [activeTab, setActiveTab] = useState<AdminTab>("overview");
   const [error, setError] = useState("");
-  const [loginEmail, setLoginEmail] = useState("admin@example.com");
-  const [loginPassword, setLoginPassword] = useState("");
   const [exerciseQuery, setExerciseQuery] = useState("");
   const [exerciseStatus, setExerciseStatus] = useState("all");
   const [exercises, setExercises] = useState<ExerciseDefinition[]>([]);
@@ -113,16 +112,6 @@ export default function AdminPage() {
     setActor(result.data.actor);
     setSummary(result.data.summary);
     setLoadState("ready");
-  }
-
-  async function login() {
-    setError("");
-    const result = await evolveFitApiClient.signIn({ email: loginEmail, password: loginPassword || undefined, mode: "local" });
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
-    await bootstrap();
   }
 
   async function loadExercises() {
@@ -245,15 +234,13 @@ export default function AdminPage() {
           <h1>Admin access</h1>
           <p className={styles.muted}>Đăng nhập bằng tài khoản có role admin để tiếp tục. Nếu thấy 401/403, hãy kiểm tra `ADMIN_BOOTSTRAP_EMAILS` hoặc role assignment.</p>
           {error && <div className={styles.error}>{error}</div>}
-          <label className={styles.field}>
-            <span>Email</span>
-            <input value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} />
-          </label>
-          <label className={styles.field}>
-            <span>Password</span>
-            <input type="password" value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} />
-          </label>
-          <button className={styles.primaryButton} onClick={login}>Đăng nhập admin</button>
+          {loadState === "forbidden" ? (
+            <p className={styles.muted}>Tài khoản đang đăng nhập không có quyền admin.</p>
+          ) : (
+            <Link className={styles.primaryButton} href="/sign-in?next=/admin">
+              Đăng nhập admin
+            </Link>
+          )}
         </section>
       </main>
     );

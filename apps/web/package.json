@@ -11,10 +11,16 @@
   },
   "dependencies": {
     "@evolvefit/shared": "file:../../packages/shared",
+    "@tanstack/react-query": "^5.104.3",
     "lucide-react": "^0.468.0",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "tailwindcss": "^4.3.3"
   }
 }

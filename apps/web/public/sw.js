@@ -1,24 +1,36 @@
+// Bump CACHE_VERSION whenever cached shell assets change; old caches are deleted on activate.
+const CACHE_VERSION = "evolvefit-v2";
+
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open("evolvefit-v1").then((cache) => cache.addAll(["/", "/manifest.webmanifest", "/icon.svg"]))
-  );
+  event.waitUntil(caches.open(CACHE_VERSION).then((cache) => cache.addAll(["/", "/manifest.webmanifest", "/icon.svg"])));
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_VERSION).map((key) => caches.delete(key))))
+      .then(() => self.clients.claim())
+  );
 });
 
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
+  const request = event.request;
+  if (request.method !== "GET") return;
+  const url = new URL(request.url);
+  // Never cache API calls (personal data, auth state) or other origins such as the hosted API.
+  if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
   event.respondWith(
-    fetch(event.request)
+    fetch(request)
       .then((response) => {
-        const copy = response.clone();
-        caches.open("evolvefit-v1").then((cache) => cache.put(event.request, copy));
+        if (response.ok && response.type === "basic") {
+          const copy = response.clone();
+          caches.open(CACHE_VERSION).then((cache) => cache.put(request, copy));
+        }
         return response;
       })
-      .catch(() => caches.match(event.request).then((cached) => cached || caches.match("/")))
+      .catch(() => caches.match(request).then((cached) => cached || caches.match("/")))
   );
 });
 

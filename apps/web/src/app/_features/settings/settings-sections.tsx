@@ -1,13 +1,15 @@
 "use client";
 
 import { ChevronRight } from "lucide-react";
+import Link from "next/link";
+import { Button, Sheet } from "@/components/ui";
+import type { AuthAction } from "@/features/auth/store";
 import {
   canSyncHealthData,
   healthIntegrationPrivacyCopy,
   healthSyncDataTypes,
   normalizePlateInventory,
   type AppState,
-  type CloudMergePreview,
   type DrinkModule,
   type HealthIntegrationSettings,
   type HealthProvider,
@@ -120,117 +122,92 @@ function integrationStatusLabel(status: string) {
 
 export function AccountProfileSection(props: {
   profile: AppState["profile"];
-  authPassword: string;
-  setAuthPassword: (value: string) => void;
-  authResetToken: string;
-  setAuthResetToken: (value: string) => void;
-  cloudMergePreview: CloudMergePreview | null;
+  account: string | null;
+  sessionExpired: boolean;
   updateProfile: (next: Partial<AppState["profile"]>) => void;
-  signInLocal: (mode: AppState["profile"]["authMode"]) => void;
-  authenticateEmail: (mode: "sign-in" | "sign-up") => void;
-  startGoogleOAuth: () => void;
+  authPending: AuthAction | null;
   refreshAuthSession: () => void;
-  requestPasswordResetEmail: () => void;
-  resetAccountPassword: () => void;
-  mergeLocalAccountToCloud: () => void;
-  replaceLocalWithCloud: () => void;
-  keepLocalAccountData: () => void;
-  signOutAccount: () => void;
+  signOutAccount: (options: { removeLocalData: boolean }) => void;
   reopenOnboarding: () => void;
 }) {
+  const busy = props.authPending !== null;
+  const [confirmSignOut, setConfirmSignOut] = React.useState(false);
+  const [removeLocalData, setRemoveLocalData] = React.useState(true);
   return (
     <section className="card settings-profile-card">
       <div className="settings-profile-head">
         <div className="settings-avatar">{(props.profile.name || "A").slice(0, 1).toUpperCase()}</div>
         <div>
           <strong>{props.profile.name || "Người tập"}</strong>
-          <p>{props.profile.email || "Hồ sơ trên máy"} - mục tiêu: mạnh hơn mỗi ngày</p>
+          <p>{props.account ?? "Chưa đăng nhập - dữ liệu chỉ lưu trên máy này"}</p>
         </div>
         <ChevronRight size={18} />
       </div>
       <h2>Hồ sơ</h2>
       <div className="setting-row">
-        <span>Phiên</span>
-        <strong>{authModeLabel(props.profile.authMode)}</strong>
+        <span>Tài khoản</span>
+        <strong>{props.account ? (props.sessionExpired ? "Cần đăng nhập lại" : authModeLabel(props.profile.authMode)) : "Chưa đăng nhập"}</strong>
       </div>
-      <label className="setting-row">
-        <span>Email</span>
-        <input
-          type="email"
-          value={props.profile.email}
-          onChange={(event) => props.updateProfile({ email: event.target.value })}
-        />
-      </label>
-      <label className="setting-row">
-        <span>Mật khẩu</span>
-        <input
-          type="password"
-          value={props.authPassword}
-          onChange={(event) => props.setAuthPassword(event.target.value)}
-          autoComplete="current-password"
-        />
-      </label>
-      <div className="split-actions">
-        <button className="secondary-button" onClick={() => props.authenticateEmail("sign-up")}>
-          Đăng ký bằng email
-        </button>
-        <button className="secondary-button" onClick={() => props.authenticateEmail("sign-in")}>
-          Đăng nhập bằng email
-        </button>
-        <button className="secondary-button" onClick={props.startGoogleOAuth}>
-          Đăng nhập bằng Google
-        </button>
-        <button className="secondary-button" onClick={() => props.signInLocal("local")}>
-          Dùng trên máy này
-        </button>
-      </div>
-      <div className="split-actions">
-        <button className="secondary-button" onClick={props.refreshAuthSession} aria-label="refresh-auth-session">
-          Làm mới phiên
-        </button>
-        <button className="secondary-button" onClick={props.requestPasswordResetEmail} aria-label="request-password-reset">
-          Gửi email đặt lại mật khẩu
-        </button>
-        <button className="secondary-button" onClick={props.signOutAccount} aria-label="sign-out-cloud">
-          Đăng xuất cloud
-        </button>
-      </div>
-      <label className="setting-row">
-        <span>Token đặt lại</span>
-        <input
-          value={props.authResetToken}
-          onChange={(event) => props.setAuthResetToken(event.target.value)}
-          autoComplete="one-time-code"
-        />
-      </label>
-      <button className="secondary-button export-button" onClick={props.resetAccountPassword} aria-label="reset-account-password">
-        Cập nhật mật khẩu mới
-      </button>
-      {props.cloudMergePreview && (
-        <div className="sync-preview account-merge-preview" aria-label="Tuy chon dong bo sau dang nhap">
-          <div>
-            <span>Dữ liệu trên máy</span>
-            <strong>{props.cloudMergePreview.hasLocalData ? "Sẵn sàng đồng bộ" : "Không có dữ liệu cục bộ"}</strong>
-            <em>
-              {props.cloudMergePreview.hydrationLogs} log nước, {props.cloudMergePreview.workoutSets} set, {props.cloudMergePreview.routines} lịch, {props.cloudMergePreview.bodyMetrics} chỉ số
-            </em>
-            {props.cloudMergePreview.conflicts.map((conflict) => (
-              <small key={conflict}>{conflict}</small>
-            ))}
-            <div className="split-actions">
-              <button className="secondary-button" onClick={props.mergeLocalAccountToCloud} aria-label="merge-local-to-cloud">
-                Gộp lên cloud
+      {props.account ? (
+        <div className="auth-signed-in" aria-label="Tài khoản đã đăng nhập">
+          <p>
+            {props.sessionExpired ? "Phiên đăng nhập đã hết hạn. Dữ liệu vẫn được lưu trên máy." : "Dữ liệu được sao lưu và đồng bộ với tài khoản"} <strong>{props.account}</strong>.
+          </p>
+          <div className="split-actions">
+            {props.sessionExpired ? (
+              <Link className="primary-button" href={`/sign-in?email=${encodeURIComponent(props.account)}&next=/settings`}>
+                Đăng nhập lại
+              </Link>
+            ) : (
+              <button type="button" className="secondary-button" onClick={props.refreshAuthSession} disabled={busy} aria-label="refresh-auth-session">
+                {props.authPending === "refresh" ? "Đang làm mới…" : "Làm mới phiên"}
               </button>
-              <button className="secondary-button" onClick={props.replaceLocalWithCloud} aria-label="replace-local-with-cloud">
-                Dùng bản cloud
-              </button>
-              <button className="secondary-button" onClick={props.keepLocalAccountData} aria-label="keep-local-after-auth">
-                Giữ trên máy
-              </button>
-            </div>
+            )}
+            <button type="button" className="secondary-button" onClick={() => setConfirmSignOut(true)} disabled={busy} aria-label="sign-out-cloud">
+              Đăng xuất
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="auth-signed-in" aria-label="Chưa đăng nhập">
+          <p>Đăng nhập để sao lưu dữ liệu và dùng trên nhiều thiết bị. Không đăng nhập thì dữ liệu chỉ nằm trên máy này.</p>
+          <div className="split-actions">
+            <Link className="primary-button" href="/sign-in?next=/settings">
+              Đăng nhập
+            </Link>
+            <Link className="secondary-button" href="/sign-up?next=/settings">
+              Tạo tài khoản
+            </Link>
           </div>
         </div>
       )}
+      <Sheet
+        open={confirmSignOut}
+        onClose={() => setConfirmSignOut(false)}
+        title="Đăng xuất khỏi tài khoản?"
+        description="Thay đổi chưa đồng bộ trên máy này sẽ được gửi khi bạn đăng nhập lại (nếu bạn giữ dữ liệu trên máy)."
+        footer={
+          <Button
+            fullWidth
+            variant={removeLocalData ? "danger" : "primary"}
+            loading={props.authPending === "sign-out"}
+            onClick={() => {
+              props.signOutAccount({ removeLocalData });
+              setConfirmSignOut(false);
+            }}
+          >
+            Đăng xuất
+          </Button>
+        }
+      >
+        <label className="flex cursor-pointer items-start gap-3 text-[15px] leading-6">
+          <input type="checkbox" className="mt-1 size-4" checked={removeLocalData} onChange={(event) => setRemoveLocalData(event.target.checked)} />
+          <span>
+            Xoá dữ liệu của tài khoản khỏi thiết bị này
+            <span className="block text-sm leading-5 text-muted-foreground">Nên bật nếu đây là máy dùng chung. Dữ liệu đã đồng bộ vẫn còn trên tài khoản.</span>
+          </span>
+        </label>
+      </Sheet>
       <button className="secondary-button export-button" onClick={props.reopenOnboarding}>
         Mở lại thiết lập
       </button>

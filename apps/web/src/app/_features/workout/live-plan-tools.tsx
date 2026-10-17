@@ -7,24 +7,24 @@ import { ConfirmActionButton } from "../ui/confirm-action-button";
 import { templateLabels } from "./workout-labels";
 
 const text = {
-  templates: "M\u1eabu l\u1ecbch t\u1eadp",
-  decreaseWeight: "Gi\u1ea3m t\u1ea1 m\u1ee5c ti\u00eau",
-  increaseWeight: "T\u0103ng t\u1ea1 m\u1ee5c ti\u00eau",
-  increaseRep: "T\u0103ng rep m\u1ee5c ti\u00eau",
-  moveUp: "\u0110\u01b0a b\u00e0i t\u1eadp l\u00ean",
-  moveDown: "\u0110\u01b0a b\u00e0i t\u1eadp xu\u1ed1ng",
-  deleteExercise: "X\u00f3a b\u00e0i t\u1eadp",
-  confirmDelete: "X\u00e1c nh\u1eadn x\u00f3a",
-  name: "T\u00ean",
-  muscleGroup: "Nh\u00f3m c\u01a1",
+  templates: "Mẫu lịch tập",
+  decreaseWeight: "Giảm tạ mục tiêu",
+  increaseWeight: "Tăng tạ mục tiêu",
+  increaseRep: "Tăng rep mục tiêu",
+  moveUp: "Đưa bài tập lên",
+  moveDown: "Đưa bài tập xuống",
+  deleteExercise: "Xóa bài tập",
+  confirmDelete: "Xác nhận xóa",
+  name: "Tên",
+  muscleGroup: "Nhóm cơ",
   sets: "Set",
-  minReps: "Rep t\u1ed1i thi\u1ec3u",
-  maxReps: "Rep t\u1ed1i \u0111a",
-  rest: "Ngh\u1ec9",
-  superset: "Nh\u00f3m superset",
-  previous: "L\u1ea7n tr\u01b0\u1edbc",
-  newExercise: "T\u00ean b\u00e0i t\u1eadp m\u1edbi",
-  addExercise: "Th\u00eam b\u00e0i"
+  minReps: "Rep tối thiểu",
+  maxReps: "Rep tối đa",
+  rest: "Nghỉ",
+  superset: "Nhóm superset",
+  previous: "Lần trước",
+  newExercise: "Tên bài tập mới",
+  addExercise: "Thêm bài"
 };
 
 export function LivePlanTools(props: {
@@ -56,8 +56,8 @@ export function LivePlanTools(props: {
               <button onClick={() => props.updateExerciseTarget(exercise.id, { targetWeightKg: Math.max(0, exercise.targetWeightKg - 2.5) })} aria-label={text.decreaseWeight}>-kg</button>
               <button onClick={() => props.updateExerciseTarget(exercise.id, { targetWeightKg: exercise.targetWeightKg + 2.5 })} aria-label={text.increaseWeight}>+kg</button>
               <button onClick={() => props.updateExerciseTarget(exercise.id, { targetRepsMax: exercise.targetRepsMax + 1 })} aria-label={text.increaseRep}>+rep</button>
-              <button onClick={() => props.moveExercise(exercise.id, -1)} aria-label={text.moveUp}>{"\u2191"}</button>
-              <button onClick={() => props.moveExercise(exercise.id, 1)} aria-label={text.moveDown}>{"\u2193"}</button>
+              <button onClick={() => props.moveExercise(exercise.id, -1)} aria-label={text.moveUp}>{"↑"}</button>
+              <button onClick={() => props.moveExercise(exercise.id, 1)} aria-label={text.moveDown}>{"↓"}</button>
               <ConfirmActionButton className="danger-button" label={text.deleteExercise} confirmLabel={text.confirmDelete} ariaLabel={text.deleteExercise} onConfirm={() => props.deleteExercise(exercise.id)}>
                 <Trash2 size={14} />
               </ConfirmActionButton>

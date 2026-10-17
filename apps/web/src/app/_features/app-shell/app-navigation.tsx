@@ -7,21 +7,17 @@ import React from "react";
 export type AppSection = "today" | "workout" | "routines" | "library" | "progress" | "settings";
 
 export const primaryTabs: { id: AppSection; label: string; icon: ComponentType<{ size?: number }> }[] = [
-  { id: "today", label: "H\u00f4m nay", icon: Home },
-  { id: "workout", label: "T\u1eadp luy\u1ec7n", icon: Dumbbell },
-  { id: "routines", label: "L\u1ecbch t\u1eadp", icon: CalendarCheck },
-  { id: "library", label: "Th\u01b0 vi\u1ec7n", icon: Award },
-  { id: "progress", label: "Ti\u1ebfn \u0111\u1ed9", icon: Activity },
-  { id: "settings", label: "C\u00e0i \u0111\u1eb7t", icon: Settings }
+  { id: "today", label: "Hôm nay", icon: Home },
+  { id: "workout", label: "Tập luyện", icon: Dumbbell },
+  { id: "routines", label: "Lịch tập", icon: CalendarCheck },
+  { id: "library", label: "Thư viện", icon: Award },
+  { id: "progress", label: "Tiến độ", icon: Activity },
+  { id: "settings", label: "Cài đặt", icon: Settings }
 ];
 
 const text = {
-  nav: "\u0110i\u1ec1u h\u01b0\u1edbng ch\u00ednh"
+  nav: "Điều hướng chính"
 };
-
-export function routeForSection(section: AppSection) {
-  return section === "today" ? "/today" : `/${section}`;
-}
 
 export function MainNavigation(props: {
   active: AppSection | "hydration";
