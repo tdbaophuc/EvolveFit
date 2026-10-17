@@ -5,6 +5,7 @@ import { AppShell } from "@/features/app/app-shell";
 import { HydrationScreen, ProgressScreen, SettingsScreen, TodayScreen, WorkoutScreen } from "@/features/app/screens";
 import { ForgotPasswordForm, ResetPasswordForm, SignInForm, SignUpForm } from "@/features/auth/auth-forms";
 import { AuthLayout } from "@/features/auth/auth-layout";
+import { LibraryScreen } from "@/features/library/library-screen";
 import { useAuthStore } from "@/features/auth/store";
 import { useWorkoutUi } from "@/features/workout/ui-store";
 import { useAppStore } from "@/lib/store/app-store";
@@ -22,7 +23,8 @@ const authPages: Record<string, () => React.ReactElement> = {
 
 function appPageFor(segment: string) {
   if (segment === "hydration") return <HydrationScreen />;
-  if (segment === "workout" || segment === "routines" || segment === "library") return <WorkoutScreen key={segment} section={segment} />;
+  if (segment === "library") return <LibraryScreen />;
+  if (segment === "workout" || segment === "routines") return <WorkoutScreen key={segment} section={segment} />;
   if (segment === "progress") return <ProgressScreen />;
   if (segment === "settings") return <SettingsScreen />;
   return <TodayScreen />;

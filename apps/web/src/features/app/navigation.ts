@@ -1,8 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import type { AppSection } from "@/app/_features/app-shell/app-navigation";
-
+export type AppSection = "today" | "workout" | "routines" | "library" | "progress" | "settings";
 export type AppRoute = AppSection | "hydration";
 
 export function routeFor(section: AppRoute): string {

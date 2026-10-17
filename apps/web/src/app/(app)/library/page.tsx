@@ -1,5 +1,5 @@
-import { WorkoutScreen } from "@/features/app/screens";
+import { LibraryScreen } from "@/features/library/library-screen";
 
 export default function LibraryPage() {
-  return <WorkoutScreen section="library" />;
+  return <LibraryScreen />;
 }
