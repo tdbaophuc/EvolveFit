@@ -257,7 +257,7 @@ export function deleteRoutine(id: string): ApiResult<{ id: string }> {
 }
 
 export function listExercises() {
-  return ok(filterExerciseLibrary(serverState().exerciseLibrary, { includeArchived: true }));
+  return ok(filterExerciseLibrary(catalogLibrary(), { includeArchived: true }));
 }
 
 export function createExercise(input: Partial<ExerciseDefinition>): ApiResult<ExerciseDefinition> {
@@ -349,7 +349,7 @@ export function listMarketplaceExerciseCatalog(filters: {
   page?: number | string;
   pageSize?: number | string;
 } = {}) {
-  const all = listMarketplaceExercises(serverState().exerciseLibrary, filters);
+  const all = listMarketplaceExercises(catalogLibrary(), filters);
   const sorted = [...all].sort((a, b) => {
     if (filters.sort === "name") return a.name.localeCompare(b.name);
     if (filters.sort === "muscle") return a.muscleGroup.localeCompare(b.muscleGroup) || a.name.localeCompare(b.name);
@@ -368,20 +368,20 @@ export function listMarketplaceExerciseCatalog(filters: {
 }
 
 export function getMarketplaceExercise(idOrSlug: string) {
-  const exercise = exerciseCatalogDetail(serverState().exerciseLibrary, idOrSlug);
+  const exercise = exerciseCatalogDetail(catalogLibrary(), idOrSlug);
   if (!exercise || !isPublicCatalogExercise(exercise) || normalizeExerciseDefinition(exercise).status !== "published") return fail("exercise not found");
   return ok(normalizeExerciseDefinition(exercise));
 }
 
 export function getMarketplaceExerciseSubstitutions(idOrSlug: string, input: { equipment?: EquipmentType[] | EquipmentType | string; limit?: number | string } = {}) {
-  const exercise = exerciseCatalogDetail(serverState().exerciseLibrary, idOrSlug);
+  const exercise = exerciseCatalogDetail(catalogLibrary(), idOrSlug);
   if (!exercise || !isPublicCatalogExercise(exercise) || normalizeExerciseDefinition(exercise).status === "archived") return fail("exercise not found");
   const equipment = Array.isArray(input.equipment) ? input.equipment : typeof input.equipment === "string" ? input.equipment.split(",").filter(Boolean) as EquipmentType[] : undefined;
-  return ok({ exercise: normalizeExerciseDefinition(exercise), substitutions: suggestExerciseSubstitutions(exercise, serverState().exerciseLibrary, { equipment, limit: Number(input.limit ?? 5) || 5 }) });
+  return ok({ exercise: normalizeExerciseDefinition(exercise), substitutions: suggestExerciseSubstitutions(exercise, catalogLibrary(), { equipment, limit: Number(input.limit ?? 5) || 5 }) });
 }
 
 export function cloneMarketplaceExercise(idOrSlug: string, input: Partial<ExerciseDefinition> = {}) {
-  const exercise = exerciseCatalogDetail(serverState().exerciseLibrary, idOrSlug);
+  const exercise = exerciseCatalogDetail(catalogLibrary(), idOrSlug);
   if (!exercise || !isPublicCatalogExercise(exercise) || normalizeExerciseDefinition(exercise).status === "archived") return fail("exercise not found");
   const custom = cloneMarketplaceExerciseToCustom(exercise, input);
   serverState().exerciseLibrary.push(custom);
@@ -390,7 +390,7 @@ export function cloneMarketplaceExercise(idOrSlug: string, input: Partial<Exerci
 }
 
 export function addMarketplaceExerciseToRoutine(idOrSlug: string, input: { routineId?: string; workoutDayId?: string } = {}) {
-  const exercise = exerciseCatalogDetail(serverState().exerciseLibrary, idOrSlug);
+  const exercise = exerciseCatalogDetail(catalogLibrary(), idOrSlug);
   if (!exercise || normalizeExerciseDefinition(exercise).status === "archived") return fail("exercise not found");
   const routine = serverState().routines.find((item) => item.id === input.routineId) ?? serverState().routines.find((item) => item.id === serverState().activeRoutineId) ?? serverState().routines[0];
   const day = routine?.days.find((item) => item.id === input.workoutDayId) ?? routine?.days.find((item) => item.id === serverState().selectedWorkoutDayId) ?? routine?.days[0];
@@ -416,8 +416,17 @@ export function addMarketplaceExerciseToRoutine(idOrSlug: string, input: { routi
   return ok({ routine, workoutDay: day, exercise: routineExercise });
 }
 
+/** Shared catalog (admin-curated, see catalog-store.ts) plus the user's own exercises. */
+function catalogLibrary(): ExerciseDefinition[] {
+  const catalog = currentApiRuntime().catalog;
+  if (!catalog) return serverState().exerciseLibrary;
+  return [...catalog.exercises, ...serverState().exerciseLibrary.filter(isUserOwnedExercise)];
+}
+
+/** Templates users may browse: published and not private. */
 function templateCatalog(): RoutineTemplate[] {
-  return serverState().routineTemplatesMarketplace ?? [];
+  const templates = currentApiRuntime().catalog?.templates ?? serverState().routineTemplatesMarketplace ?? [];
+  return templates.filter((template) => template.visibility !== "private");
 }
 
 function profileForRoutineTemplates() {
@@ -821,7 +830,7 @@ export function previewWorkoutPlanner(input: {
         minutesPerSession: input.minutesPerSession,
         musclePriority: input.musclePriority
       },
-      serverState().exerciseLibrary
+      catalogLibrary()
     )
   );
 }
@@ -836,7 +845,7 @@ export async function coachRecommend() {
     workoutSessions: serverState().workoutSessions,
     readiness: serverState().recovery,
     availableEquipment: serverState().profile.availableEquipment,
-    exerciseLibrary: serverState().exerciseLibrary
+    exerciseLibrary: catalogLibrary()
   });
   const historyItem: RecommendationHistoryItem = {
     ...recommendation,
@@ -1082,10 +1091,14 @@ export function getAchievementsAndLeaderboard() {
   return ok({
     achievements,
     leaderboardVisible: serverState().profile.leaderboardPublic,
+    // Only real data: the user's own standing (friend leaderboards need a social backend that does not exist yet).
     leaderboard: [
-      { rank: 1, displayName: "Minh", score: 96, badgeStreakMonths: 4 },
-      { rank: 2, displayName: serverState().profile.name, score: 91, badgeStreakMonths: 3 },
-      { rank: 3, displayName: "An", score: 88, badgeStreakMonths: 2 }
+      {
+        rank: 1,
+        displayName: serverState().profile.name || "Bạn",
+        score: reports.monthly.hydrationGoalHitRate + reports.monthly.workoutCount * 5,
+        badgeStreakMonths: Math.max(0, ...achievements.map((achievement) => achievement.streakMonths))
+      }
     ]
   });
 }

@@ -16,6 +16,8 @@ import {
 } from "@evolvefit/shared";
 import type { WorkoutView } from "@/app/_features/workout/workout-view";
 import { notify, useAppStore } from "@/lib/store/app-store";
+import { useMarketplaceCatalog, useRoutineTemplateCatalog } from "../catalog/queries";
+import * as library from "../library/actions";
 import * as routines from "../routines/actions";
 import * as workout from "./actions";
 import { selectWorkout } from "./selectors";
@@ -93,14 +95,17 @@ export function useWorkoutScreen(section: ComponentProps<typeof WorkoutView>["se
     tag: libraryTagFilter
   };
   const filteredExerciseLibrary = filterExerciseLibrary(state.exerciseLibrary, { ...libraryFilters, includeArchived: false });
-  const marketplaceExercises = listMarketplaceExercises(state.exerciseLibrary, libraryFilters);
+  // Shared admin-curated catalog from the API; the built-in copy is shown until it loads and when offline.
+  const marketplace = useMarketplaceCatalog(libraryFilters, listMarketplaceExercises(state.exerciseLibrary, libraryFilters));
+  const marketplaceExercises = marketplace.items;
   const selectedMarketplaceExercise = selectedMarketplaceExerciseId
     ? (marketplaceExercises.find((exercise) => exercise.id === selectedMarketplaceExerciseId) ?? null)
     : (marketplaceExercises[0] ?? null);
-  const routineTemplateCatalog = listRoutineTemplates(state.routineTemplatesMarketplace, {
-    query: routineTemplateSearch,
-    goal: routineTemplateGoalFilter,
-    equipment: routineTemplateEquipmentFilter,
+  const templateFilters = { query: routineTemplateSearch, goal: routineTemplateGoalFilter, equipment: routineTemplateEquipmentFilter };
+  const templates = useRoutineTemplateCatalog(templateFilters, state.routineTemplatesMarketplace);
+  // The server already applied the filters; rank by this user's profile (the server only knows its own copy).
+  const routineTemplateCatalog = listRoutineTemplates(templates.items, {
+    ...templateFilters,
     status: "published",
     sort: "compatibility",
     profile: profileForTemplates
@@ -211,10 +216,10 @@ export function useWorkoutScreen(section: ComponentProps<typeof WorkoutView>["se
     updateWorkoutDay: routines.updateWorkoutDay,
     addWorkoutDay: routines.addWorkoutDay,
     deleteWorkoutDay: routines.deleteWorkoutDay,
-    addExerciseFromLibrary: routines.addExerciseFromLibrary,
-    cloneExerciseFromMarketplace: routines.cloneExerciseFromMarketplace,
+    addExerciseFromLibrary: library.addExerciseFromLibrary,
+    cloneExerciseFromMarketplace: library.cloneExerciseFromMarketplace,
     addCustomExerciseDefinition: () => {
-      routines.addCustomExerciseDefinition({
+      library.addCustomExerciseDefinition({
         name: newLibraryExerciseName,
         muscleGroup: newLibraryMuscleGroup,
         equipment: newLibraryEquipment,
@@ -222,8 +227,8 @@ export function useWorkoutScreen(section: ComponentProps<typeof WorkoutView>["se
       });
       setNewLibraryExerciseName("");
     },
-    updateExerciseDefinition: routines.updateExerciseDefinition,
-    deleteExerciseDefinition: routines.deleteExerciseDefinition,
+    updateExerciseDefinition: library.updateExerciseDefinition,
+    deleteExerciseDefinition: library.deleteExerciseDefinition,
     routineTemplateCatalog,
     selectedRoutineTemplate,
     routineTemplatePreview: activeRoutineTemplatePreview,

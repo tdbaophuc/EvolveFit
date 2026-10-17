@@ -5,6 +5,7 @@ import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { assertApiConfig, corsAllowlist, defaultDevOrigins, isProductionLike, trustedOrigins, trustProxySetting } from "./lib/config";
 import { createAdminStore, type AdminStore } from "./lib/admin-store";
+import { createCatalogStore, type CatalogStore } from "./lib/catalog-store";
 import { createRequestId, normalizeErrorCode, recordRequestLog, requestIdResponseHeader, sanitizeRequestId } from "./lib/observability";
 import { createAppRepository, type AppRepository } from "./lib/repositories";
 import { registerApiRoutes } from "./routes/api-routes";
@@ -16,6 +17,7 @@ declare module "fastify" {
     apiEnv: NodeJS.ProcessEnv;
     apiRepository: AppRepository;
     adminStore: AdminStore;
+    catalogStore: CatalogStore;
   }
 }
 
@@ -32,6 +34,7 @@ export async function buildApp(env: NodeJS.ProcessEnv = process.env): Promise<Fa
   });
   const repository = createAppRepository(env);
   const adminStore = createAdminStore(env);
+  const catalogStore = createCatalogStore(env);
   const productionLike = isProductionLike(env);
 
   app.addHook("onRequest", async (request, reply) => {
@@ -40,6 +43,7 @@ export async function buildApp(env: NodeJS.ProcessEnv = process.env): Promise<Fa
     request.apiEnv = env;
     request.apiRepository = repository;
     request.adminStore = adminStore;
+    request.catalogStore = catalogStore;
     reply.header(requestIdResponseHeader(), request.requestId);
     setSecurityHeaders(reply, productionLike);
   });

@@ -4,6 +4,7 @@ import { initialState } from "@evolvefit/shared";
 import type { ApiUser, AppRepository } from "./repositories";
 import { demoUser, MemoryAppRepository } from "./repositories";
 import type { ResourceMutation } from "./repositories";
+import type { CatalogSnapshot } from "./catalog-store";
 
 export type ApiRuntime = {
   user: ApiUser;
@@ -11,6 +12,8 @@ export type ApiRuntime = {
   state: AppState;
   mutations: ResourceMutation[];
   env?: NodeJS.ProcessEnv;
+  /** Shared catalog for this request; when absent, handlers fall back to the seed in the user's state. */
+  catalog?: CatalogSnapshot;
 };
 
 const runtimeStorage = new AsyncLocalStorage<ApiRuntime>();
