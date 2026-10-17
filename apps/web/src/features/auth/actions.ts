@@ -3,7 +3,7 @@ import { evolveFitApiClient, type AuthMode } from "@/lib/api-client";
 import { apiErrorMessage, isValidEmail, passwordProblem } from "@/lib/api-errors";
 import { hasAccountCache, loadState, normalizeAccount, removeAccountCache } from "@/lib/storage";
 import { commit, currentAccount, currentState, notify, useAppStore } from "@/lib/store/app-store";
-import { adoptCloudState } from "../sync/merge";
+import { adoptCloudState, cloudStateFrom } from "../sync/merge";
 import { isUnauthorized, pullFromCloud } from "../sync/pull";
 import { authState, bumpSessionEpoch, type AuthAction, type SessionSource } from "./store";
 
@@ -142,9 +142,10 @@ export async function mergeLocalAccountToCloud() {
   const exportPayload = await evolveFitApiClient.exportAccount();
   const onboarded = authState().mergeSource === "sign-in";
   finishMerge();
-  if (exportPayload.ok) {
+  const cloudState = exportPayload.ok ? cloudStateFrom(exportPayload.data) : undefined;
+  if (cloudState) {
     const { email, authMode } = currentState().profile;
-    const cloud = adoptCloudState(state, exportPayload.data.data, { email, authMode }, onboarded);
+    const cloud = adoptCloudState(state, cloudState, { email, authMode }, onboarded);
     // Local items are already uploaded; keep local preferences on top of the merged collections.
     commit({ ...cloud, profile: { ...cloud.profile, name: state.profile.name || cloud.profile.name } }, "Đã gộp dữ liệu trên máy với tài khoản");
     return;
@@ -160,10 +161,16 @@ export async function replaceLocalWithCloud() {
     notify(apiErrorMessage(payload, "Không tải được dữ liệu cloud."));
     return;
   }
+  const cloudState = cloudStateFrom(payload.data);
+  if (!cloudState) {
+    notify("Dữ liệu tài khoản trên cloud không hợp lệ. Đã giữ dữ liệu trên máy.");
+    keepLocalAccountData();
+    return;
+  }
   const state = currentState();
   const onboarded = authState().mergeSource === "sign-in";
   finishMerge();
-  commit(adoptCloudState(state, payload.data.data, { email: state.profile.email, authMode: state.profile.authMode }, onboarded), "Đã dùng dữ liệu từ tài khoản");
+  commit(adoptCloudState(state, cloudState, { email: state.profile.email, authMode: state.profile.authMode }, onboarded), "Đã dùng dữ liệu từ tài khoản");
 }
 
 /** Keeps this device's copy as the account's starting point without uploading the existing items. */

@@ -1,4 +1,21 @@
-import { mergeLocalDataIntoCloud, type AppState } from "@evolvefit/shared";
+import { mergeLocalDataIntoCloud, migrateImportedAppData, type AppState } from "@evolvefit/shared";
+
+/**
+ * Validates an /api/account/export payload before it touches local state.
+ * Returns undefined for anything malformed (unexpected shape, newer schema, server bug) so callers can skip it.
+ */
+export function cloudStateFrom(exportPayload: unknown): AppState | undefined {
+  // Require the real export envelope: migrateImportedAppData fills missing fields with the demo seed,
+  // so an empty/partial response would otherwise inject sample data into a real account.
+  if (!isRecord(exportPayload) || !isRecord(exportPayload.metadata) || typeof exportPayload.metadata.schemaVersion !== "number") return undefined;
+  if (!isRecord(exportPayload.data) || !isRecord(exportPayload.data.profile)) return undefined;
+  const validated = migrateImportedAppData(exportPayload);
+  return validated.ok ? validated.data : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
 
 /**
  * Merges data pulled from the cloud into the local cache of the same account.

@@ -27,6 +27,22 @@ describe("Account namespaces and two-way sync (P2)", () => {
     await waitFor(() => expect(storedState("phuc@example.com").hydrationLogs.map((log: { id: string }) => log.id)).toContain("cloud-water"));
   });
 
+  it("ignores a malformed cloud export instead of crashing or corrupting local data", async () => {
+    const localLog = { ...cloudLog, id: "local-only" };
+    seedAccount("phuc@example.com", { hydrationLogs: [localLog] });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/session")) return sessionResponse("phuc@example.com");
+      if (url.endsWith("/api/account/export")) return Response.json({ ok: true, data: {} });
+      return Response.json({ ok: true, data: {} });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderApp();
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/api/account/export"))).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(storedState("phuc@example.com").hydrationLogs.map((log: { id: string }) => log.id)).toEqual(["local-only"]);
+  });
+
   it("signs out to the guest data and removes the account's copy from a shared device", async () => {
     const user = userEvent.setup();
     seedGuest({ hydrationLogs: [] });
