@@ -12,6 +12,8 @@ const tsxCli = require.resolve("tsx/cli");
 const routes = [
   "/",
   "/hydration",
+  "/sign-in",
+  "/workout",
   "/api/health",
   "/api/ready",
   "/api/integrations/status",

@@ -16,44 +16,44 @@ import {
   muscleGroupLabel
 } from "../workout/workout-labels";
 
-const muscleFilterOptions = ["all", "Chest", "Back", "Legs", "Shoulders", "Arms", "Core", "Custom", "Ng\u1ef1c", "L\u01b0ng", "Ch\u00e2n", "Vai", "Tay", "T\u00f9y ch\u1ec9nh"];
+const muscleFilterOptions = ["all", "Chest", "Back", "Legs", "Shoulders", "Arms", "Core", "Custom", "Ngực", "Lưng", "Chân", "Vai", "Tay", "Tùy chỉnh"];
 const equipmentOptions = ["all", "barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "other"];
 const difficultyOptions = ["all", "beginner", "intermediate", "advanced"];
 const movementPatternOptions = ["push", "pull", "squat", "hinge", "lunge", "carry", "isolation", "core"];
 
 const text = {
-  eyebrow: "Th\u01b0 vi\u1ec7n b\u00e0i t\u1eadp",
-  title: "Ch\u1ecdn ho\u1eb7c t\u00f9y ch\u1ec9nh",
-  search: "T\u00ecm ki\u1ebfm",
-  searchPlaceholder: "T\u00ecm theo t\u00ean b\u00e0i, nh\u00f3m c\u01a1, d\u1ee5ng c\u1ee5...",
-  muscle: "Nh\u00f3m c\u01a1",
-  equipment: "D\u1ee5ng c\u1ee5",
-  difficulty: "\u0110\u1ed9 kh\u00f3",
-  all: "T\u1ea5t c\u1ea3",
-  hideAdvanced: "\u1ea8n b\u1ed9 l\u1ecdc n\u00e2ng cao",
-  showAdvanced: "M\u1edf b\u1ed9 l\u1ecdc n\u00e2ng cao",
-  builtIn: "C\u00f3 s\u1eb5n",
-  details: "Chi ti\u1ebft",
-  empty: "Tr\u1ed1ng",
-  noMarketplace: "Kh\u00f4ng c\u00f3 b\u00e0i marketplace ph\u00f9 h\u1ee3p",
-  tryFilters: "Th\u1eed b\u1ecf b\u1edbt filter ho\u1eb7c t\u00ecm theo nh\u00f3m c\u01a1 kh\u00e1c.",
-  marketplaceDetail: "Chi ti\u1ebft marketplace",
-  applyCue: "\u00c1p d\u1ee5ng khi th\u00eam v\u00e0o l\u1ecbch c\u00e1 nh\u00e2n.",
-  mistake: "L\u1ed7i th\u01b0\u1eddng g\u1eb7p",
-  techniqueReminder: "D\u00f9ng \u0111\u1ec3 nh\u1eafc k\u1ef9 thu\u1eadt tr\u01b0\u1edbc set.",
-  clone: "T\u1ea1o b\u1ea3n ri\u00eang",
-  addToDay: "Th\u00eam v\u00e0o ng\u00e0y t\u1eadp",
-  hideCustom: "\u1ea8n b\u00e0i t\u1ef1 t\u1ea1o",
-  showCustom: "M\u1edf b\u00e0i t\u1ef1 t\u1ea1o",
-  custom: "T\u00f9y ch\u1ec9nh",
-  edit: "S\u1eeda",
-  deleteCustom: "X\u00f3a b\u00e0i t\u00f9y ch\u1ec9nh",
-  confirmDelete: "X\u00e1c nh\u1eadn x\u00f3a",
-  noCustom: "Ch\u01b0a c\u00f3 b\u00e0i t\u1ef1 t\u1ea1o",
-  customHint: "Th\u00eam b\u00e0i ri\u00eang n\u1ebfu marketplace ch\u01b0a c\u00f3 bi\u1ebfn th\u1ec3 b\u1ea1n c\u1ea7n.",
-  customName: "T\u00ean t\u00f9y ch\u1ec9nh",
-  pattern: "Ki\u1ec3u chuy\u1ec3n \u0111\u1ed9ng",
-  addCustom: "Th\u00eam b\u00e0i t\u00f9y ch\u1ec9nh"
+  eyebrow: "Thư viện bài tập",
+  title: "Chọn hoặc tùy chỉnh",
+  search: "Tìm kiếm",
+  searchPlaceholder: "Tìm theo tên bài, nhóm cơ, dụng cụ...",
+  muscle: "Nhóm cơ",
+  equipment: "Dụng cụ",
+  difficulty: "Độ khó",
+  all: "Tất cả",
+  hideAdvanced: "Ẩn bộ lọc nâng cao",
+  showAdvanced: "Mở bộ lọc nâng cao",
+  builtIn: "Có sẵn",
+  details: "Chi tiết",
+  empty: "Trống",
+  noMarketplace: "Không có bài marketplace phù hợp",
+  tryFilters: "Thử bỏ bớt filter hoặc tìm theo nhóm cơ khác.",
+  marketplaceDetail: "Chi tiết marketplace",
+  applyCue: "Áp dụng khi thêm vào lịch cá nhân.",
+  mistake: "Lỗi thường gặp",
+  techniqueReminder: "Dùng để nhắc kỹ thuật trước set.",
+  clone: "Tạo bản riêng",
+  addToDay: "Thêm vào ngày tập",
+  hideCustom: "Ẩn bài tự tạo",
+  showCustom: "Mở bài tự tạo",
+  custom: "Tùy chỉnh",
+  edit: "Sửa",
+  deleteCustom: "Xóa bài tùy chỉnh",
+  confirmDelete: "Xác nhận xóa",
+  noCustom: "Chưa có bài tự tạo",
+  customHint: "Thêm bài riêng nếu marketplace chưa có biến thể bạn cần.",
+  customName: "Tên tùy chỉnh",
+  pattern: "Kiểu chuyển động",
+  addCustom: "Thêm bài tùy chỉnh"
 };
 
 export function ExerciseLibrarySection(props: {

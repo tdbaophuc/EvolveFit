@@ -16,7 +16,11 @@ import type {
   WorkoutSet
 } from "@evolvefit/shared";
 
-export type ApiResult<T> = { ok: true; data: T; requestId?: string } | { ok: false; error: string; requestId?: string };
+export type ApiFailure = { ok: false; error: string; errorCode?: string; details?: unknown; requestId?: string; status?: number };
+export type ApiResult<T> = { ok: true; data: T; requestId?: string } | ApiFailure;
+
+/** Client-side failure codes (the API itself uses snake_case codes such as `invalid_email_or_password`). */
+export type ClientErrorCode = "network_error" | "timeout" | "bad_response";
 export type AuthMode = "local" | "email" | "google";
 export type AuthSession = {
   mode: AuthMode;
@@ -27,6 +31,8 @@ export type AuthSession = {
   oauthUrl?: string;
   emailVerified?: boolean;
   needsEmailVerification?: boolean;
+  /** False for the anonymous placeholder session returned when no valid cookie is present. */
+  authenticated?: boolean;
 };
 export type IntegrationStatus = {
   supabase: "configured" | "missing-env";
@@ -101,8 +107,25 @@ export function evolveFitApiBaseUrl(envValue = process.env.NEXT_PUBLIC_API_BASE_
   return (envValue ?? "").replace(/\/+$/, "");
 }
 
+type RequestOptions = {
+  /** Timeout for the first request, while a sleeping free-tier backend may still be booting. */
+  coldStartTimeoutMs?: number;
+  timeoutMs?: number;
+  retryDelayMs?: number;
+};
+
+const retryableStatuses = new Set([502, 503, 504]);
+
 export class EvolveFitApiClient {
-  constructor(private readonly baseUrl = "") {}
+  private warm = false;
+  private readonly options: Required<RequestOptions>;
+
+  constructor(
+    private readonly baseUrl = "",
+    options: RequestOptions = {}
+  ) {
+    this.options = { coldStartTimeoutMs: 60_000, timeoutMs: 15_000, retryDelayMs: 1_500, ...options };
+  }
 
   async session(): Promise<ApiResult<AuthSession>> {
     return this.get("/api/auth/session");
@@ -489,22 +512,72 @@ export class EvolveFitApiClient {
     return this.request(path, { method: "DELETE" });
   }
 
+  /**
+   * Never throws: network failures, timeouts and non-JSON responses resolve to `{ ok: false, errorCode }`
+   * so every caller can show feedback. Idempotent GETs are retried once on network errors / 502-504
+   * (typical while the hosted API wakes up).
+   */
   private async request<T>(path: string, init: RequestInit): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      ...init,
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        // Required by the API's CSRF protection for cookie-authenticated requests.
-        "X-EvolveFit-Client": "web",
-        ...(init.headers ?? {})
+    const method = (init.method ?? "GET").toUpperCase();
+    const maxAttempts = method === "GET" ? 2 : 1;
+    let outcome = await this.attempt(path, init);
+    for (let attempt = 2; attempt <= maxAttempts && outcome.retryable; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, this.options.retryDelayMs));
+      outcome = await this.attempt(path, init);
+    }
+    return outcome.body as T;
+  }
+
+  private async attempt(path: string, init: RequestInit): Promise<{ body: unknown; retryable: boolean }> {
+    const controller = new AbortController();
+    const timeoutMs = this.warm ? this.options.timeoutMs : this.options.coldStartTimeoutMs;
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${path}`, {
+        ...init,
+        signal: init.signal ?? controller.signal,
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          // Required by the API's CSRF protection for cookie-authenticated requests.
+          "X-EvolveFit-Client": "web",
+          ...(init.headers ?? {})
+        }
+      });
+    } catch (error) {
+      const timedOut = controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError");
+      return { body: clientFailure(timedOut ? "timeout" : "network_error"), retryable: true };
+    } finally {
+      clearTimeout(timer);
+    }
+
+    this.warm = true;
+    let text = "";
+    try {
+      text = await response.text();
+    } catch {
+      return { body: clientFailure("network_error", response.status), retryable: true };
+    }
+    try {
+      const body = text ? JSON.parse(text) : undefined;
+      if (body && typeof body === "object") {
+        if ((body as { ok?: unknown }).ok === false) return { body: { ...body, status: response.status }, retryable: retryableStatuses.has(response.status) };
+        return { body, retryable: false };
       }
-    });
-    return (await response.json()) as T;
+    } catch {
+      // fall through: HTML error page from a proxy, empty body, etc.
+    }
+    return { body: clientFailure("bad_response", response.status), retryable: retryableStatuses.has(response.status) };
   }
 }
 
 export const evolveFitApiClient = new EvolveFitApiClient(evolveFitApiBaseUrl());
+
+function clientFailure(errorCode: ClientErrorCode, status?: number): ApiFailure {
+  const error = errorCode === "timeout" ? "Request timed out" : errorCode === "network_error" ? "Network request failed" : "Unexpected server response";
+  return { ok: false, error, errorCode, ...(status ? { status } : {}) };
+}
 
 function querySuffix(input: Record<string, unknown>): string {
   const params = new URLSearchParams();

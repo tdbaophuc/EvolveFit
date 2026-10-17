@@ -7,37 +7,37 @@ import { ConfirmActionButton } from "../ui/confirm-action-button";
 import { muscleGroupLabel, templateLabels, weekdays } from "../workout/workout-labels";
 
 const text = {
-  eyebrow: "L\u1ecbch \u0111ang d\u00f9ng",
-  title: "Ch\u1ec9nh l\u1ecbch t\u1eadp",
-  modeLabel: "Ch\u1ebf \u0111\u1ed9 l\u1ecbch t\u1eadp",
-  routineName: "T\u00ean l\u1ecbch t\u1eadp",
-  dayName: "T\u00ean bu\u1ed5i",
-  day: "Ng\u00e0y",
-  daysPerWeek: "Ng\u00e0y/tu\u1ea7n",
-  routine: "L\u1ecbch t\u1eadp",
-  noRoutine: "Ch\u01b0a c\u00f3 l\u1ecbch",
-  currentDay: "Bu\u1ed5i \u0111ang xem",
-  noDay: "Ch\u01b0a ch\u1ecdn bu\u1ed5i",
-  exerciseCount: "S\u1ed1 b\u00e0i",
-  workoutDays: "Ng\u00e0y t\u1eadp",
-  addDay: "+ Ng\u00e0y",
-  deleteDay: "X\u00f3a ng\u00e0y",
-  confirmDelete: "X\u00e1c nh\u1eadn x\u00f3a",
-  deleteWorkoutDay: "X\u00f3a ng\u00e0y t\u1eadp",
-  templates: "M\u1eabu l\u1ecbch t\u1eadp",
-  moveUp: "\u0110\u01b0a b\u00e0i t\u1eadp l\u00ean",
-  moveDown: "\u0110\u01b0a b\u00e0i t\u1eadp xu\u1ed1ng",
-  deleteExercise: "X\u00f3a b\u00e0i t\u1eadp",
-  name: "T\u00ean",
-  muscleGroup: "Nh\u00f3m c\u01a1",
+  eyebrow: "Lịch đang dùng",
+  title: "Chỉnh lịch tập",
+  modeLabel: "Chế độ lịch tập",
+  routineName: "Tên lịch tập",
+  dayName: "Tên buổi",
+  day: "Ngày",
+  daysPerWeek: "Ngày/tuần",
+  routine: "Lịch tập",
+  noRoutine: "Chưa có lịch",
+  currentDay: "Buổi đang xem",
+  noDay: "Chưa chọn buổi",
+  exerciseCount: "Số bài",
+  workoutDays: "Ngày tập",
+  addDay: "+ Ngày",
+  deleteDay: "Xóa ngày",
+  confirmDelete: "Xác nhận xóa",
+  deleteWorkoutDay: "Xóa ngày tập",
+  templates: "Mẫu lịch tập",
+  moveUp: "Đưa bài tập lên",
+  moveDown: "Đưa bài tập xuống",
+  deleteExercise: "Xóa bài tập",
+  name: "Tên",
+  muscleGroup: "Nhóm cơ",
   sets: "Set",
-  minReps: "Rep t\u1ed1i thi\u1ec3u",
-  maxReps: "Rep t\u1ed1i \u0111a",
-  rest: "Ngh\u1ec9",
-  superset: "Nh\u00f3m superset",
-  previous: "L\u1ea7n tr\u01b0\u1edbc",
-  newExerciseName: "T\u00ean b\u00e0i t\u1eadp m\u1edbi",
-  addExercise: "Th\u00eam b\u00e0i"
+  minReps: "Rep tối thiểu",
+  maxReps: "Rep tối đa",
+  rest: "Nghỉ",
+  superset: "Nhóm superset",
+  previous: "Lần trước",
+  newExerciseName: "Tên bài tập mới",
+  addExercise: "Thêm bài"
 };
 
 export function RoutineEditorSection(props: {
@@ -168,10 +168,10 @@ export function RoutineEditorSection(props: {
               <>
                 <div className="row-actions">
                   <button onClick={() => props.moveExercise(exercise.id, -1)} aria-label={text.moveUp}>
-                    {"\u2191"}
+                    {"↑"}
                   </button>
                   <button onClick={() => props.moveExercise(exercise.id, 1)} aria-label={text.moveDown}>
-                    {"\u2193"}
+                    {"↓"}
                   </button>
                   <ConfirmActionButton
                     className="danger-button"

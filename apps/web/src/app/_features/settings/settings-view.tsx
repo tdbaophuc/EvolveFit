@@ -1,6 +1,7 @@
 "use client";
 
 import { Bell, ChevronRight, Database, HeartPulse, Lock, Settings2, Share2, SlidersHorizontal, User } from "lucide-react";
+import type { AuthAction } from "@/features/auth/store";
 import React from "react";
 import type {
   AppState,
@@ -11,7 +12,7 @@ import type {
   SocialPrivacySettings,
   SyncQueueItem
 } from "@evolvefit/shared";
-import { isDrinkModuleActive, type CloudMergePreview, type RestoreSection } from "@evolvefit/shared";
+import { isDrinkModuleActive, type RestoreSection } from "@evolvefit/shared";
 import {
   AccountProfileSection,
   DataPrivacySection,
@@ -50,21 +51,11 @@ const settingsPanels: { id: SettingsPanel; label: string; summary: string; icon:
 export function SettingsView(props: {
   state: AppState;
   updateProfile: (next: Partial<AppState["profile"]>) => void;
-  signInLocal: (mode: AppState["profile"]["authMode"]) => void;
-  authPassword: string;
-  setAuthPassword: (value: string) => void;
-  authResetToken: string;
-  setAuthResetToken: (value: string) => void;
-  cloudMergePreview: CloudMergePreview | null;
-  authenticateEmail: (mode: "sign-in" | "sign-up") => void;
-  startGoogleOAuth: () => void;
+  account: string | null;
+  sessionExpired: boolean;
+  authPending: AuthAction | null;
   refreshAuthSession: () => void;
-  requestPasswordResetEmail: () => void;
-  resetAccountPassword: () => void;
-  mergeLocalAccountToCloud: () => void;
-  replaceLocalWithCloud: () => void;
-  keepLocalAccountData: () => void;
-  signOutAccount: () => void;
+  signOutAccount: (options: { removeLocalData: boolean }) => void;
   deleteCloudAccount: () => void;
   reset: () => void;
   deletePersonalData: () => void;
@@ -131,21 +122,11 @@ export function SettingsView(props: {
         {activePanel === "profile" && (
           <AccountProfileSection
             profile={props.state.profile}
-            authPassword={props.authPassword}
-            setAuthPassword={props.setAuthPassword}
-            authResetToken={props.authResetToken}
-            setAuthResetToken={props.setAuthResetToken}
-            cloudMergePreview={props.cloudMergePreview}
+            account={props.account}
+            sessionExpired={props.sessionExpired}
             updateProfile={props.updateProfile}
-            signInLocal={props.signInLocal}
-            authenticateEmail={props.authenticateEmail}
-            startGoogleOAuth={props.startGoogleOAuth}
+            authPending={props.authPending}
             refreshAuthSession={props.refreshAuthSession}
-            requestPasswordResetEmail={props.requestPasswordResetEmail}
-            resetAccountPassword={props.resetAccountPassword}
-            mergeLocalAccountToCloud={props.mergeLocalAccountToCloud}
-            replaceLocalWithCloud={props.replaceLocalWithCloud}
-            keepLocalAccountData={props.keepLocalAccountData}
             signOutAccount={props.signOutAccount}
             reopenOnboarding={props.reopenOnboarding}
           />

@@ -3,6 +3,7 @@
 import type { EquipmentType } from "@evolvefit/shared";
 import { suggestedRoutineTemplate, suggestedWaterTargetMl, type AppState } from "@evolvefit/shared";
 import { CalendarCheck } from "lucide-react";
+import Link from "next/link";
 import React from "react";
 import { SwitchField } from "../ui/switch-field";
 
@@ -100,6 +101,11 @@ export function OnboardingPanel(props: {
         ))}
       </div>
       <p className="progress-copy">Bước {props.step + 1}/{steps.length}</p>
+      {props.step === 0 && (
+        <p className="onboarding-account-link">
+          Đã có tài khoản? <Link href="/sign-in?next=/today">Đăng nhập để khôi phục dữ liệu</Link> và bỏ qua phần thiết lập.
+        </p>
+      )}
       {validationMessage && <p className="form-warning">{validationMessage}</p>}
 
       {props.step === 0 && (

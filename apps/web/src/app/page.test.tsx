@@ -1,7 +1,6 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import React from "react";
-import AppPage from "./page";
+import { renderApp } from "@/test/render-app";
 import { createAppDataExport, initialState } from "@evolvefit/shared";
 import { vi } from "vitest";
 
@@ -19,7 +18,7 @@ describe("Live Workout session queue", () => {
         profile: { ...initialState.profile, onboardingCompleted: true }
       })
     );
-    render(<AppPage />);
+    renderApp();
 
     await user.click(screen.getByRole("button", { name: "Tập luyện" }));
     await user.click(screen.getByRole("button", { name: /Bắt đầu tập/i }));
@@ -48,7 +47,7 @@ describe("Live Workout session queue", () => {
         profile: { ...initialState.profile, onboardingCompleted: true }
       })
     );
-    render(<AppPage />);
+    renderApp();
 
     await user.click(screen.getByRole("button", { name: "Tập luyện" }));
     await user.click(screen.getByRole("button", { name: /Bắt đầu tập/i }));
@@ -82,7 +81,7 @@ describe("Progress dashboard", () => {
       })
     );
 
-    render(<AppPage />);
+    renderApp();
 
     await user.click(screen.getByRole("button", { name: "Tiến độ" }));
 
@@ -100,7 +99,7 @@ describe("Progress dashboard", () => {
       })
     );
 
-    render(<AppPage />);
+    renderApp();
 
     await user.click(screen.getByRole("button", { name: "Tiến độ" }));
     await user.click(screen.getByRole("button", { name: "Cơ thể" }));
@@ -124,7 +123,7 @@ describe("Progress dashboard", () => {
       })
     );
 
-    render(<AppPage />);
+    renderApp();
 
     await user.click(screen.getByRole("button", { name: "Tiến độ" }));
 
@@ -159,7 +158,7 @@ describe("Settings import and privacy", () => {
       })
     );
 
-    render(<AppPage />);
+    renderApp();
 
     await user.click(screen.getByRole("button", { name: "Cài đặt" }));
     expect(screen.getByText("Current Athlete")).toBeInTheDocument();
@@ -196,16 +195,17 @@ describe("Settings import and privacy", () => {
       if (url.endsWith("/api/auth/sign-in")) return Response.json({ ok: true, data: { mode: "email", email: "merge@example.com" } });
       if (url.endsWith("/api/sync/batch")) return Response.json({ ok: true, data: { results: [] } });
       if (url.endsWith("/api/account/export")) return Response.json({ ok: true, data: createAppDataExport(localState) });
-      if (url.endsWith("/api/health")) return Response.json({ ok: true, data: {} });
+      if (url.endsWith("/api/auth/session")) return Response.json({ ok: true, data: { mode: "local", email: "local@evolvefit.app", authenticated: false } });
       return Response.json({ ok: true, data: {} });
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<AppPage />);
+    renderApp("/sign-in");
 
-    await user.click(screen.getByRole("button", { name: "Cài đặt" }));
-    await user.type(document.querySelector('input[type="password"]') as HTMLInputElement, "secret123");
-    await user.click(screen.getAllByRole("button", { name: /email/i })[1]);
+    // The email of the guest profile is prefilled on the sign-in page.
+    expect(await screen.findByRole("textbox", { name: "Email" })).toHaveValue("merge@example.com");
+    await user.type(screen.getByLabelText("Mật khẩu"), "secret123");
+    await user.click(screen.getByRole("button", { name: "Đăng nhập" }));
     await user.click(await screen.findByRole("button", { name: "merge-local-to-cloud" }));
 
     const syncCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/api/sync/batch"));
@@ -215,7 +215,12 @@ describe("Settings import and privacy", () => {
         expect.objectContaining({ type: "hydration.log", idempotencyKey: "account-merge:merge@example.com:hydration.log:merge-water" })
       ])
     });
-    expect(JSON.parse(window.localStorage.getItem("evolvefit-state-v1") ?? "{}").profile).toMatchObject({ email: "merge@example.com", authMode: "email" });
+    const accountState = JSON.parse(window.localStorage.getItem("evolvefit-state-v1:account:merge@example.com") ?? "{}");
+    expect(accountState.profile).toMatchObject({ email: "merge@example.com", authMode: "email" });
+    expect(accountState.hydrationLogs.some((log: { id: string }) => log.id === "merge-water")).toBe(true);
+    // The guest copy stays on the device and is shown again after signing out.
+    expect(JSON.parse(window.localStorage.getItem("evolvefit-state-v1") ?? "{}").profile.authMode).toBe("local");
+    expect(window.localStorage.getItem("evolvefit-active-account")).toBe("merge@example.com");
     vi.unstubAllGlobals();
   });
 
@@ -229,7 +234,7 @@ describe("Settings import and privacy", () => {
       })
     );
 
-    render(<AppPage />);
+    renderApp();
 
     await user.click(screen.getByRole("button", { name: "Tiến độ" }));
     await user.click(screen.getByRole("button", { name: "Chia sẻ" }));
@@ -269,7 +274,7 @@ describe("Settings import and privacy", () => {
       })
     );
 
-    render(<AppPage />);
+    renderApp();
 
     await user.click(screen.getByRole("button", { name: "Cài đặt" }));
     await user.click(screen.getByRole("button", { name: "Tích hợp" }));

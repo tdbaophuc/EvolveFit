@@ -20,5 +20,5 @@
     }
   },
   "include": ["apps/web/**/*.ts", "apps/web/**/*.tsx", "apps/api/**/*.ts", "packages/shared/**/*.ts", "scripts/**/*.mjs", "vitest.setup.ts"],
-  "exclude": ["node_modules", "evolve-fit", "apps/web/.next", "apps/api/dist"]
+  "exclude": ["node_modules", "apps/web/.next", "apps/api/dist"]
 }

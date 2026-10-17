@@ -46,6 +46,8 @@ describe("Fastify API contract", () => {
     });
     expect(signIn.statusCode).toBe(200);
     expect(signIn.json()).toMatchObject({ ok: true, data: { email: "api-contract@example.com", mode: "local" } });
+    // Memory (demo) mode: a valid sealed cookie counts as a signed-in session.
+    expect((await call("/api/auth/session")).json()).toMatchObject({ ok: true, data: { email: "api-contract@example.com", authenticated: true } });
 
     const signUp = await call({ method: "POST", url: "/api/auth/sign-up", payload: { email: "missing-password@example.com" } });
     expect(signUp.statusCode).toBe(400);

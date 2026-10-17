@@ -24,33 +24,33 @@ type TodayOverviewProps = {
 };
 
 const text = {
-  today: "H\u00f4m nay",
-  nextAction: "Vi\u1ec7c quan tr\u1ecdng nh\u1ea5t",
-  startWorkout: "B\u1eaft \u0111\u1ea7u t\u1eadp",
-  viewSchedule: "Xem l\u1ecbch",
-  localFirst: "L\u01b0u tr\u00ean m\u00e1y tr\u01b0\u1edbc",
-  water: "N\u01b0\u1edbc",
-  details: "Chi ti\u1ebft",
+  today: "Hôm nay",
+  nextAction: "Việc quan trọng nhất",
+  startWorkout: "Bắt đầu tập",
+  viewSchedule: "Xem lịch",
+  localFirst: "Lưu trên máy trước",
+  water: "Nước",
+  details: "Chi tiết",
   creatine: "Creatine",
-  logged: "\u0110\u00e3 log",
-  notLogged: "Ch\u01b0a log",
-  markTaken: "\u0110\u00e3 u\u1ed1ng",
-  recent: "Ho\u1ea1t \u0111\u1ed9ng g\u1ea7n \u0111\u00e2y",
-  noActivity: "Ch\u01b0a c\u00f3 ho\u1ea1t \u0111\u1ed9ng",
-  noActivityText: "Log n\u01b0\u1edbc ho\u1eb7c b\u1eaft \u0111\u1ea7u bu\u1ed5i t\u1eadp \u0111\u1ec3 l\u1ea5p \u0111\u1ea7y d\u00f2ng th\u1eddi gian h\u00f4m nay.",
-  bodyWeight: "C\u00e2n n\u1eb7ng",
-  none: "Ch\u01b0a c\u00f3",
+  logged: "Đã log",
+  notLogged: "Chưa log",
+  markTaken: "Đã uống",
+  recent: "Hoạt động gần đây",
+  noActivity: "Chưa có hoạt động",
+  noActivityText: "Log nước hoặc bắt đầu buổi tập để lấp đầy dòng thời gian hôm nay.",
+  bodyWeight: "Cân nặng",
+  none: "Chưa có",
   done: "Xong",
-  open: "M\u1edf",
-  setsToday: "Set h\u00f4m nay",
-  workoutMode: "ch\u1ebf \u0111\u1ed9 t\u1eadp trung",
-  exerciseUnit: "b\u00e0i",
-  quickWater: "Log n\u01b0\u1edbc nhanh",
-  everyDay: "m\u1ed7i ng\u00e0y"
+  open: "Mở",
+  setsToday: "Set hôm nay",
+  workoutMode: "chế độ tập trung",
+  exerciseUnit: "bài",
+  quickWater: "Log nước nhanh",
+  everyDay: "mỗi ngày"
 };
 
 export function TodayOverview(props: TodayOverviewProps) {
-  const paceLabel = props.pace === "behind" ? "Ch\u1eadm nh\u1ecbp" : props.pace === "ahead" ? "V\u01b0\u1ee3t nh\u1ecbp" : "\u0110\u00fang nh\u1ecbp";
+  const paceLabel = props.pace === "behind" ? "Chậm nhịp" : props.pace === "ahead" ? "Vượt nhịp" : "Đúng nhịp";
   const workoutPercent = props.workoutProgressPercent ?? 0;
   const exerciseCount = props.workoutExerciseCount ?? 0;
 
@@ -61,7 +61,7 @@ export function TodayOverview(props: TodayOverviewProps) {
           <p className="eyebrow">{text.today}</p>
           <h1>{props.workoutName}</h1>
           <p>
-            {exerciseCount || 3} {text.exerciseUnit} - {workoutPercent}% ho\u00e0n t\u1ea5t - {text.localFirst}
+            {exerciseCount || 3} {text.exerciseUnit} - {workoutPercent}% hoàn tất - {text.localFirst}
           </p>
         </div>
         <div className="today-hero-actions">

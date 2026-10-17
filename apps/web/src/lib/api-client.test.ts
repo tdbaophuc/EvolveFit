@@ -63,7 +63,7 @@ describe("EvolveFitApiClient", () => {
     await client.deleteAccount();
     await client.signOut();
 
-    expect(session).toEqual({ ok: false, error: "Unauthorized", requestId: "req_client" });
+    expect(session).toEqual({ ok: false, error: "Unauthorized", requestId: "req_client", status: 401 });
     expect(client.googleOAuthUrl()).toBe("https://api.test/api/auth/oauth/google");
     expect(fetchMock).toHaveBeenCalledWith("https://api.test/api/auth/session", expect.objectContaining({ method: "GET", credentials: "include" }));
     expect(fetchMock).toHaveBeenCalledWith("https://api.test/api/auth/refresh", expect.objectContaining({ method: "POST" }));

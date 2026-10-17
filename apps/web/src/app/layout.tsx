@@ -1,6 +1,11 @@
 import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import type { ReactNode } from "react";
+import { QueryProvider } from "@/lib/query-provider";
+import "../styles/tokens.css";
 import "./globals.css";
+
+const inter = Inter({ subsets: ["latin", "vietnamese"], display: "swap", variable: "--font-inter" });
 
 export const metadata: Metadata = {
   title: "EvolveFit",
@@ -16,14 +21,15 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: "#F8FAFC",
   width: "device-width",
-  initialScale: 1,
-  maximumScale: 1
+  initialScale: 1
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="vi">
-      <body>{children}</body>
+    <html lang="vi" className={inter.variable}>
+      <body>
+        <QueryProvider>{children}</QueryProvider>
+      </body>
     </html>
   );
 }
