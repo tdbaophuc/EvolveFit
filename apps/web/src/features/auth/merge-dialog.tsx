@@ -1,9 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { CloudDownload, CloudUpload, Smartphone } from "lucide-react";
 import { Button, InlineNotice, Sheet } from "@/components/ui";
-import { keepLocalAccountData, mergeLocalAccountToCloud, replaceLocalWithCloud } from "./actions";
+import { keepLocalAccountData, mergeLocalAccountToCloud, replaceLocalWithCloud, type AuthResult } from "./actions";
 import { useAuthStore } from "./store";
 
 type Option = {
@@ -12,7 +12,7 @@ type Option = {
   ariaLabel: string;
   icon: React.ReactNode;
   consequence: string;
-  onChoose: () => void;
+  onChoose: () => Promise<AuthResult> | void;
 };
 
 /**
@@ -23,7 +23,14 @@ export function MergeDecisionDialog() {
   const preview = useAuthStore((store) => store.cloudMergePreview);
   const pending = useAuthStore((store) => store.pending);
   const slow = useAuthStore((store) => store.slow);
+  const [error, setError] = useState("");
   if (!preview) return null;
+
+  async function choose(option: Option) {
+    setError("");
+    const result = await option.onChoose();
+    if (result && !result.ok) setError(result.error);
+  }
 
   const counts = `${preview.hydrationLogs} log nước, ${preview.workoutSets} set, ${preview.routines} lịch tập, ${preview.bodyMetrics} chỉ số cơ thể`;
   const options: Option[] = [
@@ -33,7 +40,7 @@ export function MergeDecisionDialog() {
       ariaLabel: "merge-local-to-cloud",
       icon: <CloudUpload size={18} />,
       consequence: `Đưa dữ liệu trên máy (${counts}) lên tài khoản và giữ cả dữ liệu đã có trên cloud. Bản mới hơn được giữ khi trùng.`,
-      onChoose: () => void mergeLocalAccountToCloud()
+      onChoose: mergeLocalAccountToCloud
     },
     {
       id: "replace",
@@ -41,7 +48,7 @@ export function MergeDecisionDialog() {
       ariaLabel: "replace-local-with-cloud",
       icon: <CloudDownload size={18} />,
       consequence: "Bỏ bản trên máy cho tài khoản này và tải dữ liệu từ cloud. Dữ liệu khách trên máy vẫn còn khi bạn đăng xuất.",
-      onChoose: () => void replaceLocalWithCloud()
+      onChoose: replaceLocalWithCloud
     },
     {
       id: "keep",
@@ -68,14 +75,20 @@ export function MergeDecisionDialog() {
               variant={option.id === "merge" ? "primary" : "secondary"}
               leadingIcon={option.icon}
               loading={pending === option.id}
-              disabled={pending !== null}
+              // "Keep" is local-only, so it stays available even while a cloud request is still pending.
+              disabled={pending !== null && option.id !== "keep"}
               aria-label={option.ariaLabel}
-              onClick={option.onChoose}
+              onClick={() => void choose(option)}
             >
               {option.label}
             </Button>
           </div>
         ))}
+        {error && (
+          <p role="alert" className="m-0 rounded-xl border border-destructive-border bg-destructive-soft px-3 py-2 text-sm leading-5 text-destructive">
+            {error}
+          </p>
+        )}
         {pending && slow && <InlineNotice>Đang kết nối máy chủ… Lần đầu có thể mất tới 1 phút.</InlineNotice>}
       </div>
     </Sheet>

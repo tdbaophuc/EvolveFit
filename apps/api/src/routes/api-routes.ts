@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { createAppDataExport } from "@evolvefit/shared";
+import { createAppDataExport, initialState } from "@evolvefit/shared";
 import {
   coachRecommendationFeedback,
   coachRecommend,
@@ -81,6 +81,7 @@ import {
   type AdminRole
 } from "../lib/admin";
 import { AdminStoreError } from "../lib/admin-store";
+import type { CatalogSnapshot } from "../lib/catalog-store";
 import {
   AuthError,
   authCookieName,
@@ -176,7 +177,7 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
     withAdminContext(request, reply, "admin:dashboard", async ({ state, actor }) => ({
       actor: adminActorPayload(actor),
       summary: adminDashboardSummary(state, await request.adminStore.countAudit())
-    }))
+    }), { catalog: true })
   );
   app.get("/api/admin/governance/health", (request, reply) =>
     withAdminContext(request, reply, "admin:dashboard", ({ actor }) => ({
@@ -203,34 +204,36 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
     }, { mutation: { action: "admin.role.write", resourceType: "admin_role" }, loadState: false })
   );
   app.get("/api/admin/exercises", (request, reply) =>
-    withAdminContext(request, reply, "content:read", ({ state }) => listAdminMarketplaceExercises(state, request.query as Record<string, never>))
+    withAdminContext(request, reply, "content:read", ({ state }) => listAdminMarketplaceExercises(state, request.query as Record<string, never>), { catalog: true })
   );
   app.post("/api/admin/exercises", (request, reply) =>
-    withAdminContext(request, reply, "content:write", ({ state }) => createAdminMarketplaceExercise(state, bodyAs(request)), {
-      mutation: { action: "admin.exercise.create", resourceType: "exercise" }
+    withAdminContext(request, reply, "content:write", ({ state }) => request.catalogStore.upsertExercise(createAdminMarketplaceExercise(state, bodyAs(request))), {
+      mutation: { action: "admin.exercise.create", resourceType: "exercise" },
+      catalog: true
     })
   );
   app.patch<{ Params: IdParams }>("/api/admin/exercises/:id", (request, reply) =>
     withAdminContext(request, reply, "content:write", ({ state }) => {
       const exercise = updateAdminMarketplaceExercise(state, request.params.id, bodyAs(request));
       if (!exercise) throw new AdminRouteError("exercise not found", 404);
-      return exercise;
-    }, { mutation: { action: "admin.exercise.update", resourceType: "exercise", resourceId: request.params.id } })
+      return request.catalogStore.upsertExercise(exercise);
+    }, { mutation: { action: "admin.exercise.update", resourceType: "exercise", resourceId: request.params.id }, catalog: true })
   );
   app.get("/api/admin/routine-templates", (request, reply) =>
-    withAdminContext(request, reply, "content:read", ({ state }) => listAdminRoutineTemplates(state, request.query as Record<string, never>))
+    withAdminContext(request, reply, "content:read", ({ state }) => listAdminRoutineTemplates(state, request.query as Record<string, never>), { catalog: true })
   );
   app.post("/api/admin/routine-templates", (request, reply) =>
-    withAdminContext(request, reply, "content:write", ({ state }) => createAdminRoutineTemplate(state, bodyAs(request)), {
-      mutation: { action: "admin.routineTemplate.create", resourceType: "routine_template" }
+    withAdminContext(request, reply, "content:write", ({ state }) => request.catalogStore.upsertTemplate(createAdminRoutineTemplate(state, bodyAs(request))), {
+      mutation: { action: "admin.routineTemplate.create", resourceType: "routine_template" },
+      catalog: true
     })
   );
   app.patch<{ Params: IdParams }>("/api/admin/routine-templates/:id", (request, reply) =>
     withAdminContext(request, reply, "content:write", ({ state }) => {
       const template = updateAdminRoutineTemplate(state, request.params.id, bodyAs(request));
       if (!template) throw new AdminRouteError("routine template not found", 404);
-      return template;
-    }, { mutation: { action: "admin.routineTemplate.update", resourceType: "routine_template", resourceId: request.params.id } })
+      return request.catalogStore.upsertTemplate(template);
+    }, { mutation: { action: "admin.routineTemplate.update", resourceType: "routine_template", resourceId: request.params.id }, catalog: true })
   );
   app.get("/api/admin/feedback", (request, reply) =>
     withAdminContext(request, reply, "support:read", () => ({ items: [], total: 0, redacted: true }))
@@ -466,10 +469,14 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
   app.delete<{ Params: IdParams }>("/api/routines/:id", (request, reply) => withDataContext(request, reply, () => deleteRoutine(request.params.id), { errorStatus: 404, persist: true }));
 
   app.get("/api/exercises", (request, reply) => withDataContext(request, reply, () => listExercises()));
-  app.get("/api/exercises/marketplace", (request, reply) => withDataContext(request, reply, () => listMarketplaceExerciseCatalog(request.query as Record<string, never>)));
-  app.get<{ Params: IdParams }>("/api/exercises/marketplace/:id", (request, reply) => withDataContext(request, reply, () => getMarketplaceExercise(request.params.id), { errorStatus: 404 }));
+  app.get("/api/exercises/marketplace", (request, reply) =>
+    withDataContext(request, reply, () => listMarketplaceExerciseCatalog(request.query as Record<string, never>), { publicRead: true })
+  );
+  app.get<{ Params: IdParams }>("/api/exercises/marketplace/:id", (request, reply) =>
+    withDataContext(request, reply, () => getMarketplaceExercise(request.params.id), { errorStatus: 404, publicRead: true })
+  );
   app.get<{ Params: IdParams }>("/api/exercises/marketplace/:id/substitutions", (request, reply) =>
-    withDataContext(request, reply, () => getMarketplaceExerciseSubstitutions(request.params.id, request.query as Record<string, never>), { errorStatus: 404 })
+    withDataContext(request, reply, () => getMarketplaceExerciseSubstitutions(request.params.id, request.query as Record<string, never>), { errorStatus: 404, publicRead: true })
   );
   app.post<{ Params: IdParams }>("/api/exercises/marketplace/:id/clone", (request, reply) =>
     withDataContext(request, reply, () => cloneMarketplaceExercise(request.params.id, bodyAs(request)), { errorStatus: 404, persist: true })
@@ -481,8 +488,12 @@ export function registerApiRoutes(app: FastifyInstance, env: NodeJS.ProcessEnv =
   app.patch<{ Params: IdParams }>("/api/exercises/:id", (request, reply) => withDataContext(request, reply, () => updateExercise(request.params.id, bodyAs(request)), { errorStatus: 400, persist: true }));
   app.delete<{ Params: IdParams }>("/api/exercises/:id", (request, reply) => withDataContext(request, reply, () => deleteExercise(request.params.id), { errorStatus: 404, persist: true }));
 
-  app.get("/api/routine-templates", (request, reply) => withDataContext(request, reply, () => listRoutineTemplateCatalog(request.query as Record<string, never>)));
-  app.get<{ Params: IdParams }>("/api/routine-templates/:id", (request, reply) => withDataContext(request, reply, () => getRoutineTemplate(request.params.id), { errorStatus: 404 }));
+  app.get("/api/routine-templates", (request, reply) =>
+    withDataContext(request, reply, () => listRoutineTemplateCatalog(request.query as Record<string, never>), { publicRead: true })
+  );
+  app.get<{ Params: IdParams }>("/api/routine-templates/:id", (request, reply) =>
+    withDataContext(request, reply, () => getRoutineTemplate(request.params.id), { errorStatus: 404, publicRead: true })
+  );
   app.post<{ Params: IdParams }>("/api/routine-templates/:id/preview", (request, reply) =>
     withDataContext(request, reply, () => previewRoutineTemplate(request.params.id, bodyAs(request)), { errorStatus: 404 })
   );
@@ -597,14 +608,24 @@ async function withDataContext(
   request: FastifyRequest,
   reply: FastifyReply,
   handler: () => ApiResult<unknown> | Promise<ApiResult<unknown>>,
-  options: { errorStatus?: number; persist?: boolean; allowDemoFallback?: boolean } = {}
+  options: { errorStatus?: number; persist?: boolean; allowDemoFallback?: boolean; publicRead?: boolean } = {}
 ) {
   try {
-    const user = await resolveApiUser(request, options.allowDemoFallback);
-    const state = await request.apiRepository.loadUserState(user);
-    const runtime: ApiRuntime = { user, repository: request.apiRepository, state, mutations: [], env: request.apiEnv };
+    const signedInUser = await resolveApiUser(request, options.allowDemoFallback).catch((error) => {
+      // Public catalog reads also work for guests: they get the default profile and nothing is persisted.
+      if (options.publicRead && error instanceof AuthRequiredError) return undefined;
+      throw error;
+    });
+    const user = signedInUser ?? demoUser("guest@evolvefit.app");
+    const state = signedInUser ? await request.apiRepository.loadUserState(signedInUser) : structuredClone(initialState);
+    const catalog = await request.catalogStore.snapshot().catch((error) => {
+      // Degrade to the built-in seed rather than failing every request when the catalog is unreachable.
+      console.error("[api] catalog unavailable", { requestId: request.requestId, error: error instanceof Error ? error.message : String(error) });
+      return undefined;
+    });
+    const runtime: ApiRuntime = { user, repository: request.apiRepository, state, mutations: [], env: request.apiEnv, catalog };
     const result = await runWithApiRuntime(runtime, handler);
-    if (options.persist && result.ok) {
+    if (options.persist && result.ok && signedInUser) {
       const mutations = runtime.mutations.splice(0);
       if (mutations.length) await request.apiRepository.applyResourceMutations(user, mutations, state);
     }
@@ -620,7 +641,7 @@ async function withAdminContext(
   reply: FastifyReply,
   permission: AdminPermission,
   handler: (context: { actor: AdminActor; state: ReturnType<typeof currentApiState> }) => unknown | Promise<unknown>,
-  options: { mutation?: { action: string; resourceType: string; resourceId?: string }; loadState?: boolean } = {}
+  options: { mutation?: { action: string; resourceType: string; resourceId?: string }; loadState?: boolean; catalog?: boolean } = {}
 ) {
   try {
     const user = await resolveApiUser(request);
@@ -631,12 +652,17 @@ async function withAdminContext(
       return sendErrorEnvelope(reply, request, authorized.error, authorized.status);
     }
 
-    const state = options.loadState === false ? undefined : await request.apiRepository.loadUserState(user);
+    // Catalog mode works on the shared admin-curated catalog instead of the admin's personal data.
+    const state = options.catalog
+      ? catalogState(await request.catalogStore.snapshot())
+      : options.loadState === false
+        ? undefined
+        : await request.apiRepository.loadUserState(user);
     // Audit only the affected resource, never a snapshot of the admin's whole app state.
     const before = options.mutation && state ? auditResourceSnapshot(state, options.mutation.resourceType, options.mutation.resourceId) : undefined;
     const data = await handler({ actor: authorized.actor, state: state as ReturnType<typeof currentApiState> });
     if (options.mutation) {
-      if (state) await request.apiRepository.saveUserState(user, state);
+      if (state && !options.catalog) await request.apiRepository.saveUserState(user, state);
       await recordAdminAuditLog(request.adminStore, {
         actorUserId: user.id,
         actorEmail: user.email,
@@ -657,6 +683,11 @@ async function withAdminContext(
     if (status >= 500) console.error("[api] admin request failed", { requestId: request.requestId, error: error instanceof Error ? error.message : String(error) });
     return sendErrorEnvelope(reply, request, status >= 500 ? "Unexpected API error" : error instanceof Error ? error.message : "Unexpected API error", status);
   }
+}
+
+/** A throwaway AppState whose catalog fields hold the shared catalog, so admin helpers can operate on it. */
+function catalogState(snapshot: CatalogSnapshot): ReturnType<typeof currentApiState> {
+  return { ...structuredClone(initialState), exerciseLibrary: structuredClone(snapshot.exercises), routineTemplatesMarketplace: structuredClone(snapshot.templates), syncQueue: [] };
 }
 
 function auditResourceSnapshot(state: ReturnType<typeof currentApiState>, resourceType: string, resourceId?: string): unknown {

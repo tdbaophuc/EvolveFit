@@ -11,7 +11,7 @@ import type {
   WorkoutSession,
   WorkoutSet
 } from "@evolvefit/shared";
-import { cryptoSafeId, initialState } from "@evolvefit/shared";
+import { cryptoSafeId, initialState, isUserOwnedExercise } from "@evolvefit/shared";
 import { createSupabaseRestRequest } from "./integrations";
 
 export type ApiUser = {
@@ -289,7 +289,8 @@ export class SupabaseAppRepository implements AppRepository {
       this.upsert(user, "hydration_logs", state.hydrationLogs.map((item) => hydrationLogToRow(user.id, item))),
       this.upsert(user, "supplements", state.supplements.map((item) => supplementToRow(user.id, item))),
       this.upsert(user, "supplement_logs", state.supplementLogs.map((item) => supplementLogToRow(user.id, item))),
-      this.upsert(user, "exercise_library", state.exerciseLibrary.map((item) => exerciseToRow(user.id, item))),
+      // Only the user's own exercises are stored per user; built-in and marketplace items live in the shared catalog.
+      this.upsert(user, "exercise_library", state.exerciseLibrary.filter(isUserOwnedExercise).map((item) => exerciseToRow(user.id, item))),
       Promise.all(state.routines.map((routine) => this.saveRoutine(user, routine))),
       this.upsert(user, "workout_sessions", state.workoutSessions.map((item) => workoutSessionToRow(user.id, item))),
       this.upsert(user, "workout_sets", state.workoutSets.map((item) => workoutSetToRow(user.id, item))),
@@ -623,7 +624,13 @@ function hydrateStateFromRows(
   state.hydrationLogs = rows.hydrationLogs.map(hydrationLogFromRow);
   state.supplements = rows.supplements.map(supplementFromRow);
   state.supplementLogs = rows.supplementLogs.map(supplementLogFromRow);
-  if (rows.exerciseLibrary.length) state.exerciseLibrary = rows.exerciseLibrary.map(exerciseFromRow);
+  // Keep the seeded built-in/marketplace catalog and add the user's own exercises (previously any custom row
+  // replaced the whole library, hiding the catalog for that user).
+  if (rows.exerciseLibrary.length) {
+    const own = rows.exerciseLibrary.map(exerciseFromRow);
+    const ownIds = new Set(own.map((exercise) => exercise.id));
+    state.exerciseLibrary = [...state.exerciseLibrary.filter((exercise) => !ownIds.has(exercise.id)), ...own];
+  }
   if (rows.routines.length) state.routines = rows.routines.map((routine) => routineFromRows(routine, rows.workoutDays, rows.routineExercises));
   if (state.routines[0]) {
     state.activeRoutineId = state.routines[0].id;
@@ -656,9 +663,11 @@ type DrinkModuleRow = { id: string; user_id: string; drink_type: string; name: s
 type HydrationLogRow = { id: string; user_id: string; amount_ml: number; drink_type: HydrationLog["drinkType"]; logged_at: string };
 type SupplementRow = { id: string; user_id: string; name: string; default_amount: number | string; unit: Supplement["unit"]; reminder_time?: string | null; schedule_rule?: { hours?: number[] } | null; active: boolean };
 type SupplementLogRow = { id: string; user_id: string; supplement_id?: string | null; name: string; amount: number | string; unit: SupplementLog["unit"]; logged_at: string; status?: SupplementLog["status"]; skipped_reason?: string | null };
-type ExerciseLibraryRow = {
+export type ExerciseLibraryRow = {
   id: string;
-  user_id: string;
+  user_id: string | null;
+  /** App-level id of shared catalog rows (their primary key is a generated uuid). */
+  external_id?: string | null;
   name: string;
   muscle_group: string;
   equipment: ExerciseDefinition["equipment"];
@@ -767,9 +776,9 @@ function supplementLogToRow(userId: string, item: SupplementLog) {
   return { id: item.id, user_id: userId, supplement_id: item.supplementId ?? null, name: item.name, amount: item.amount, unit: item.unit, logged_at: item.loggedAt, status: item.status ?? "taken", skipped_reason: item.skippedReason ?? null };
 }
 
-function exerciseFromRow(row: ExerciseLibraryRow): ExerciseDefinition {
+export function exerciseFromRow(row: ExerciseLibraryRow): ExerciseDefinition {
   return {
-    id: row.id,
+    id: row.external_id ?? row.id,
     name: row.name,
     muscleGroup: row.muscle_group,
     equipment: row.equipment,
@@ -800,7 +809,7 @@ function exerciseFromRow(row: ExerciseLibraryRow): ExerciseDefinition {
   };
 }
 
-function exerciseToRow(userId: string, item: ExerciseDefinition) {
+export function exerciseToRow(userId: string | null, item: ExerciseDefinition) {
   return {
     id: item.id,
     user_id: userId,

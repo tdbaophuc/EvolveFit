@@ -110,7 +110,14 @@ describe("Auth pages (P0/P2)", () => {
   it("returns to the requested page after sign-in and rejects external next targets", async () => {
     const user = userEvent.setup();
     seedGuest();
-    stubApi(async () => Response.json({ ok: true, data: { mode: "email", email: "phuc@example.com" } }));
+    let signedIn = false;
+    stubApi(
+      async () => {
+        signedIn = true;
+        return Response.json({ ok: true, data: { mode: "email", email: "phuc@example.com" } });
+      },
+      () => sessionResponse(signedIn ? "phuc@example.com" : undefined)
+    );
     const { getTestUrl } = await import("@/test/next-navigation-mock");
     renderApp("/sign-in?next=//evil.example");
     await fillSignIn(user);

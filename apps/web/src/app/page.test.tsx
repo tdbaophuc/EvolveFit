@@ -190,12 +190,17 @@ describe("Settings import and privacy", () => {
       hydrationLogs: [{ id: "merge-water", amountMl: 500, drinkType: "water" as const, loggedAt: "2026-08-21T00:00:00.000Z" }]
     };
     window.localStorage.setItem("evolvefit-state-v1", JSON.stringify(localState));
+    let signedIn = false;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.endsWith("/api/auth/sign-in")) return Response.json({ ok: true, data: { mode: "email", email: "merge@example.com" } });
+      if (url.endsWith("/api/auth/sign-in")) {
+        signedIn = true;
+        return Response.json({ ok: true, data: { mode: "email", email: "merge@example.com" } });
+      }
       if (url.endsWith("/api/sync/batch")) return Response.json({ ok: true, data: { results: [] } });
       if (url.endsWith("/api/account/export")) return Response.json({ ok: true, data: createAppDataExport(localState) });
-      if (url.endsWith("/api/auth/session")) return Response.json({ ok: true, data: { mode: "local", email: "local@evolvefit.app", authenticated: false } });
+      if (url.endsWith("/api/auth/session"))
+        return Response.json({ ok: true, data: signedIn ? { mode: "email", email: "merge@example.com", authenticated: true } : { mode: "local", email: "local@evolvefit.app", authenticated: false } });
       return Response.json({ ok: true, data: {} });
     });
     vi.stubGlobal("fetch", fetchMock);

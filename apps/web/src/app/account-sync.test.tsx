@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createAppDataExport, initialState } from "@evolvefit/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -43,6 +43,51 @@ describe("Account namespaces and two-way sync (P2)", () => {
     expect(storedState("phuc@example.com").hydrationLogs.map((log: { id: string }) => log.id)).toEqual(["local-only"]);
   });
 
+  it("explains blocked cookies instead of pretending the sign-in worked", async () => {
+    const user = userEvent.setup();
+    seedGuest();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        // Sign-in succeeds but the browser drops the cookie: the follow-up session check is anonymous.
+        String(input).endsWith("/api/auth/sign-in") ? Response.json({ ok: true, data: { mode: "email", email: "phuc@example.com" } }) : sessionResponse()
+      )
+    );
+    renderApp("/sign-in");
+    await user.type(screen.getByRole("textbox", { name: "Email" }), "phuc@example.com");
+    await user.type(screen.getByLabelText("Mật khẩu"), "secret123");
+    await user.click(screen.getByRole("button", { name: "Đăng nhập" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/chặn cookie/);
+    expect(window.localStorage.getItem("evolvefit-active-account")).toBeNull();
+  });
+
+  it("shows merge errors inside the dialog and keeps 'Giữ trên máy' usable", async () => {
+    const user = userEvent.setup();
+    seedGuest({ hydrationLogs: [cloudLog] });
+    let signedIn = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/auth/sign-in")) {
+          signedIn = true;
+          return Response.json({ ok: true, data: { mode: "email", email: "phuc@example.com" } });
+        }
+        if (url.endsWith("/api/sync/batch")) return Response.json({ ok: false, error: "Unauthorized", errorCode: "unauthorized" }, { status: 401 });
+        return sessionResponse(signedIn ? "phuc@example.com" : undefined);
+      })
+    );
+    renderApp("/sign-in");
+    await user.type(screen.getByRole("textbox", { name: "Email" }), "phuc@example.com");
+    await user.type(screen.getByLabelText("Mật khẩu"), "secret123");
+    await user.click(screen.getByRole("button", { name: "Đăng nhập" }));
+    await user.click(await screen.findByRole("button", { name: "merge-local-to-cloud" }));
+    const dialog = screen.getByRole("dialog");
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(/không nhận phiên đăng nhập/);
+    await user.click(within(dialog).getByRole("button", { name: "keep-local-after-auth" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
   it("signs out to the guest data and removes the account's copy from a shared device", async () => {
     const user = userEvent.setup();
     seedGuest({ hydrationLogs: [] });
@@ -83,13 +128,17 @@ describe("Account namespaces and two-way sync (P2)", () => {
   it("replaces the device copy with the cloud data and skips onboarding for an existing account", async () => {
     const user = userEvent.setup();
     seedGuest({}, { onboardingCompleted: false, email: "" });
+    let signedIn = false;
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.endsWith("/api/auth/sign-in")) return Response.json({ ok: true, data: { mode: "email", email: "phuc@example.com" } });
+        if (url.endsWith("/api/auth/sign-in")) {
+          signedIn = true;
+          return Response.json({ ok: true, data: { mode: "email", email: "phuc@example.com" } });
+        }
         if (url.endsWith("/api/account/export")) return Response.json({ ok: true, data: createAppDataExport({ ...initialState, hydrationLogs: [cloudLog] }) });
-        return sessionResponse();
+        return sessionResponse(signedIn ? "phuc@example.com" : undefined);
       })
     );
     renderApp("/sign-in?next=/today");

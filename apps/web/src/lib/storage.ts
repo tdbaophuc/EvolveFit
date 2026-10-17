@@ -49,10 +49,18 @@ export function loadState(account: AccountId = activeAccount()): AppState {
   if (!raw) return initialState;
   try {
     const migrated = migrateImportedAppData(JSON.parse(raw));
-    return migrated.ok ? migrated.data : initialState;
+    return migrated.ok ? withoutSampleFriends(migrated.data) : initialState;
   } catch {
     return initialState;
   }
+}
+
+/** Earlier versions seeded fake friends into every profile; drop them from saved data. */
+const sampleFriendIds = new Set(["friend-minh", "friend-an", "friend-linh"]);
+
+function withoutSampleFriends(state: AppState): AppState {
+  if (!state.friends.some((friend) => sampleFriendIds.has(friend.id))) return state;
+  return { ...state, friends: state.friends.filter((friend) => !sampleFriendIds.has(friend.id)) };
 }
 
 export function saveState(state: AppState, account: AccountId = activeAccount()): void {

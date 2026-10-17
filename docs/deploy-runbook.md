@@ -103,7 +103,9 @@ Account deletion:
 
 ## Repository and Sync Safety
 
-Apply all Supabase migrations (`0001` through `0010`) through `supabase db push` or the SQL editor before enabling `API_DATA_MODE=supabase`. Migration `0010_admin_store_production.sql` is required for admin role grants. Migration `0005_sync_resource_safety.sql` adds sync/resource indexes and metadata used by production-safe replay checks.
+Apply all Supabase migrations (`0001` through `0011`) through `supabase db push` or the SQL editor before enabling `API_DATA_MODE=supabase`. Migration `0010_admin_store_production.sql` is required for admin role grants. Migration `0011_shared_catalog.sql` is required for the shared admin-curated catalog (`/api/ready` reports `exercise_library.external_id` until it is applied).
+
+Web → API routing: the web app proxies `/api/*` to the API (`API_PROXY_TARGET` on Vercel, `NEXT_PUBLIC_API_BASE_URL` empty) so the session cookie is first-party; with that setup use `COOKIE_SAMESITE=lax`, leave `COOKIE_DOMAIN` empty and set `TRUST_PROXY=2` on the API (Vercel + Render proxies). Migration `0005_sync_resource_safety.sql` adds sync/resource indexes and metadata used by production-safe replay checks.
 
 Mutation routes persist through resource-scoped repository writes instead of replacing the full `AppState`. `/api/sync/batch` writes each resource mutation before storing its idempotent sync result. See `docs/sync-repository-boundary.md` for the current domain boundary, retry semantics, conflict confirmation flow, and staging checklist.
 

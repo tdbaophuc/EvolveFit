@@ -319,11 +319,8 @@ export const initialState: AppState = {
   activeExerciseIndex: 0,
   recommendationHistory: [],
   recommendationDecisions: [],
-  friends: [
-    { id: "friend-minh", displayName: "Minh", handle: "@minh", status: "accepted", badgeStreakMonths: 4, score: 96, addedAt: now.toISOString() },
-    { id: "friend-an", displayName: "An", handle: "@an", status: "accepted", badgeStreakMonths: 2, score: 88, addedAt: now.toISOString() },
-    { id: "friend-linh", displayName: "Linh", handle: "@linh", status: "pending", badgeStreakMonths: 1, score: 72, addedAt: now.toISOString() }
-  ],
+  // No sample friends: the friend leaderboard only shows people the user actually added.
+  friends: [],
   healthIntegration: defaultHealthIntegrationSettings(),
   socialPrivacy: defaultSocialPrivacySettings(),
   sharedPosts: [],

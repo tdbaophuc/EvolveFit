@@ -88,16 +88,28 @@ export async function verifySupabaseProduction(
     "notification_events",
     "sync_events",
     "user_roles",
-    "admin_audit_logs"
+    "admin_audit_logs",
+    "routine_templates",
+    "routine_template_days",
+    "routine_template_exercise_slots"
   ];
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
     return { ok: false, mode: "missing-env", checks: tables.map((table) => ({ table, ok: false })) };
   }
 
+  const probes = [
+    ...tables.map((table) => ({ table, path: `${table}?select=id&limit=1` })),
+    // Column added by migration 0011 (shared catalog).
+    { table: "exercise_library.external_id", path: "exercise_library?select=external_id&limit=1" }
+  ];
   const checks = await Promise.all(
-    tables.map(async (table) => {
-      const response = await fetchImpl(createSupabaseServiceRoleRequest(`${table}?select=id&limit=1`, { method: "GET" }, env));
-      return { table, ok: response.ok, status: response.status };
+    probes.map(async ({ table, path }) => {
+      try {
+        const response = await fetchImpl(createSupabaseServiceRoleRequest(path, { method: "GET" }, env));
+        return { table, ok: response.ok, status: response.status };
+      } catch {
+        return { table, ok: false, status: 0 }; // network error: report it instead of failing the whole check
+      }
     })
   );
 
