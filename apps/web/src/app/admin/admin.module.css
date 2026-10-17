@@ -43,7 +43,7 @@
 .primaryButton,
 .dangerButton,
 .ghostButton {
-  min-height: 38px;
+  min-height: 44px;
   border: 1px solid #cfd9d3;
   border-radius: 8px;
   background: #ffffff;
@@ -143,6 +143,29 @@
   font-size: 24px;
 }
 
+.detailPanel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #d7e0db;
+  border-radius: 8px;
+  background: #fbfdfc;
+}
+
+.detailPanel span {
+  display: block;
+  color: #64736b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.detailPanel strong {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
 .card {
   padding: 16px;
   display: grid;
@@ -157,6 +180,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: flex-end;
 }
 
 .filters input,
@@ -164,7 +188,7 @@
 .field input,
 .field select,
 .field textarea {
-  min-height: 38px;
+  min-height: 44px;
   border: 1px solid #cfd9d3;
   border-radius: 8px;
   padding: 0 10px;
@@ -215,10 +239,30 @@
   gap: 5px;
 }
 
-.field span {
+.field span,
+.compactField span {
   color: #64736b;
   font-size: 12px;
   font-weight: 800;
+}
+
+.compactField {
+  display: grid;
+  gap: 5px;
+}
+
+.nav button:focus-visible,
+.secondaryButton:focus-visible,
+.primaryButton:focus-visible,
+.dangerButton:focus-visible,
+.ghostButton:focus-visible,
+.filters input:focus-visible,
+.filters select:focus-visible,
+.field input:focus-visible,
+.field select:focus-visible,
+.field textarea:focus-visible {
+  outline: 3px solid #63b77d;
+  outline-offset: 2px;
 }
 
 .wide {

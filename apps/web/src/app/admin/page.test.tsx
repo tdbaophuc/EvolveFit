@@ -110,6 +110,7 @@ describe("Admin operations dashboard", () => {
     await user.click(await screen.findByRole("button", { name: /Exercises/ }));
     expect(await screen.findByText("Bench Press")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Publish" }));
+    await user.click(screen.getByRole("button", { name: "Confirm publish" }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith("/api/admin/exercises/ex1", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ status: "published" }) }));
@@ -118,6 +119,7 @@ describe("Admin operations dashboard", () => {
     await user.click(screen.getByRole("button", { name: /Templates/ }));
     expect(await screen.findByText("Starter Strength")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Archive" }));
+    await user.click(screen.getByRole("button", { name: "Confirm archive" }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith("/api/admin/routine-templates/tpl1", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ status: "archived" }) }));
@@ -136,6 +138,8 @@ describe("Admin operations dashboard", () => {
 
     await user.click(screen.getByRole("button", { name: /Audit/ }));
     expect(await screen.findByText("exercise.publish")).toBeInTheDocument();
+    expect(screen.queryByText("req_1")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Details" }));
     expect(screen.getByText("req_1")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Governance/ }));

@@ -135,7 +135,7 @@ export default function AdminPage() {
 
   async function createExercise() {
     if (!exerciseDraft.name?.trim()) {
-      setError("Ten bai tap la bat buoc.");
+      setError("Tên bài tập là bắt buộc.");
       return;
     }
     const result = await evolveFitApiClient.adminCreateExercise(exerciseDraft);
@@ -168,7 +168,7 @@ export default function AdminPage() {
 
   async function createTemplate() {
     if (!templateDraft.name?.trim()) {
-      setError("Ten template la bat buoc.");
+      setError("Tên template là bắt buộc.");
       return;
     }
     const result = await evolveFitApiClient.adminCreateRoutineTemplate(templateDraft);
@@ -204,7 +204,7 @@ export default function AdminPage() {
 
   async function writeRole(revoke = false) {
     if (!roleEmail.trim()) {
-      setError("Email admin la bat buoc.");
+      setError("Email admin là bắt buộc.");
       return;
     }
     const result = await evolveFitApiClient.adminWriteRole({ email: roleEmail, role: roleValue, revoke });
@@ -234,7 +234,7 @@ export default function AdminPage() {
   }
 
   if (loadState === "loading") {
-    return <StateCard title="Dang tai admin" body="Dang kiem tra quyen truy cap va phien dang nhap." />;
+    return <StateCard title="Đang tải admin" body="Đang kiểm tra quyền truy cập và phiên đăng nhập." />;
   }
 
   if (loadState !== "ready") {
@@ -243,7 +243,7 @@ export default function AdminPage() {
         <section className={styles.stateCard}>
           <Shield size={26} />
           <h1>Admin access</h1>
-          <p className={styles.muted}>Dang nhap bang tai khoan co role admin de tiep tuc. Neu thay 401/403, hay kiem tra `ADMIN_BOOTSTRAP_EMAILS` hoac role assignment.</p>
+          <p className={styles.muted}>Đăng nhập bằng tài khoản có role admin để tiếp tục. Nếu thấy 401/403, hãy kiểm tra `ADMIN_BOOTSTRAP_EMAILS` hoặc role assignment.</p>
           {error && <div className={styles.error}>{error}</div>}
           <label className={styles.field}>
             <span>Email</span>
@@ -253,7 +253,7 @@ export default function AdminPage() {
             <span>Password</span>
             <input type="password" value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} />
           </label>
-          <button className={styles.primaryButton} onClick={login}>Dang nhap admin</button>
+          <button className={styles.primaryButton} onClick={login}>Đăng nhập admin</button>
         </section>
       </main>
     );
@@ -284,7 +284,7 @@ export default function AdminPage() {
         <header className={styles.topbar}>
           <div>
             <h1>{tabs.find((tab) => tab.id === activeTab)?.label ?? "Admin"}</h1>
-            <p className={styles.muted}>Quan tri production qua API admin server-side, khong hien secrets trong frontend.</p>
+            <p className={styles.muted}>Quản trị production qua API admin server-side, không hiển thị secrets trong frontend.</p>
           </div>
           <button className={styles.secondaryButton} onClick={() => void bootstrap()}>Refresh</button>
         </header>
@@ -381,24 +381,33 @@ function ContentExercises(props: {
   create: () => void;
   update: (id: string, patch: Partial<ExerciseDefinition>) => void;
 }) {
+  const [showCreateForm, setShowCreateForm] = useState(false);
+
   return (
     <>
       <Toolbar title="Marketplace exercises" total={props.total} query={props.query} status={props.status} setQuery={props.setQuery} setStatus={props.setStatus} reload={props.reload} />
       {props.canWrite && (
-        <section className={styles.card}>
-          <h2>Create exercise</h2>
-          <div className={styles.formGrid}>
-            <Field label="Name" value={props.draft.name ?? ""} onChange={(name) => props.setDraft({ ...props.draft, name })} />
-            <Field label="Muscle group" value={props.draft.muscleGroup ?? ""} onChange={(muscleGroup) => props.setDraft({ ...props.draft, muscleGroup })} />
-            <SelectField label="Equipment" value={props.draft.equipment ?? "dumbbell"} options={["barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "other"]} onChange={(equipment) => props.setDraft({ ...props.draft, equipment: equipment as ExerciseDefinition["equipment"] })} />
-            <SelectField label="Pattern" value={props.draft.movementPattern ?? "push"} options={["push", "pull", "squat", "hinge", "lunge", "carry", "isolation", "core"]} onChange={(movementPattern) => props.setDraft({ ...props.draft, movementPattern: movementPattern as MovementPattern })} />
-            <SelectField label="Status" value={props.draft.status ?? "draft"} options={statusOptions.slice(1)} onChange={(status) => props.setDraft({ ...props.draft, status: status as ExerciseDefinition["status"] })} />
-            <Field label="License" value={props.draft.license ?? ""} onChange={(license) => props.setDraft({ ...props.draft, license })} />
-            <Field className={styles.wide} label="Cues" value={(props.draft.cues ?? []).join(", ")} onChange={(value) => props.setDraft({ ...props.draft, cues: splitList(value) })} />
-            <Field label="Media URL" value={props.draft.mediaUrl ?? ""} onChange={(mediaUrl) => props.setDraft({ ...props.draft, mediaUrl })} />
-          </div>
-          <button className={styles.primaryButton} onClick={props.create}>Create exercise</button>
-        </section>
+        <>
+          <button className={styles.primaryButton} onClick={() => setShowCreateForm(!showCreateForm)} aria-expanded={showCreateForm}>
+            {showCreateForm ? "Hide draft form" : "Create draft exercise"}
+          </button>
+          {showCreateForm && (
+            <section className={styles.card}>
+              <h2>Create exercise</h2>
+              <div className={styles.formGrid}>
+                <Field label="Name" value={props.draft.name ?? ""} onChange={(name) => props.setDraft({ ...props.draft, name })} />
+                <Field label="Muscle group" value={props.draft.muscleGroup ?? ""} onChange={(muscleGroup) => props.setDraft({ ...props.draft, muscleGroup })} />
+                <SelectField label="Equipment" value={props.draft.equipment ?? "dumbbell"} options={["barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "other"]} onChange={(equipment) => props.setDraft({ ...props.draft, equipment: equipment as ExerciseDefinition["equipment"] })} />
+                <SelectField label="Pattern" value={props.draft.movementPattern ?? "push"} options={["push", "pull", "squat", "hinge", "lunge", "carry", "isolation", "core"]} onChange={(movementPattern) => props.setDraft({ ...props.draft, movementPattern: movementPattern as MovementPattern })} />
+                <SelectField label="Status" value={props.draft.status ?? "draft"} options={statusOptions.slice(1)} onChange={(status) => props.setDraft({ ...props.draft, status: status as ExerciseDefinition["status"] })} />
+                <Field label="License" value={props.draft.license ?? ""} onChange={(license) => props.setDraft({ ...props.draft, license })} />
+                <Field className={styles.wide} label="Cues" value={(props.draft.cues ?? []).join(", ")} onChange={(value) => props.setDraft({ ...props.draft, cues: splitList(value) })} />
+                <Field label="Media URL" value={props.draft.mediaUrl ?? ""} onChange={(mediaUrl) => props.setDraft({ ...props.draft, mediaUrl })} />
+              </div>
+              <button className={styles.primaryButton} onClick={props.create}>Create exercise</button>
+            </section>
+          )}
+        </>
       )}
       <section className={styles.card}>
         <Table headers={["Name", "Muscle", "Equipment", "Status", "License", "Actions"]}>
@@ -410,8 +419,8 @@ function ContentExercises(props: {
               <td><span className={styles.pill}>{exercise.status}</span></td>
               <td>{exercise.license ?? "-"}</td>
               <td className={styles.actions}>
-                <button className={styles.secondaryButton} disabled={!props.canWrite} onClick={() => props.update(exercise.id, { status: "published" })}>Publish</button>
-                <button className={styles.dangerButton} disabled={!props.canWrite} onClick={() => props.update(exercise.id, { status: "archived" })}>Archive</button>
+                <AdminConfirmButton className={styles.secondaryButton} disabled={!props.canWrite} label="Publish" confirmLabel="Confirm publish" onConfirm={() => props.update(exercise.id, { status: "published" })} />
+                <AdminConfirmButton className={styles.dangerButton} disabled={!props.canWrite} label="Archive" confirmLabel="Confirm archive" onConfirm={() => props.update(exercise.id, { status: "archived" })} />
               </td>
             </tr>
           ))}
@@ -435,26 +444,35 @@ function RoutineTemplatesView(props: {
   create: () => void;
   update: (id: string, patch: Partial<RoutineTemplate>) => void;
 }) {
+  const [showCreateForm, setShowCreateForm] = useState(false);
+
   return (
     <>
       <Toolbar title="Routine templates" total={props.total} query={props.query} status={props.status} setQuery={props.setQuery} setStatus={props.setStatus} reload={props.reload} />
       {props.canWrite && (
-        <section className={styles.card}>
-          <h2>Create routine template</h2>
-          <div className={styles.formGrid}>
-            <Field label="Name" value={props.draft.name ?? ""} onChange={(name) => props.setDraft({ ...props.draft, name })} />
-            <SelectField label="Goal" value={props.draft.targetGoal ?? "muscle"} options={["strength", "muscle", "fat-loss", "health"]} onChange={(targetGoal) => props.setDraft({ ...props.draft, targetGoal: targetGoal as RoutineTemplate["targetGoal"] })} />
-            <SelectField label="Status" value={props.draft.status ?? "draft"} options={["draft", "published", "archived"]} onChange={(status) => props.setDraft({ ...props.draft, status: status as RoutineTemplate["status"] })} />
-            <Field label="Days/week" value={String(props.draft.daysPerWeek ?? 3)} onChange={(daysPerWeek) => props.setDraft({ ...props.draft, daysPerWeek: Number(daysPerWeek) || 3 })} />
-            <Field label="Minutes/session" value={String(props.draft.minutesPerSession ?? 60)} onChange={(minutesPerSession) => props.setDraft({ ...props.draft, minutesPerSession: Number(minutesPerSession) || 60 })} />
-            <Field label="License" value={props.draft.license ?? ""} onChange={(license) => props.setDraft({ ...props.draft, license })} />
-            <label className={`${styles.field} ${styles.full}`}>
-              <span>Summary</span>
-              <textarea value={props.draft.summary ?? ""} onChange={(event) => props.setDraft({ ...props.draft, summary: event.target.value })} />
-            </label>
-          </div>
-          <button className={styles.primaryButton} onClick={props.create}>Create template</button>
-        </section>
+        <>
+          <button className={styles.primaryButton} onClick={() => setShowCreateForm(!showCreateForm)} aria-expanded={showCreateForm}>
+            {showCreateForm ? "Hide draft form" : "Create draft template"}
+          </button>
+          {showCreateForm && (
+            <section className={styles.card}>
+              <h2>Create routine template</h2>
+              <div className={styles.formGrid}>
+                <Field label="Name" value={props.draft.name ?? ""} onChange={(name) => props.setDraft({ ...props.draft, name })} />
+                <SelectField label="Goal" value={props.draft.targetGoal ?? "muscle"} options={["strength", "muscle", "fat-loss", "health"]} onChange={(targetGoal) => props.setDraft({ ...props.draft, targetGoal: targetGoal as RoutineTemplate["targetGoal"] })} />
+                <SelectField label="Status" value={props.draft.status ?? "draft"} options={["draft", "published", "archived"]} onChange={(status) => props.setDraft({ ...props.draft, status: status as RoutineTemplate["status"] })} />
+                <Field label="Days/week" value={String(props.draft.daysPerWeek ?? 3)} onChange={(daysPerWeek) => props.setDraft({ ...props.draft, daysPerWeek: Number(daysPerWeek) || 3 })} />
+                <Field label="Minutes/session" value={String(props.draft.minutesPerSession ?? 60)} onChange={(minutesPerSession) => props.setDraft({ ...props.draft, minutesPerSession: Number(minutesPerSession) || 60 })} />
+                <Field label="License" value={props.draft.license ?? ""} onChange={(license) => props.setDraft({ ...props.draft, license })} />
+                <label className={`${styles.field} ${styles.full}`}>
+                  <span>Summary</span>
+                  <textarea value={props.draft.summary ?? ""} onChange={(event) => props.setDraft({ ...props.draft, summary: event.target.value })} />
+                </label>
+              </div>
+              <button className={styles.primaryButton} onClick={props.create}>Create template</button>
+            </section>
+          )}
+        </>
       )}
       <section className={styles.card}>
         <Table headers={["Name", "Goal", "Days", "Status", "Exercises", "Actions"]}>
@@ -466,8 +484,8 @@ function RoutineTemplatesView(props: {
               <td><span className={styles.pill}>{template.status}</span></td>
               <td>{template.days.reduce((sum, day) => sum + day.exercises.length, 0)}</td>
               <td className={styles.actions}>
-                <button className={styles.secondaryButton} disabled={!props.canWrite} onClick={() => props.update(template.id, { status: "published" })}>Publish</button>
-                <button className={styles.dangerButton} disabled={!props.canWrite} onClick={() => props.update(template.id, { status: "archived" })}>Archive</button>
+                <AdminConfirmButton className={styles.secondaryButton} disabled={!props.canWrite} label="Publish" confirmLabel="Confirm publish" onConfirm={() => props.update(template.id, { status: "published" })} />
+                <AdminConfirmButton className={styles.dangerButton} disabled={!props.canWrite} label="Archive" confirmLabel="Confirm archive" onConfirm={() => props.update(template.id, { status: "archived" })} />
               </td>
             </tr>
           ))}
@@ -483,7 +501,10 @@ function SupportView(props: { query: string; users: AdminUserLookup[]; feedbackC
       <div className={styles.toolbar}>
         <div><h2>Support operations</h2><p className={styles.muted}>Lookup is redacted by design. Open reports: {props.feedbackCount}</p></div>
         <div className={styles.filters}>
-          <input value={props.query} onChange={(event) => props.setQuery(event.target.value)} placeholder="Search user" />
+          <label className={styles.compactField}>
+            <span>Search user</span>
+            <input value={props.query} onChange={(event) => props.setQuery(event.target.value)} />
+          </label>
           <button className={styles.secondaryButton} onClick={props.reload}>Search</button>
         </div>
       </div>
@@ -495,17 +516,27 @@ function SupportView(props: { query: string; users: AdminUserLookup[]; feedbackC
 }
 
 function RolesView(props: { roles: AdminRoleAssignment[]; email: string; role: AdminRole; setEmail: (value: string) => void; setRole: (value: AdminRole) => void; writeRole: (revoke?: boolean) => void }) {
+  const [showRoleForm, setShowRoleForm] = useState(false);
+
   return (
     <section className={styles.card}>
       <h2>Role access</h2>
-      <div className={styles.formGrid}>
-        <Field label="Email" value={props.email} onChange={props.setEmail} />
-        <SelectField label="Role" value={props.role} options={["super-admin", "content-admin", "support"]} onChange={(role) => props.setRole(role as AdminRole)} />
-        <div className={styles.actions}>
-          <button className={styles.primaryButton} onClick={() => props.writeRole(false)}>Grant</button>
-          <button className={styles.dangerButton} onClick={() => props.writeRole(true)}>Revoke</button>
+      <p className={styles.muted}>
+        Super-admin controls all admin functions. Content-admin can govern marketplace content. Support can use redacted user lookup only.
+      </p>
+      <button className={styles.primaryButton} onClick={() => setShowRoleForm(!showRoleForm)} aria-expanded={showRoleForm}>
+        {showRoleForm ? "Hide role change" : "Grant/revoke role"}
+      </button>
+      {showRoleForm && (
+        <div className={styles.formGrid}>
+          <Field label="Email" value={props.email} onChange={props.setEmail} />
+          <SelectField label="Role" value={props.role} options={["super-admin", "content-admin", "support"]} onChange={(role) => props.setRole(role as AdminRole)} />
+          <div className={styles.actions}>
+            <AdminConfirmButton className={styles.primaryButton} label="Grant" confirmLabel="Confirm grant" onConfirm={() => props.writeRole(false)} />
+            <AdminConfirmButton className={styles.dangerButton} label="Revoke" confirmLabel="Confirm revoke" onConfirm={() => props.writeRole(true)} />
+          </div>
         </div>
-      </div>
+      )}
       <Table headers={["Email", "Role", "Granted by", "Granted at"]}>
         {props.roles.map((role) => <tr key={`${role.email}-${role.role}`}><td>{role.email}</td><td>{role.role}</td><td>{role.grantedBy}</td><td>{role.grantedAt}</td></tr>)}
       </Table>
@@ -514,23 +545,50 @@ function RolesView(props: { roles: AdminRoleAssignment[]; email: string; role: A
 }
 
 function AuditView(props: { logs: AdminAuditLog[]; total: number; resource: string; setResource: (value: string) => void; reload: () => void }) {
+  const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
+  const selectedLog = props.logs.find((log) => log.id === selectedLogId) ?? null;
+
   return (
     <section className={styles.card}>
       <div className={styles.toolbar}>
         <div><h2>Audit logs</h2><p className={styles.muted}>{props.total} events</p></div>
         <div className={styles.filters}>
-          <input value={props.resource} onChange={(event) => props.setResource(event.target.value)} placeholder="resourceType" />
+          <label className={styles.compactField}>
+            <span>Resource type</span>
+            <input value={props.resource} onChange={(event) => props.setResource(event.target.value)} />
+          </label>
           <button className={styles.secondaryButton} onClick={props.reload}>Filter</button>
         </div>
       </div>
-      <Table headers={["Action", "Resource", "Actor", "Request", "Created"]}>
-        {props.logs.map((log) => <tr key={log.id}><td>{log.action}</td><td>{log.resourceType}<br /><span className={styles.muted}>{log.resourceId}</span></td><td>{log.actorEmail}</td><td>{log.requestId}</td><td>{log.createdAt}</td></tr>)}
+      <Table headers={["Action", "Resource", "Actor", "Created", "Details"]}>
+        {props.logs.map((log) => (
+          <tr key={log.id}>
+            <td>{log.action}</td>
+            <td>{log.resourceType}</td>
+            <td>{log.actorEmail}</td>
+            <td>{log.createdAt}</td>
+            <td>
+              <button className={styles.secondaryButton} onClick={() => setSelectedLogId(selectedLogId === log.id ? null : log.id)}>
+                {selectedLogId === log.id ? "Hide" : "Details"}
+              </button>
+            </td>
+          </tr>
+        ))}
       </Table>
+      {selectedLog && (
+        <div className={styles.detailPanel}>
+          <div><span>Request</span><strong>{selectedLog.requestId}</strong></div>
+          <div><span>Resource id</span><strong>{selectedLog.resourceId}</strong></div>
+          <div><span>Created</span><strong>{selectedLog.createdAt}</strong></div>
+        </div>
+      )}
     </section>
   );
 }
 
 function GovernanceView({ governance }: { governance: { mode: string; bootstrapConfigured: boolean; checkedAt: string } | null }) {
+  const [showRunbook, setShowRunbook] = useState(false);
+
   return (
     <section className={styles.card}>
       <h2>Governance health</h2>
@@ -538,9 +596,17 @@ function GovernanceView({ governance }: { governance: { mode: string; bootstrapC
         <div className={styles.metric}><span>Repository mode</span><strong>{governance?.mode ?? "-"}</strong></div>
         <div className={styles.metric}><span>Bootstrap env</span><strong>{governance?.bootstrapConfigured ? "set" : "missing"}</strong></div>
         <div className={styles.metric}><span>Checked at</span><strong>{governance?.checkedAt ? new Date(governance.checkedAt).toLocaleTimeString("vi-VN") : "-"}</strong></div>
-        <div className={styles.metric}><span>Runbook</span><strong>admin ops</strong></div>
       </div>
-      <p className={styles.muted}>Use docs/admin-governance-runbook.md for bootstrap, revoke and incident response.</p>
+      <button className={styles.secondaryButton} onClick={() => setShowRunbook(!showRunbook)} aria-expanded={showRunbook}>
+        {showRunbook ? "Hide runbook details" : "View runbook details"}
+      </button>
+      {showRunbook && (
+        <div className={styles.detailPanel}>
+          <div><span>Runbook</span><strong>docs/admin-governance-runbook.md</strong></div>
+          <div><span>Use for</span><strong>bootstrap, revoke, incident response</strong></div>
+          <div><span>Policy</span><strong>no secrets or service-role keys in frontend</strong></div>
+        </div>
+      )}
     </section>
   );
 }
@@ -551,8 +617,14 @@ function Toolbar(props: { title: string; total: number; query: string; status: s
       <div className={styles.toolbar}>
         <div><h2>{props.title}</h2><p className={styles.muted}>{props.total} records</p></div>
         <div className={styles.filters}>
-          <input value={props.query} onChange={(event) => props.setQuery(event.target.value)} placeholder="Search" />
-          <select value={props.status} onChange={(event) => props.setStatus(event.target.value)}>{statusOptions.map((status) => <option key={status}>{status}</option>)}</select>
+          <label className={styles.compactField}>
+            <span>Search</span>
+            <input value={props.query} onChange={(event) => props.setQuery(event.target.value)} />
+          </label>
+          <label className={styles.compactField}>
+            <span>Status</span>
+            <select value={props.status} onChange={(event) => props.setStatus(event.target.value)}>{statusOptions.map((status) => <option key={status}>{status}</option>)}</select>
+          </label>
           <button className={styles.secondaryButton} onClick={props.reload}>Apply</button>
         </div>
       </div>
@@ -588,6 +660,41 @@ function SelectField(props: { label: string; value: string; options: string[]; o
         {props.options.map((option) => <option key={option} value={option}>{option}</option>)}
       </select>
     </label>
+  );
+}
+
+function AdminConfirmButton(props: {
+  className: string;
+  label: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+  disabled?: boolean;
+}) {
+  const [armed, setArmed] = useState(false);
+
+  useEffect(() => {
+    if (!armed) return;
+    const timeout = window.setTimeout(() => setArmed(false), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [armed]);
+
+  return (
+    <button
+      className={props.className}
+      disabled={props.disabled}
+      aria-pressed={armed}
+      onClick={() => {
+        if (props.disabled) return;
+        if (!armed) {
+          setArmed(true);
+          return;
+        }
+        props.onConfirm();
+        setArmed(false);
+      }}
+    >
+      {armed ? props.confirmLabel : props.label}
+    </button>
   );
 }
 
