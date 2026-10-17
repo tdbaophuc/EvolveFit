@@ -1,5 +1,5 @@
 import { buildCloudMergePreview, buildLocalToCloudSyncItems, type AppState } from "@evolvefit/shared";
-import { evolveFitApiClient, type AuthMode } from "@/lib/api-client";
+import { evolveFitApiClient, type ApiFailure, type AuthMode } from "@/lib/api-client";
 import { apiErrorMessage, isValidEmail, passwordProblem } from "@/lib/api-errors";
 import { hasAccountCache, loadState, normalizeAccount, removeAccountCache } from "@/lib/storage";
 import { commit, currentAccount, currentState, notify, useAppStore } from "@/lib/store/app-store";
@@ -27,6 +27,20 @@ async function runAuthAction<T>(action: AuthAction, task: () => Promise<T>): Pro
 }
 
 const busy: AuthResult = { ok: false, error: "Đang xử lý yêu cầu trước, vui lòng đợi." };
+
+export const cookieBlockedMessage =
+  "Trình duyệt đã chặn cookie đăng nhập nên không giữ được phiên. Hãy cho phép cookie cho trang này (hoặc tắt chặn theo dõi giữa các trang trong cài đặt trình duyệt) rồi thử lại.";
+
+/**
+ * Confirms the session cookie set by sign-in was actually stored. Browsers that block third-party cookies
+ * accept the sign-in response but drop the cookie, which would otherwise look like a successful sign-in
+ * followed by endless "session expired" prompts.
+ */
+async function sessionCookieStored(): Promise<boolean> {
+  const check = await evolveFitApiClient.session();
+  if (!check.ok) return true; // cannot verify (offline / server busy): do not block the user
+  return Boolean(check.data.authenticated) && check.data.mode !== "local";
+}
 
 function signedInProfile(state: AppState, email: string, mode: AuthMode): AppState {
   return { ...state, profile: { ...state.profile, email, authMode: mode } };
@@ -72,6 +86,7 @@ export async function signInWithEmail(emailInput: string, password: string): Pro
   const payload = await runAuthAction("sign-in", () => evolveFitApiClient.signIn({ email, password, mode: "email" }));
   if (!payload) return busy;
   if (!payload.ok) return { ok: false, error: apiErrorMessage(payload, "Đăng nhập thất bại. Vui lòng thử lại.") };
+  if (!(await sessionCookieStored())) return { ok: false, error: cookieBlockedMessage };
   await establishSession(payload.data.email || email, payload.data.mode, "sign-in");
   return { ok: true };
 }
@@ -85,6 +100,7 @@ export async function signUpWithEmail(emailInput: string, password: string): Pro
   if (!payload) return busy;
   if (!payload.ok) return { ok: false, error: apiErrorMessage(payload, "Đăng ký thất bại. Vui lòng thử lại.") };
   if (payload.data.needsEmailVerification) return { ok: true, needsVerification: true };
+  if (!(await sessionCookieStored())) return { ok: false, error: cookieBlockedMessage };
   await establishSession(payload.data.email || email, payload.data.mode, "sign-up");
   return { ok: true };
 }
@@ -129,16 +145,21 @@ function finishMerge() {
   authState().patch({ cloudMergePreview: null, mergeSource: null });
 }
 
+function mergeFailure(failure: ApiFailure, fallback: string): AuthResult {
+  if (isUnauthorized(failure)) {
+    authState().patch({ sessionExpired: true });
+    return { ok: false, error: "Máy chủ không nhận phiên đăng nhập trên thiết bị này. Hãy đăng nhập lại; nếu vẫn lỗi, trình duyệt có thể đang chặn cookie." };
+  }
+  return { ok: false, error: apiErrorMessage(failure, fallback) };
+}
+
 /** Uploads the local data, then adopts the merged cloud result. */
-export async function mergeLocalAccountToCloud() {
+export async function mergeLocalAccountToCloud(): Promise<AuthResult> {
   const state = currentState();
   const idempotencyKey = `account-merge:${currentAccount() ?? "guest"}`;
   const payload = await runAuthAction("merge", () => evolveFitApiClient.syncBatch({ idempotencyKey, items: buildLocalToCloudSyncItems(state, idempotencyKey) }));
-  if (!payload) return;
-  if (!payload.ok) {
-    notify(apiErrorMessage(payload, "Không đưa được dữ liệu trên máy lên cloud."));
-    return;
-  }
+  if (!payload) return busy;
+  if (!payload.ok) return mergeFailure(payload, "Không đưa được dữ liệu trên máy lên cloud.");
   const exportPayload = await evolveFitApiClient.exportAccount();
   const onboarded = authState().mergeSource === "sign-in";
   finishMerge();
@@ -148,29 +169,24 @@ export async function mergeLocalAccountToCloud() {
     const cloud = adoptCloudState(state, cloudState, { email, authMode }, onboarded);
     // Local items are already uploaded; keep local preferences on top of the merged collections.
     commit({ ...cloud, profile: { ...cloud.profile, name: state.profile.name || cloud.profile.name } }, "Đã gộp dữ liệu trên máy với tài khoản");
-    return;
+    return { ok: true };
   }
   notify("Đã đưa dữ liệu lên cloud. Dữ liệu từ các thiết bị khác sẽ được tải ở lần đồng bộ tới.");
+  return { ok: true };
 }
 
 /** Replaces this device's copy with the account's cloud data. */
-export async function replaceLocalWithCloud() {
+export async function replaceLocalWithCloud(): Promise<AuthResult> {
   const payload = await runAuthAction("replace", () => evolveFitApiClient.exportAccount());
-  if (!payload) return;
-  if (!payload.ok) {
-    notify(apiErrorMessage(payload, "Không tải được dữ liệu cloud."));
-    return;
-  }
+  if (!payload) return busy;
+  if (!payload.ok) return mergeFailure(payload, "Không tải được dữ liệu cloud.");
   const cloudState = cloudStateFrom(payload.data);
-  if (!cloudState) {
-    notify("Dữ liệu tài khoản trên cloud không hợp lệ. Đã giữ dữ liệu trên máy.");
-    keepLocalAccountData();
-    return;
-  }
+  if (!cloudState) return { ok: false, error: "Dữ liệu tài khoản trên cloud không hợp lệ. Hãy chọn \"Giữ trên máy\" hoặc thử lại sau." };
   const state = currentState();
   const onboarded = authState().mergeSource === "sign-in";
   finishMerge();
   commit(adoptCloudState(state, cloudState, { email: state.profile.email, authMode: state.profile.authMode }, onboarded), "Đã dùng dữ liệu từ tài khoản");
+  return { ok: true };
 }
 
 /** Keeps this device's copy as the account's starting point without uploading the existing items. */

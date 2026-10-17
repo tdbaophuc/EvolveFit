@@ -3005,7 +3005,8 @@ button:disabled {
   left: max(16px, calc(50% - 244px));
   right: max(16px, calc(50% - 244px));
   bottom: calc(152px + env(safe-area-inset-bottom));
-  z-index: 20;
+  /* Above sheets/dialogs (z-50) so feedback for actions taken inside a dialog stays visible. */
+  z-index: 60;
   display: flex;
   align-items: center;
   justify-content: space-between;
